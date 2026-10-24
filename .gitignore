@@ -1,0 +1,25 @@
+# Build outputs
+/out/
+/dist/
+/build/cache/
+/build/_deps/
+CMakeUserPresets.json
+
+# Dataset files, caches and run reports live outside git; the manifest is committed
+/dataset/files/
+/dataset/cache/
+/dataset/reports/
+
+# Tooling
+__pycache__/
+*.pyc
+.venv/
+bin/
+obj/
+*.user
+.vs/
+.vscode/
+.idea/
+
+# Never commit a PDF: fixtures are written in code and the dataset lives outside git
+*.pdf
