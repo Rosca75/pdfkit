@@ -247,3 +247,12 @@ rollback after they land reverts them too.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- `pdfkit_write(edit, options_json, out_pdf, out)` has two output buffers: the PDF bytes in `out_pdf`, the write report or the error in `out`; `pdfkit_edit_new(doc, out_edit, out)` is implemented (item 4).
+- `cli/verbs/select_pages.cpp` already runs open, edit, select, write and writes the output file only on success (item 7).
+- Remove the `build/paths_pending.tsv` row `src/writer/channel_table.cpp` in the change that creates it (item 13).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

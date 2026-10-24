@@ -252,3 +252,15 @@ after they merge reverts them too.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- `pdfkit_open(bytes, size, options_json, out_doc, out)` accepts `bytes == NULL` with `size == 0`, so an empty input reaches the parser and is refused as `not_pdf` (item 4).
+- Flipping rows 1.1 and 1.2 to `implemented` in `src/api/catalogue.cpp` also updates `pdfkit_version`'s `catalogue`, which the CLI reads before opening (item 6).
+- `cli/verbs/inspect.cpp` is complete once the functions exist (open, inspect, print, close through `run_document_verb`); `cli/verbs/dataset.cpp` parses `--manifest/--out` and `--file/--id`, checks the catalogue and ends in a `not_implemented` error that this phase replaces with the outcome writer (item 7).
+- The JSON tree type is `platform::JsonValue` in `src/platform/json_value.hpp` (item 2).
+- `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
+- Remove the `build/paths_pending.tsv` rows `syntax/cross_reference.hpp`, `tests/unit/support/`, `tests/unit/support/pdf_builder` and `tests/unit/support/pdf_builder.hpp` in the change that creates them (item 13).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

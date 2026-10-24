@@ -233,3 +233,12 @@ that no longer ships, nor lose one while it does.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
+- `build/check_catalogue.py` accepts `cli/verbs/dataset_fonts.cpp` as a helper of the `dataset` verb (files named `<verb>_<part>.cpp`) (item 12).
+- Remove the `build/paths_pending.tsv` row `build/fonts/` in the change that creates it (item 13).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

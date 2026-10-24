@@ -219,3 +219,11 @@ the `text` column of the manifest is reverted with the merge.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- The JSON tree type is `platform::JsonValue` in `src/platform/json_value.hpp`; options arrive through `api::parse_json_object` (item 2).
+- `cli/verbs/text.cpp` takes `--options <json>` and `--open-options <json>` and is complete once the functions exist (item 7).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

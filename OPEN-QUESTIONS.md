@@ -47,3 +47,58 @@ to that chapter before its phase starts, and costs nothing beyond that.
 
 *(each phase appends here when its kill criterion trips or a fact it needs is
 the owner's)*
+
+### 2.1 AddressSanitizer through a second toolchain (raised by phase 1)
+
+The pinned MinGW GCC supports UBSan (trap mode) but not AddressSanitizer on
+Windows: `-fsanitize=address` fails with `cannot find -lasan` (and likewise
+`-lubsan`, `-ltsan`, `-llsan` without trap mode). llvm-mingw 20261020 (clang
+23.1.4, a 190 MB zip, no administrator rights) was measured on the laptop: ASan
+reports a heap overflow with its source line and UBSan works with its runtime.
+Do you want llvm-mingw added as a second toolchain for the sanitizer tier only?
+
+- **(a) Yes — recommended, and taken while this question stands.** It is
+  already in place: the `clang-sanitize` preset, `build/llvm-mingw.cmake`, the
+  pin and fetch command in `build/toolchain.md`, the zip unpacked in the main
+  checkout's `build/cache/llvm-mingw/`. The unit tier passes under it. Price
+  spent: about 1 hour and $15 to $25 of model spend; each later phase's
+  sanitizer run takes about 2 more minutes. GCC stays the compiler of every
+  artefact.
+- **(b) No:** the sanitizer tier stays UBSan-only and memory errors are caught
+  by the bounds-checked helpers and the dataset's crash count. Price: about 15
+  minutes and $3 to $5 to remove the preset, the toolchain file and its
+  section of `build/toolchain.md`; the cache folder can be deleted by hand.
+
+### 2.2 `pdfkit_version` in the charter's lifecycle sentence (raised by phase 1)
+
+`build-1.md` adds `pdfkit_version` (the library version, the ABI version, the
+build and the catalogue with each function's implementation status), but
+`CLAUDE.md` §2 lists the lifecycle symbols as `pdfkit_abi_version`,
+`pdfkit_close`, `pdfkit_edit_new`, `pdfkit_edit_free` and `pdfkit_buffer_free`
+only. `build/check_catalogue.py` names `pdfkit_version` as its one extra
+symbol until the charter says otherwise.
+
+- **(a) Add `pdfkit_version` to the lifecycle sentence of `CLAUDE.md` §2 —
+  recommended.** A one-line charter change plus removing the extra-symbol entry
+  in `build/check_catalogue.py`: about 5 minutes and under $1, at the next
+  phase.
+- **(b) Remove `pdfkit_version` from the ABI.** About 1 hour and $10 to $15: the
+  CLI would lose the catalogue it reads to report a missing function before
+  opening a document, and callers would lose the build's catalogue.
+
+### 2.3 Two sentences of `THIRD-PARTY-NOTICES.md` (raised by phase 1)
+
+The notices say "Every component listed here has a row in
+`third_party/inventory.tsv`" and that `build/check_third_party.py` "checks
+that this file and the inventory name the same components". Seven of the eight
+listed components are not vendored yet, so neither holds today; the check
+holds the one direction that can: every inventory component is named in the
+notices.
+
+- **(a) Reword both sentences to that direction — recommended.** "Every
+  vendored component has a row in `third_party/inventory.tsv` and a section
+  here; `build/check_third_party.py` checks that every inventory component is
+  named in this file." About 5 minutes and under $1.
+- **(b) Keep the sentences and make the check two-way once phase 10 has
+  vendored everything.** About 15 minutes and $2 to $3 at phase 10; until then
+  the sentences stay untrue.

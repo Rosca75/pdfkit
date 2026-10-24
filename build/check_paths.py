@@ -53,7 +53,7 @@ def ignored_by_git(root: Path, path: str) -> bool:
 
 
 def resolves(root: Path, document: str, token: str) -> bool:
-    bases = [root, (root / document).parent, root / "src"]
+    bases = [root, (root / document).parent, root / "src", root / "include"]
     for base in bases:
         candidate = base / token.rstrip("/")
         if candidate.exists():

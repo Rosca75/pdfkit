@@ -228,3 +228,10 @@ no-op form.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- The redact job's `images` section is forwarded byte for byte to `pdfkit_redact_images` (`docs/ABI.md` §6, item 7).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

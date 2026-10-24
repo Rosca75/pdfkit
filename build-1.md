@@ -291,4 +291,102 @@ Phases 2 and 3 need the checks, so they do not start on an incomplete phase 1.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **`.gitattributes`** (team lead's instruction): every text file is stored
+   and checked out LF (`* text=auto eol=lf`, binary patterns listed), because
+   the laptop's `core.autocrlf` breaks clang-format and the shell hook. Its own
+   commit; the index already held LF, so no blob changed.
+2. **Files added beyond §2's lists**, each to keep one public class per header
+   or one concern per file: `src/platform/json_value.{hpp,cpp}` (`JsonValue`,
+   the tree `JsonReader` returns), `src/platform/utf8_sequence.{hpp,cpp}`
+   (UTF-8 decoding shared by the JSON writer and reader),
+   `src/platform/build_info.{hpp,cpp}` (version, compiler and build type for
+   `pdfkit_version`, so compiler macros stay in the platform layer),
+   `src/api/arguments.{hpp,cpp}` (the argument checks), `cli/arguments.*`,
+   `cli/json_text.*`, `cli/output.*`, `cli/support.*`, `cli/verbs/verbs.hpp`,
+   `cli/pdfkit.manifest` and `cli/pdfkit.rc`, `build/runtime.cmake`,
+   `build/llvm-mingw.cmake`, `build/checklib.py` (helpers shared by the
+   checks). `checked.hpp` stays header-only.
+3. **The export attribute**: the public header marks every declaration with
+   `PDFKIT_API`, empty for callers; the core's build defines
+   `PDFKIT_EXPORT_HEADER="platform/export.hpp"`, which the header includes, so
+   the attribute is spelled only in `src/platform/export.hpp` and every
+   declaration carries it whatever a source's include order. Clang refuses
+   `dllexport` added on a redeclaration, which the plan's
+   attribute-on-the-definition shape needed. The static core is compiled with
+   the attribute (`PDFKIT_BUILDING` is public on `pdfkit_core`), not without
+   it as §2.3 said, because its objects are the DLL's objects; an executable
+   linking the core exports the same names, which is harmless. The shared
+   library is built from `$<TARGET_OBJECTS:pdfkit_core>`.
+4. **Signatures outside the uniform shape** of §2.4: `pdfkit_write(edit,
+   options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` has two output
+   buffers, because the PDF bytes and the write report are both outputs;
+   `pdfkit_edit_new(doc, pdfkit_edit** out_edit, pdfkit_buffer* out)` returns
+   a status and the handle through `out_edit`. An optional JSON argument may be
+   `NULL` (meaning `{}`); the required ones (`matches_json`,
+   `treatments_json`, `fields_json`, `pages_json`, `strings_json`) refuse it.
+   `bytes` may be `NULL` when `size` is 0, so an empty input reaches `open` and
+   is refused as `not_pdf` rather than as a bad argument.
+5. **`platform::ErrorCode` gains `self_check`** beyond "chapter 19 plus
+   internal, not_implemented, invalid_argument", because
+   `PDFKIT_E_SELF_CHECK` needs a code (`docs/DESIGN.md` §18).
+6. **`pdfkit_version` returns a `catalogue` array** beside `version`, `abi` and
+   `build`: per catalogue row its number, function, symbol, verb, build file,
+   `implemented`, and for an unimplemented row the exact error object the
+   function returns. The CLI reads it to report a missing function before
+   opening the document, which is how `pdfkit text x.pdf` names
+   `pdfkit_text` and `build-5.md` while `pdfkit_open` is also missing. The
+   ABI version stays 1. `CLAUDE.md` §2's lifecycle sentence does not list
+   `pdfkit_version`; `build/check_catalogue.py` names it as the one extra
+   symbol, and `OPEN-QUESTIONS.md` asks to add it to the charter.
+7. **The CLI** carries its own small JSON reader (it may include nothing of the
+   library but the header), takes `--options` and `--open-options` JSON on the
+   document verbs, reads files with C stdio and uses no `std::filesystem`
+   (which tripled `pdfkit.exe` to 3.1 MB against the 1 MB budget), and embeds a
+   manifest setting the UTF-8 code page so non-ASCII paths work. `images`
+   does not pre-check its `--out` folder; the first write reports it. The
+   redact job format is fixed in `docs/ABI.md` §6. Usage errors carry `code`
+   `usage`; an output that cannot be written, `output_failed`.
+8. **The sanitizer tier is two runs**: `ctest --preset sanitize` (GCC, UBSan in
+   trap mode, the only sanitizer GCC supports here) and `ctest --preset
+   clang-sanitize` (llvm-mingw 20261020, ASan and UBSan), taking the
+   recommended answer of the §5.2 question while it stands. llvm-mingw lives in
+   the main checkout's `build/cache/llvm-mingw/`; `build/toolchain.md` has the
+   fetch command and hash. GCC stays the pinned compiler of every artefact.
+9. **Release links** add `-ffunction-sections -fdata-sections`,
+   `-Wl,--gc-sections`, `-s` and `-Wl,--no-insert-timestamp`: the DLL is
+   634 KB and the exe 333 KB, and a rebuild gives the same bytes.
+10. **`CMakePresets.json` uses schema version 11**, the newest CMake 4.3.2
+    accepts (12 is refused), and turns off C++20 module scanning, which the
+    sources do not use and which put module flags clang-tidy rejects into the
+    compile database.
+11. **Third-party inventory**: columns `path, name, version, upstream,
+    archive, archive_sha256, tree_sha256, licence (SPDX), test_only`. The tree
+    hash is the SHA-256 over `<path>\0<sha256 of bytes>\n` of every file in
+    sorted order, our `CMakeLists.txt` excluded; it is always checked, and the
+    archive hash too when the archive is in the main checkout's
+    `build/cache/third_party/` (the plan checked one or the other). Inventory
+    names must appear in `THIRD-PARTY-NOTICES.md`; the converse is not checked,
+    because the notices list components not vendored yet. doctest is 2.5.3,
+    the newest release on 2026-10-24.
+12. **Check details the plan left open**: `check_network.py` also reads the
+    Python tools under `build/`, `tests/` and `dataset/tools/` for imports of
+    network modules (the two named exemptions only make sense so), allows XMP
+    and RDF namespace URIs as string literals, and accepts a missing exempted
+    file while `build/paths_pending.tsv` lists it; `check_comments.py` allows
+    "is/are/be/being used to" (present tense) and a to-do only as
+    `TODO(OPEN-QUESTIONS.md <section>)`; `check_catalogue.py` allows helper
+    files `cli/verbs/<verb>_<part>.cpp` (build-4 adds `dataset_fonts.cpp`);
+    `check_artefact.py` also fails on an export the header does not declare;
+    `check_paths.py` resolves a path from the root, the document's folder,
+    `src/` and `include/`, accepts a stem without its extension, and accepts
+    git-ignored paths. `check.py` runs every group and summarises them all
+    rather than stopping at the first failure.
+13. **Pending paths owned by the merge**: `docs/archive/` and
+    `docs/archive/build/` are listed in `build/paths_pending.tsv` with phase 1;
+    the merge that archives this file removes both rows. Phase 2's rows
+    (`dataset/...`, `tests/pdfium/...`, `tests/dataset/run.py`) are removed
+    when its files land.
+14. **Downstream build files**: the deviations that touch a later phase are
+    noted at the end of `build-3.md` to `build-10.md`. `build-2.md` is not
+    edited, because phase 2 runs in parallel and edits its own §9; its session
+    reads this section (its §1 says so).
