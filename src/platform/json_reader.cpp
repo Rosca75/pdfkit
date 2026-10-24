@@ -42,13 +42,13 @@ class Parser {
 
  private:
   [[noreturn]] void fail(std::string_view found, std::string_view expected) const {
-    throw Error(ErrorCode::invalid_argument,
-                "the JSON input is malformed at byte " + std::to_string(pos_) + ": " +
-                    std::string(found),
-                std::string(expected),
-                "correct the input at byte " + std::to_string(pos_) +
-                    "; it must be strict JSON (RFC 8259): double-quoted strings, no comments, no "
-                    "trailing commas, no leading zeros, UTF-8 text");
+    throw Error(
+        ErrorCode::invalid_argument,
+        "the JSON input is malformed at byte " + std::to_string(pos_) + ": " + std::string(found),
+        std::string(expected),
+        "correct the input at byte " + std::to_string(pos_) +
+            "; it must be strict JSON (RFC 8259): double-quoted strings, no comments, no "
+            "trailing commas, no leading zeros, UTF-8 text");
   }
 
   [[nodiscard]] bool at_end() const noexcept { return pos_ >= text_.size(); }

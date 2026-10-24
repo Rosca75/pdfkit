@@ -1,0 +1,4 @@
+artefact	max_bytes	note
+pdfkit.dll	8388608	the shared library, compiler runtime linked in
+pdfkit.exe	1048576	the command-line tool, which links the DLL
+zip	6291456	dist/pdfkit-<version>-windows-x64.zip

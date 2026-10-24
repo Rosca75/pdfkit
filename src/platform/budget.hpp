@@ -40,8 +40,9 @@ class Budget {
   // Counts one more object read from the file.
   void count_object(std::string_view object);
 
-  // Checks a size read from the file against the per-stream limit before it is
-  // used to reserve memory. what names the claim, such as "the /Length of object 4".
+  // Checks a size read from the file against the per-stream limit before any
+  // memory is reserved for it. what names the claim, such as "the /Length of
+  // object 4".
   void check_claim(std::uint64_t claimed_bytes, std::string_view what) const;
 
  private:

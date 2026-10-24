@@ -52,6 +52,10 @@ target_compile_definitions(pdfkit_core
           PDFKIT_BUILD_TYPE="$<IF:$<CONFIG:>,unspecified,$<CONFIG>>")
 pdfkit_warnings(pdfkit_core)
 pdfkit_sanitize(pdfkit_core)
+# The core's objects are linked into the DLL, so they are compiled for its
+# section garbage collection too.
+target_compile_options(pdfkit_core PRIVATE
+  "$<$<CONFIG:Release>:-ffunction-sections;-fdata-sections>")
 
 add_subdirectory(src)
 

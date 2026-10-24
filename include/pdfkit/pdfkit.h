@@ -88,7 +88,8 @@ PDFKIT_API void pdfkit_buffer_free(pdfkit_buffer* buffer);
 PDFKIT_API void pdfkit_close(pdfkit_document* doc);
 
 /* Creates an empty edit plan over doc. */
-PDFKIT_API pdfkit_status pdfkit_edit_new(pdfkit_document* doc, pdfkit_edit** out_edit, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_edit_new(pdfkit_document* doc, pdfkit_edit** out_edit,
+                                         pdfkit_buffer* out);
 
 /* Frees an edit plan. NULL is a no-op. */
 PDFKIT_API void pdfkit_edit_free(pdfkit_edit* edit);
@@ -101,59 +102,67 @@ PDFKIT_API void pdfkit_edit_free(pdfkit_edit* edit);
  * *out_doc receives the handle and out the open report.
  */
 PDFKIT_API pdfkit_status pdfkit_open(const uint8_t* bytes, size_t size, const char* options_json,
-                          pdfkit_document** out_doc, pdfkit_buffer* out);
+                                     pdfkit_document** out_doc, pdfkit_buffer* out);
 
 /* Catalogue 1.2, Inspect. options_json may be NULL. */
-PDFKIT_API pdfkit_status pdfkit_inspect(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_inspect(pdfkit_document* doc, const char* options_json,
+                                        pdfkit_buffer* out);
 
 /* Catalogue 2, Extract text. options_json may be NULL. */
-PDFKIT_API pdfkit_status pdfkit_text(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_text(pdfkit_document* doc, const char* options_json,
+                                     pdfkit_buffer* out);
 
 /* Catalogue 3.1, List images. options_json may be NULL. */
-PDFKIT_API pdfkit_status pdfkit_images(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_images(pdfkit_document* doc, const char* options_json,
+                                       pdfkit_buffer* out);
 
 /*
  * Catalogue 3.2, Image pixels. identity is an image identity ("img:" and 16
  * hexadecimal digits). On success out holds PNG or JPEG bytes, not JSON.
  */
 PDFKIT_API pdfkit_status pdfkit_image_data(pdfkit_document* doc, const char* identity,
-                                const char* options_json, pdfkit_buffer* out);
+                                           const char* options_json, pdfkit_buffer* out);
 
 /* Catalogue 4, Extract metadata. options_json may be NULL. */
-PDFKIT_API pdfkit_status pdfkit_metadata(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_metadata(pdfkit_document* doc, const char* options_json,
+                                         pdfkit_buffer* out);
 
 /* Catalogue 8, Strip hidden channels: the report of what is present. */
-PDFKIT_API pdfkit_status pdfkit_channels(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_channels(pdfkit_document* doc, const char* options_json,
+                                         pdfkit_buffer* out);
 
 /* ---- Editing ------------------------------------------------------------ */
 
 /* Catalogue 5, Redact text. matches_json is required. */
-PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json,
+                                            pdfkit_buffer* out);
 
 /* Catalogue 6, Redact images. treatments_json is required. */
 PDFKIT_API pdfkit_status pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json,
-                                   pdfkit_buffer* out);
+                                              pdfkit_buffer* out);
 
 /* Catalogue 7, Rewrite metadata. fields_json is required. */
-PDFKIT_API pdfkit_status pdfkit_set_metadata(pdfkit_edit* edit, const char* fields_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_set_metadata(pdfkit_edit* edit, const char* fields_json,
+                                             pdfkit_buffer* out);
 
 /* Catalogue 9, Select pages. pages_json is required. */
-PDFKIT_API pdfkit_status pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json,
+                                             pdfkit_buffer* out);
 
 /*
  * Catalogue 10.1, Write. On success out_pdf holds the PDF bytes and out the
  * write report; on failure out_pdf is left empty and out holds the error.
  * options_json may be NULL.
  */
-PDFKIT_API pdfkit_status pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf,
-                           pdfkit_buffer* out);
+PDFKIT_API pdfkit_status pdfkit_write(pdfkit_edit* edit, const char* options_json,
+                                      pdfkit_buffer* out_pdf, pdfkit_buffer* out);
 
 /*
  * Catalogue 10.2, Check: every surviving occurrence of the strings in any PDF
  * bytes. bytes may be NULL only when size is 0. strings_json is required.
  */
 PDFKIT_API pdfkit_status pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json,
-                           pdfkit_buffer* out);
+                                      pdfkit_buffer* out);
 
 #ifdef __cplusplus
 }

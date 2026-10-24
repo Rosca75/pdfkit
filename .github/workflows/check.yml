@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# The same gate the pre-push hook runs, for hosted CI: the checks tier, the
+# unit tier and the ABI tier on Windows with the pinned toolchain of
+# build/toolchain.md. The hosted runners do not start for this repository, so
+# the pre-push hook (build/hooks/pre-push) is the gate; this file keeps the
+# two in step for the day they do.
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    env:
+      # WinLibs GCC 16.1.0 (UCRT, POSIX threads, SEH), release r2, as on the laptop.
+      WINLIBS_URL: https://github.com/brechtsanders/winlibs_mingw/releases/download/16.1.0posix-14.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-16.1.0-mingw-w64ucrt-14.0.0-r2.zip
+      WINLIBS_SHA256: 78eff1e2e804b6a6320c713f084b8f820c662104a24cea6a3bfcab82032bdd60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install the pinned WinLibs toolchain
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\winlibs.zip"
+          Invoke-WebRequest -Uri $env:WINLIBS_URL -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($hash -ne $env:WINLIBS_SHA256) { throw "WinLibs archive hash $hash, expected $env:WINLIBS_SHA256" }
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\winlibs"
+          "$env:RUNNER_TEMP\winlibs\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install clang-format and clang-tidy
+        run: python -m pip install --user --require-hashes -r build/requirements-dev.txt
+
+      - name: Checks tier
+        run: python build/check.py
+
+      - name: Unit tier
+        run: ctest --preset unit
+
+      - name: ABI tier
+        run: python tests/abi/run.py

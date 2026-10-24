@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// The shared steps of the verbs. Files are read and written with the standard
-// library's narrow-path streams; the executable's manifest sets the process
-// code page to UTF-8 (cli/pdfkit.manifest), so a path with accents or any
-// other script reaches the file system intact.
+// The shared steps of the verbs. Files are read and written with C stdio,
+// which keeps the iostream and locale machinery out of the executable; the
+// executable's manifest sets the process code page to UTF-8
+// (cli/pdfkit.manifest), so a path with accents or any other script reaches
+// the file system intact.
 
 #include "support.hpp"
 
@@ -12,24 +13,37 @@
 #include "output.hpp"
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <iterator>
+#include <memory>
 
 namespace pdfkit::cli {
 
+namespace {
+
+struct CloseFile {
+  void operator()(std::FILE* file) const noexcept { (void)std::fclose(file); }
+};
+using File = std::unique_ptr<std::FILE, CloseFile>;
+
+}  // namespace
+
 std::optional<std::vector<std::uint8_t>> read_input_file(std::string_view verb,
                                                          const std::string& path) {
-  std::ifstream file(path, std::ios::binary);
+  const File file(std::fopen(path.c_str(), "rb"));
   if (!file) {
     print_usage_error(verb, "cannot read " + path + ": " + std::strerror(errno),
                       "the path of a readable file",
                       "check the path and that the file exists and is not open elsewhere");
     return std::nullopt;
   }
-  std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
-                                  std::istreambuf_iterator<char>());
-  if (file.bad()) {
+  std::vector<std::uint8_t> bytes;
+  std::vector<std::uint8_t> chunk(std::size_t{1} << 20U);
+  std::size_t got = 0;
+  while ((got = std::fread(chunk.data(), 1, chunk.size(), file.get())) > 0) {
+    bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(got));
+  }
+  if (std::ferror(file.get()) != 0) {
     print_usage_error(verb, "reading " + path + " failed part way", "a readable file",
                       "copy the file to a local disk and try again");
     return std::nullopt;
@@ -39,11 +53,10 @@ std::optional<std::vector<std::uint8_t>> read_input_file(std::string_view verb,
 
 bool write_output_file(std::string_view verb, const std::string& path, const std::uint8_t* data,
                        std::size_t size) {
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
-  if (file) {
-    file.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
-  }
-  if (!file) {
+  File file(std::fopen(path.c_str(), "wb"));
+  bool written = file != nullptr && std::fwrite(data, 1, size, file.get()) == size;
+  written = file != nullptr && std::fclose(file.release()) == 0 && written;
+  if (!written) {
     print_error(
         "output_failed",
         "pdfkit " + std::string(verb) + ": cannot write " + path + ": " + std::strerror(errno),
