@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# The static analysis of every C++ source of ours, run by build/check_format.py
+# with the clang-tidy pinned in build/toolchain.md. Every finding is an error.
+# The checks left out, each with its reason:
+#   cert-dcl21-cpp, cert-err58-cpp  duplicate or contradict modern guidance on
+#                                   const return values and static initialisers
+#   cert-err33-c                    flags every unused printf result in the CLI
+#   bugprone-easily-swappable-parameters
+#                                   the ABI and the message builders take several
+#                                   strings by design; names carry the meaning
+#   modernize-use-trailing-return-type
+#                                   a style choice the charter does not make
+#   modernize-avoid-c-arrays        the C header is C; its arrays are C arrays
+#   modernize-use-using             the C header uses typedef, as C requires
+#   modernize-macro-to-enum         the export macro is not an enumeration
+#   modernize-use-nodiscard         [[nodiscard]] is placed by hand where a
+#                                   dropped result is a defect
+#   bugprone-exception-escape       guarded catches everything; the check cannot
+#                                   see through the template
+#   modernize-use-designated-initializers
+#                                   the catalogue rows and the test tables read
+#                                   as tables; designators would triple each row
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  cert-*,
+  -cert-dcl21-cpp,
+  -cert-err58-cpp,
+  -cert-err33-c,
+  cppcoreguidelines-owning-memory,
+  cppcoreguidelines-no-malloc,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-use-using,
+  -modernize-macro-to-enum,
+  -modernize-use-nodiscard,
+  -modernize-use-designated-initializers,
+  performance-*,
+  readability-identifier-naming
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*[/\\](include|src|cli|tests)[/\\].*'
+FormatStyle: file
+CheckOptions:
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructIgnoredRegexp
+    value: '^pdfkit_[a-z_]+$'
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumIgnoredRegexp
+    value: '^pdfkit_[a-z_]+$'
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefIgnoredRegexp
+    value: '^pdfkit_[a-z_]+$'
+  - key: readability-identifier-naming.EnumConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumConstantIgnoredRegexp
+    value: '^PDFKIT_[A-Z_]+$'
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.MethodCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ProtectedMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE

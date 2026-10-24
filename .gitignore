@@ -10,6 +10,10 @@ CMakeUserPresets.json
 /dataset/cache/
 /dataset/reports/
 
+# The ABI tier's .NET build output
+/tests/abi/dotnet/bin/
+/tests/abi/dotnet/obj/
+
 # Tooling
 __pycache__/
 *.pyc

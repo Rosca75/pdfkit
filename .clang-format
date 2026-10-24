@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# The formatting of every C and C++ source of ours, checked by
+# build/check_format.py with the clang-format pinned in build/toolchain.md.
+# Includes are grouped: the file's own header, the public header, the layer
+# headers, third-party headers, then the standard library.
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++20
+ColumnLimit: 100
+IndentWidth: 2
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+IncludeBlocks: Regroup
+IncludeIsMainRegex: '(_test)?$'
+IncludeCategories:
+  - Regex: '^"pdfkit/'
+    Priority: 2
+  - Regex: '^"(platform|syntax|fonts|text|images|writer|redact|api|support)/'
+    Priority: 3
+  - Regex: '^"'
+    Priority: 3
+  - Regex: '^<[a-z0-9_]+\.h>$'
+    Priority: 4
+  - Regex: '^<[a-z0-9_]+>$'
+    Priority: 5
+  - Regex: '.*'
+    Priority: 4
