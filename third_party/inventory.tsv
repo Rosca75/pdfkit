@@ -1,0 +1,2 @@
+path	name	version	upstream	archive	archive_sha256	tree_sha256	licence	test_only
+third_party/doctest	doctest	2.5.3	https://github.com/doctest/doctest/archive/refs/tags/v2.5.3.tar.gz	doctest-2.5.3.tar.gz	174ebc4e769928959614789c5b4e9c3d0a0f81a62bb608756b127bfebfb21331	dc7fd127a475bc1c47e2083bf3aab129a3d68e346a82008e888201a17483ef05	MIT	yes

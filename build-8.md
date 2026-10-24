@@ -244,3 +244,13 @@ inventory rows and their notices.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- `platform::ErrorCode::self_check` maps to `PDFKIT_E_SELF_CHECK` and CLI exit 3 (item 5).
+- The redact job format is fixed in `docs/ABI.md` §6: `input`, `output`, optional `open_options`, and the sections `text`, `images`, `metadata`, `pages`, each forwarded byte for byte to its function; `cli/verbs/redact.cpp` already reads it (item 7).
+- `pdfkit_check(bytes, size, strings_json, out)` requires `strings_json`; the `check` verb takes it as `--strings <json>` (item 4).
+- `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

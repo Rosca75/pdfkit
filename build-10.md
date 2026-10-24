@@ -249,3 +249,12 @@ tag someone has fetched is a release someone may hold.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- `pdfkit_version` returns `version`, `abi`, `build` and a `catalogue` array (item 6).
+- Release links strip symbols, drop unused sections and omit the PE time stamp; at the first package the DLL was 634 KB, the exe 333 KB and the zip 432 KB against budgets of 8 MB, 1 MB and 6 MB (item 9).
+- `CMakePresets.json` uses schema version 11, the newest CMake 4.3.2 accepts (item 10).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

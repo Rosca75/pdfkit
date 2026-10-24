@@ -1,0 +1,88 @@
+{
+  "version": 11,
+  "$comment": [
+    "SPDX-License-Identifier: Apache-2.0",
+    "Copyright 2026 The pdfkit authors",
+    "The configure, build and test presets of CLAUDE.md section 10. The mingw presets use the pinned",
+    "WinLibs MinGW-w64 GCC found on PATH; clang-sanitize uses llvm-mingw for AddressSanitizer only",
+    "(build/toolchain.md). Every binary folder is out/<preset>/."
+  ],
+  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "mingw-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "mingw-debug",
+      "displayName": "MinGW GCC, debug",
+      "inherits": "mingw-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "mingw-release",
+      "displayName": "MinGW GCC, release",
+      "inherits": "mingw-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "mingw-sanitize",
+      "displayName": "MinGW GCC, debug, UBSan in trap mode",
+      "inherits": "mingw-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PDFKIT_SANITIZE": "undefined-trap"
+      }
+    },
+    {
+      "name": "clang-sanitize",
+      "displayName": "llvm-mingw clang, debug, ASan and UBSan",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/llvm-mingw.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PDFKIT_SANITIZE": "address-undefined"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "mingw-debug", "configurePreset": "mingw-debug" },
+    { "name": "mingw-release", "configurePreset": "mingw-release" },
+    { "name": "mingw-sanitize", "configurePreset": "mingw-sanitize" },
+    { "name": "clang-sanitize", "configurePreset": "clang-sanitize" }
+  ],
+  "testPresets": [
+    {
+      "name": "unit",
+      "configurePreset": "mingw-debug",
+      "filter": { "include": { "label": "unit" } },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "mingw-sanitize",
+      "filter": { "include": { "label": "unit" } },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "clang-sanitize",
+      "configurePreset": "clang-sanitize",
+      "filter": { "include": { "label": "unit" } },
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

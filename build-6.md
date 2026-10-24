@@ -230,3 +230,12 @@ to their phase-1 stubs. Nothing persisted changes shape.
 ## 9. Deviations recorded by this phase
 
 1. (none yet)
+
+### Deviations of earlier phases that affect this one
+
+From `build-1.md` §9:
+
+- `cli/verbs/images.cpp` takes `--out <folder>` without checking it first; the first image write reports a folder that cannot be written, and `std::filesystem` stays out of the CLI because it alone tripled `pdfkit.exe` (item 7).
+- `pdfkit_image_data(doc, identity, options_json, out)` writes PNG or JPEG bytes, not JSON, into `out` on success (item 4).
+- `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).

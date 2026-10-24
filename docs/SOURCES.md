@@ -138,7 +138,7 @@ to find it.
 | zlib | https://zlib.net | recalled |
 | libjpeg-turbo | https://github.com/libjpeg-turbo/libjpeg-turbo | recalled |
 | OpenJPEG | https://github.com/uclouvain/openjpeg | recalled |
-| doctest | https://github.com/doctest/doctest | recalled |
+| doctest 2.5.3 (MIT; release list, archive and its SHA-256 in `third_party/inventory.tsv`) | https://github.com/doctest/doctest/releases/tag/v2.5.3 | read |
 | Liberation fonts | https://github.com/liberationfonts/liberation-fonts | recalled |
 | Unicode data | https://www.unicode.org/Public/ | recalled |
 | Adobe Glyph List | https://github.com/adobe-type-tools/agl-aglfn | read |
@@ -161,3 +161,23 @@ to find it.
 | PDF Association stressful corpus (optional, sandboxed) | https://labs.pdfa.org/stressful-corpus/ | none; may be malicious | read |
 | GovDocs1 | https://digitalcorpora.org/corpora/file-corpora/files/ | public domain (US government) | recalled |
 | corkami PDF proofs of concept | https://github.com/corkami/pocs/tree/master/pdf | no licence file | read |
+
+## 11. CLAUDE.md §9 and §10: the toolchain, the build and the C ABI
+
+Facts measured on the laptop are recorded with their commands in
+`build/toolchain.md`; this table holds the external ones.
+
+| Fact | Source | Status |
+|---|---|---|
+| The clang-format and clang-tidy wheels bundle the LLVM binaries, version 23.1.3, Apache-2.0 metadata | https://pypi.org/project/clang-format/23.1.3/; https://pypi.org/project/clang-tidy/23.1.3/ (wheel metadata read from the downloaded wheels) | read |
+| llvm-mingw 20261020, its asset name and SHA-256 digest | https://github.com/mstorsjo/llvm-mingw/releases/tag/20261020 | read |
+| WinLibs GCC 16.1.0 UCRT r2, its asset name and SHA-256 digest (the CI install) | https://github.com/brechtsanders/winlibs_mingw/releases/tag/16.1.0posix-14.0.0-ucrt-r2 | read |
+| `CMAKE_CXX_EXTENSIONS OFF` selects `-std=c++20` rather than `-std=gnu++20` | https://cmake.org/cmake/help/latest/variable/CMAKE_CXX_EXTENSIONS.html | recalled; checked in `out/mingw-debug/compile_commands.json` |
+| The presets schema versions CMake 4.3.2 accepts (at most 11) | the error CMake 4.3.2 prints for version 12 | read |
+| The GCC warning options of `build/warnings.cmake` | https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html | recalled; every option is accepted by GCC 16.1.0 |
+| JSON grammar, string escapes and the UTF-8 requirement | RFC 8259, https://www.rfc-editor.org/rfc/rfc8259 | recalled; tested in `tests/unit/platform/json_*_test.cpp` |
+| Well-formed UTF-8 byte sequences (table 3-7) and the maximal-subpart replacement | The Unicode Standard, chapter 3, https://www.unicode.org/versions/latest/ch03.pdf | recalled; tested in `tests/unit/platform/json_writer_test.cpp` |
+| `std::to_chars` without a precision gives the shortest form that reads back to the same double | ISO C++ [charconv.to.chars], https://eel.is/c++draft/charconv.to.chars | recalled; tested in `tests/unit/platform/json_writer_test.cpp` |
+| The `activeCodePage` manifest element sets the process code page to UTF-8; resource type 24 identifier 1 is an executable's manifest | https://learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page | recalled; tested by `pdfkit text` on a Cyrillic file name |
+| P/Invoke with `DllImport`, `NativeLibrary.SetDllImportResolver` and `Marshal.PtrToStringUTF8` | https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke | recalled; tested by `python tests/abi/run.py` |
+| `ctypes.CDLL`, `Structure` and `string_at` | https://docs.python.org/3.12/library/ctypes.html | recalled; tested by `python tests/abi/run.py` |
