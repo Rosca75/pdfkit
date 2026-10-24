@@ -21,16 +21,18 @@ namespace pdfkit::cli {
 
 namespace {
 
-struct CloseFile {
-  void operator()(std::FILE* file) const noexcept { (void)std::fclose(file); }
-};
-using File = std::unique_ptr<std::FILE, CloseFile>;
+// A file handle that std::fclose closes when it goes out of scope.
+using File = std::unique_ptr<std::FILE, int (*)(std::FILE*)>;
+
+File open_file(const std::string& path, const char* mode) {
+  return {std::fopen(path.c_str(), mode), &std::fclose};
+}
 
 }  // namespace
 
 std::optional<std::vector<std::uint8_t>> read_input_file(std::string_view verb,
                                                          const std::string& path) {
-  const File file(std::fopen(path.c_str(), "rb"));
+  const File file = open_file(path, "rb");
   if (!file) {
     print_usage_error(verb, "cannot read " + path + ": " + std::strerror(errno),
                       "the path of a readable file",
@@ -53,9 +55,10 @@ std::optional<std::vector<std::uint8_t>> read_input_file(std::string_view verb,
 
 bool write_output_file(std::string_view verb, const std::string& path, const std::uint8_t* data,
                        std::size_t size) {
-  File file(std::fopen(path.c_str(), "wb"));
-  bool written = file != nullptr && std::fwrite(data, 1, size, file.get()) == size;
-  written = file != nullptr && std::fclose(file.release()) == 0 && written;
+  const File file = open_file(path, "wb");
+  // The flush surfaces a write error before the handle closes.
+  const bool written = file != nullptr && std::fwrite(data, 1, size, file.get()) == size &&
+                       std::fflush(file.get()) == 0;
   if (!written) {
     print_error(
         "output_failed",
