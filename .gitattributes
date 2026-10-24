@@ -1,0 +1,33 @@
+# Every text file is stored and checked out with LF line endings, whatever
+# core.autocrlf says, because CRLF breaks clang-format's dry run, the shell
+# hooks under build/hooks/ and the byte-exact comparisons of the check scripts.
+* text=auto eol=lf
+
+# Binary files are never converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.xz binary
+*.bz2 binary
+*.7z binary
+*.tar binary
+*.whl binary
+*.dll binary
+*.exe binary
+*.lib binary
+*.a binary
+*.o binary
+*.obj binary
+*.pdb binary
+*.pdf binary
+*.jp2 binary
+*.jbig2 binary
+*.icc binary
