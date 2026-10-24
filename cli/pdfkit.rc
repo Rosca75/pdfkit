@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 The pdfkit authors
+//
+// Embeds cli/pdfkit.manifest as the executable's application manifest
+// (resource type 24, RT_MANIFEST, identifier 1, the manifest of an .exe).
+1 24 "pdfkit.manifest"
