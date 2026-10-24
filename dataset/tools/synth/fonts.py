@@ -72,7 +72,8 @@ def subset_bytes(glyphs: list[str], style: str = "Regular", symbolic_codes: dict
     from fontTools import subset
     from fontTools.ttLib import TTFont
 
-    font = TTFont(str(font_path(style)))
+    # The modified date is kept, so the same subset is the same bytes on every run.
+    font = TTFont(str(font_path(style)), recalcTimestamp=False)
     options = subset.Options()
     options.glyph_names = True
     options.notdef_outline = True
@@ -245,13 +246,46 @@ def _eexec(data: bytes, key: int) -> bytes:
     return bytes(out)
 
 
+def T1CharStringPen(width: int, glyph_set):
+    """A pen writing a Type 1 charstring (hsbw, relative moves and curves, endchar)."""
+    from fontTools.misc.psCharStrings import T1CharString
+    from fontTools.pens.basePen import BasePen
+
+    class Pen(BasePen):
+        def __init__(self):
+            super().__init__(glyph_set)
+            self.program = [0, width, "hsbw"]
+            self.at = (0, 0)
+
+        def _rel(self, point):
+            x, y = round(point[0]), round(point[1])
+            dx, dy = x - self.at[0], y - self.at[1]
+            self.at = (x, y)
+            return [dx, dy]
+
+        def _moveTo(self, pt):
+            self.program += self._rel(pt) + ["rmoveto"]
+
+        def _lineTo(self, pt):
+            self.program += self._rel(pt) + ["rlineto"]
+
+        def _curveToOne(self, p1, p2, p3):
+            self.program += self._rel(p1) + self._rel(p2) + self._rel(p3) + ["rrcurveto"]
+
+        def _closePath(self):
+            self.program.append("closepath")
+
+        def getCharString(self):
+            return T1CharString(program=self.program + ["endchar"])
+
+    return Pen()
+
+
 def type1_program(chars: str, font_name: str = "DAAAAA+LiberationSans") -> tuple[bytes, int, int, int, dict[str, int]]:
     """A Type 1 program whose built-in encoding places each character at its WinAnsi code.
 
     Returns the program, /Length1, /Length2, /Length3 and character to code.
     """
-    from fontTools.pens.t1CharStringPen import T1CharStringPen
-
     names = {c: glyph_for(c) for c in sorted(set(chars))}
     codes = {c: c.encode("cp1252")[0] for c in names}
     glyphs = [".notdef"] + sorted(set(names.values()))

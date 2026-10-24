@@ -69,6 +69,10 @@ def main() -> int:
     parser.add_argument("--pattern", action="append", help="only these patterns")
     parser.add_argument("--list", action="store_true", help="list the patterns and exit")
     parser.add_argument("--dry-run", action="store_true", help="write the files, register nothing")
+    parser.add_argument("--check", action="store_true",
+                        help="fail when a registered synthesised row is no longer reproduced")
+    parser.add_argument("--prune", action="store_true",
+                        help="remove the rows of the chosen patterns the generator no longer writes")
     args = parser.parse_args()
 
     table = pattern_table()
@@ -89,6 +93,22 @@ def main() -> int:
             path.write_bytes(specimen.data)
             planned.append((path, name, specimen))
     rows = common.read_manifest()
+    written = {common.sha256_bytes(s.data) for _, _, s in planned}
+    stale = [r for r in rows if r["set"] == "synth" and r["source"].split(":", 1)[1] in chosen
+             and r["sha256"] not in written]
+    if stale and args.check:
+        for row in stale:
+            print(f"{row['id']}: the generator no longer writes these bytes ({row['source']})")
+        return 1
+    if stale and args.prune and not args.dry_run:
+        for row in stale:
+            common.file_path(row).unlink(missing_ok=True)
+            print(f"pruned {row['id']} ({row['source']})", file=sys.stderr)
+        rows = [r for r in rows if r not in stale]
+        common.write_manifest(rows)
+    if args.check:
+        print(json.dumps({"patterns": len(chosen), "specimens": len(planned), "reproduced": True}))
+        return 0
     known = {r["sha256"] for r in rows}
     summary = []
     with pdfium.Pool(8) as pool:
