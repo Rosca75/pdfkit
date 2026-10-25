@@ -149,16 +149,70 @@ TEST_CASE("/Identity crypt filters decrypt nothing") {
   CHECK(title_of(*document) == "A title (with parentheses)");
 }
 
-TEST_CASE("a corrupt /Perms is a repair note, never a refusal") {
+TEST_CASE("a user password that guards only embedded files does not stop the document") {
+  // /StmF and /StrF are /Identity: the document is in clear and only the
+  // embedded files (/EFF) need the password, which pdfkit never reads.
+  for (const int revision : {4, 6}) {
+    PdfEncryptor::Spec spec;
+    spec.revision = revision;
+    spec.user_password = "attachment";
+    spec.stream_filter = "Identity";
+    spec.string_filter = "Identity";
+    Fixture made = fixture();
+    made.builder.encrypt(spec);
+    auto document = open_document(made.builder.build());
+    CHECK(require_value(document->security()).description().method == "Identity");
+    CHECK(page_text(*document, 1) == content);
+    CHECK(title_of(*document) == "A title (with parentheses)");
+  }
+}
+
+TEST_CASE("a crypt filter dictionary given by reference is resolved") {
+  PdfEncryptor::Spec spec;
+  spec.revision = 4;
+  Fixture made = fixture();
+  made.builder.encrypt(spec);
+  std::string file = made.builder.build();
+  // Move /CF out into an object of its own, as some producers write it.
+  const std::size_t start = file.find("/CF << /StdCF");
+  const std::size_t end = file.find(">> >>", start) + 5;
+  const std::string filters = file.substr(start + 4, end - start - 4);
+  file.replace(start, end - start, "/CF 999 0 R" + std::string(end - start - 11, ' '));
+  const std::size_t xref = file.rfind("\nxref");
+  file.insert(xref + 1, "999 0 obj " + filters + " endobj\n");
+  auto document = open_document(file);
+  CHECK(require_value(document->security()).description().method == "AESV2");
+  CHECK(page_text(*document, 1) == content);
+}
+
+TEST_CASE("a /Perms whose permissions differ from /P is a repair note, never a refusal") {
   PdfEncryptor::Spec spec;
   spec.revision = 6;
-  spec.corrupt_perms = true;
+  spec.perms_other_permissions = true;
   Fixture made = fixture();
   made.builder.encrypt(spec);
   auto document = open_document(made.builder.build());
   CHECK(require_value(document->security()).perms_mismatch());
   CHECK(page_text(*document, 1) == content);
   CHECK(document->repairs().size() == 1U);
+}
+
+TEST_CASE("a /Perms that fails its check value means the file key is wrong, and is refused") {
+  // Without "adb" under the key decrypted from /UE, every string and stream
+  // would decrypt to noise; PDFium refuses such a file as a password failure.
+  PdfEncryptor::Spec spec;
+  spec.revision = 6;
+  spec.corrupt_perms = true;
+  Fixture made = fixture();
+  made.builder.encrypt(spec);
+  try {
+    (void)open_document(made.builder.build());
+    FAIL("a file whose key fails its check was opened");
+  } catch (const Error& error) {
+    CHECK(error.code() == ErrorCode::password_required);
+    CHECK(error.failed().find("/Perms") != std::string::npos);
+    CHECK_FALSE(error.fix().empty());
+  }
 }
 
 TEST_CASE("a non-empty user password is password_required under every revision") {

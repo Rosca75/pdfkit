@@ -206,7 +206,9 @@ void PdfEncryptor::compute_r5_r6() {
   o_ = hash_r6(revision, owner, owner_validation, u_) + owner_validation + owner_key_salt;
   oe_ = aes_cbc(hash_r6(revision, owner, owner_key_salt, u_), zero_iv, file_key_);
   // Algorithm 10: /Perms.
-  std::string perms = le32(spec_.permissions) + std::string(4, '\xFF');
+  std::string perms =
+      le32(spec_.perms_other_permissions ? spec_.permissions + 1 : spec_.permissions) +
+      std::string(4, '\xFF');
   perms += spec_.encrypt_metadata ? 'T' : 'F';
   perms += spec_.corrupt_perms ? "xyz" : "adb";
   perms += "0123";
@@ -229,7 +231,8 @@ std::string PdfEncryptor::dictionary() const {
   } else {
     out += " /V 5 /R " + std::to_string(revision) +
            " /Length 256 /CF << /StdCF << /CFM /AESV3 /AuthEvent /DocOpen /Length 32 >> >>"
-           " /StmF /StdCF /StrF /StdCF";
+           " /StmF /" +
+           spec_.stream_filter + " /StrF /" + spec_.string_filter;
     out += " /OE " + hex(oe_) + " /UE " + hex(ue_) + " /Perms " + hex(perms_);
   }
   if (revision >= 4 && !spec_.encrypt_metadata) {
@@ -271,7 +274,7 @@ std::string PdfEncryptor::encrypt(std::uint32_t number, std::uint32_t generation
 std::string PdfEncryptor::encrypt_string(std::uint32_t number, std::uint32_t generation,
                                          const std::string& bytes) const {
   const std::string& filter = spec_.string_filter;
-  if (spec_.revision == 4 && filter == "Identity") {
+  if (spec_.revision >= 4 && filter == "Identity") {
     return bytes;
   }
   const bool aes = spec_.revision >= 5 || (spec_.revision == 4 && spec_.method == Method::aes);
@@ -280,7 +283,7 @@ std::string PdfEncryptor::encrypt_string(std::uint32_t number, std::uint32_t gen
 
 std::string PdfEncryptor::encrypt_stream(std::uint32_t number, std::uint32_t generation,
                                          const std::string& bytes, bool is_metadata) const {
-  if (spec_.revision == 4 && spec_.stream_filter == "Identity") {
+  if (spec_.revision >= 4 && spec_.stream_filter == "Identity") {
     return bytes;
   }
   if (is_metadata && !spec_.encrypt_metadata) {

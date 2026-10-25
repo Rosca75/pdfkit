@@ -257,7 +257,14 @@ std::optional<Parser::Indirect> Parser::parse_indirect(std::size_t offset,
 
   const std::size_t after_value = lexer.position();
   Lexer::Token next = lexer.next();
-  if (next.is_keyword("stream") && result.object.dictionary() != nullptr) {
+  // A keyword that only starts with "stream" is the keyword followed by a
+  // damaged end of line (a stray byte before the LF), read as the keyword
+  // with a repair.
+  if (next.kind == Lexer::TokenKind::keyword && next.text.starts_with("stream") &&
+      result.object.dictionary() != nullptr) {
+    if (next.text != "stream") {
+      result.repairs.push_back(name + ": its stream keyword is followed by stray bytes");
+    }
     // The data starts after one CR LF, one LF or a lone CR (ISO 32000-1 section
     // 7.3.8.1; the lone CR accepted as viewers accept it). Spaces before the end
     // of line are tolerated.

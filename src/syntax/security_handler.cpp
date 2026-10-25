@@ -89,6 +89,17 @@ std::string xor_key(const std::string& key, unsigned value) {
                         "save an unprotected copy");
 }
 
+[[noreturn]] void refuse_key_check(int revision) {
+  throw platform::Error(platform::ErrorCode::password_required,
+                        "the file key the empty user password yields does not check against the "
+                        "/Perms entry (standard security handler, revision " +
+                            std::to_string(revision) +
+                            "), so the document's strings and streams cannot be decrypted",
+                        "a document that opens with an empty user password",
+                        "open the file in the PDF application that protects it and save an "
+                        "unprotected copy");
+}
+
 // The hash of algorithm 2.B (ISO 32000-2 section 7.6.4.3.4) for revision 6,
 // plain SHA-256 for revision 5 (algorithm 2.A).
 std::string hash_r6(int revision, const std::string& password, const std::string& salt,
@@ -205,6 +216,15 @@ SecurityHandler SecurityHandler::open(const Dictionary& encrypt, const std::stri
                        : main_method == Method::aes256 ? "AESV3"
                                                        : "Identity";
 
+  // With /StmF and /StrF both /Identity nothing the document draws is
+  // encrypted; a user password then guards only what /EFF names (embedded
+  // files, never read here), so it is not checked (PDFium opens such files).
+  if (version >= 4 && handler.stream_method_ == Method::identity &&
+      handler.string_method_ == Method::identity) {
+    description.key_bits = static_cast<int>(encrypt.get("Length").integer().value_or(0));
+    return handler;
+  }
+
   const std::string owner_entry = string_entry(encrypt, "O");
   const std::string user_entry = string_entry(encrypt, "U");
 
@@ -227,13 +247,24 @@ SecurityHandler SecurityHandler::open(const Dictionary& encrypt, const std::stri
     handler.file_key_ = text_of(
         Aes::cbc_decrypt(span_of(intermediate), span_of(zero_iv), span_of(ue.substr(0, 32))));
     description.key_bits = 256;
-    // /Perms: AES-256 of one block under the file key holds "adb" at bytes 9
-    // to 11 (algorithm 13); a mismatch is a warning.
+    // /Perms: AES-256 of one block under the file key holds the permissions
+    // in bytes 0 to 3 and "adb" in bytes 9 to 11 (algorithm 13). Without
+    // "adb" the key decrypted from /UE is wrong and every string and stream
+    // would decrypt to noise, so the file is refused as PDFium refuses it; a
+    // permissions mismatch or a missing /Perms is only a warning.
     const std::string perms = string_entry(encrypt, "Perms");
     if (perms.size() >= 16) {
       const std::string clear = text_of(Aes::cbc_decrypt(
           span_of(handler.file_key_), span_of(zero_iv), span_of(perms.substr(0, 16))));
-      handler.perms_mismatch_ = clear.substr(9, 3) != "adb";
+      if (clear.substr(9, 3) != "adb") {
+        refuse_key_check(revision);
+      }
+      const auto permissions = static_cast<std::uint32_t>(encrypt.get("P").integer().value_or(0));
+      std::uint32_t held = 0;
+      for (unsigned i = 0; i < 4; ++i) {
+        held |= static_cast<std::uint32_t>(static_cast<unsigned char>(clear[i])) << (8U * i);
+      }
+      handler.perms_mismatch_ = held != permissions;
     } else {
       handler.perms_mismatch_ = true;
     }

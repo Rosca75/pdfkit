@@ -256,3 +256,12 @@ From `build-1.md` §9:
 - `cli/verbs/select_pages.cpp` already runs open, edit, select, write and writes the output file only on success (item 7).
 - Remove the `build/paths_pending.tsv` row `src/writer/channel_table.cpp` in the change that creates it (item 13).
 - The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+
+From `build-3.md` §9:
+
+- The object model is `syntax::Object` (nested `Reference`, `Number`, `String` with its literal-or-hex flag, `Array` = `std::vector<Object>`), `syntax::Dictionary` (insertion-ordered) and `syntax::Stream` (dictionary, raw byte range, owner); all immutable and shared, built through the `make_*` factories (item 3).
+- `syntax::Document::open(bytes, Limits)` returns the document; `object(reference)`, `resolve(object)` and `resolve_entry(dictionary, key)` resolve (strings come back decrypted), `decode(stream, page)` decrypts and runs the filters up to the first image codec (`Filters::Result::remaining` names the codecs left), `content_pieces(contents, page)` decodes a `/Contents` value, `pages()` holds `syntax::Page` (boxes, rotation, resolved resources, contents), `repair(reason)` and `warn(code, message, page)` record (items 3, 4).
+- `syntax::Resources(document, page.resources, page.number)` looks a resource up by category and name, with the form fallback in `for_form`; `syntax::ContentLexer(pieces, document.limits(), "page N")` yields `Operation`s (operator, operands, byte range, `operator_start`; an inline image is one `BI` operation with its data range) and `locate(offset)` maps back to the piece (item 10).
+- `Document::decode` charges the budget on every call, so a layer that decodes a shared stream more than once caches the decoded bytes (item 11).
+- `Stream` holds no data of its own: a stream the writer creates needs an owned-data form added to `syntax::Stream`; a string keeps whether it was read literal or hex (`Object::String::hex`), so the writer can re-emit the form it read (item 3).
+- The document's table is `Document::entries()` (object number to `CrossReference::Entry`) and its trailer `Document::trailer()`; `Document::raw(stream)` gives a stream's bytes as stored, for byte-for-byte copying (items 3, 5).

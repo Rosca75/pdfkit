@@ -426,6 +426,20 @@ void Document::setup_security() {
     repair("the trailer's /Encrypt is not a dictionary and is ignored");
     return;
   }
+  // The crypt filters may be given by reference, the dictionary as a whole or
+  // each filter; they are resolved here, unencrypted, before the handler
+  // reads them.
+  if (const auto reference = encrypt.get("CF").reference()) {
+    encrypt.set("CF", parse_raw(reference->number));
+  }
+  if (const Dictionary* filters = encrypt.get("CF").dictionary()) {
+    Dictionary resolved;
+    for (const auto& [name, filter] : filters->entries()) {
+      const auto reference = filter.reference();
+      resolved.set(name, reference ? parse_raw(reference->number) : filter);
+    }
+    encrypt.set("CF", Object::make_dictionary(std::move(resolved)));
+  }
   std::string id0;
   if (const Object::Array* id = trailer_.get("ID").array(); id != nullptr && !id->empty()) {
     if (const Object::String* first = id->front().string()) {
@@ -435,8 +449,8 @@ void Document::setup_security() {
   security_ = SecurityHandler::open(encrypt, id0);
   if (security_->perms_mismatch()) {
     repair(
-        "the encryption dictionary's /Perms does not match its file key; the document is "
-        "read all the same");
+        "the encryption dictionary's /Perms is missing or names other permissions than /P; the "
+        "document is read all the same");
   }
 }
 

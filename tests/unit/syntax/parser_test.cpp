@@ -186,6 +186,13 @@ TEST_CASE("an indirect /Length is answered by the resolver") {
   CHECK(unknown.repairs.size() == 1U);
 }
 
+TEST_CASE("a stream keyword with a damaged end of line still starts the data") {
+  const std::string file = "1 0 obj <</Length 5>> stream\xf8\nhello\nendstream\nendobj\n";
+  const auto indirect = require_value(Parser(as_bytes(file)).parse_indirect(0, {}));
+  CHECK(data_of(file, indirect.object) == "hello");
+  CHECK_FALSE(indirect.repairs.empty());
+}
+
 TEST_CASE("a missing endstream ends the data before endobj and is recorded") {
   const std::string file = "1 0 obj <</Length 50>> stream\nhello\nendobj\n2 0 obj 5 endobj";
   const auto indirect = require_value(Parser(as_bytes(file)).parse_indirect(0, {}));

@@ -33,12 +33,14 @@ class PdfEncryptor {
     std::string user_password;
     std::string owner_password = "owner";
     std::int32_t permissions = -3904;
-    // Revision 4 only: the crypt filter name /StmF and /StrF use; "Identity"
-    // leaves the data in clear.
+    // Revisions 4 to 6: the crypt filter name /StmF and /StrF use;
+    // "Identity" leaves the data in clear.
     std::string stream_filter = "StdCF";
     std::string string_filter = "StdCF";
-    // Revisions 5 and 6: write a /Perms that does not decrypt to "adb".
+    // Revisions 5 and 6: write a /Perms that does not decrypt to "adb" (the
+    // file key fails its check), or one whose permissions differ from /P.
     bool corrupt_perms = false;
+    bool perms_other_permissions = false;
   };
 
   // id0 is the first element of the trailer's /ID.

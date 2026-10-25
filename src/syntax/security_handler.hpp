@@ -8,7 +8,8 @@
 // of algorithm 2.B, ISO 32000-2 section 7.6.4), with the crypt filters /StdCF
 // and /Identity, /EncryptMetadata false and the per-object keys. pdf.js's
 // crypto.js (read in the design record) is the reference behaviour. A
-// non-empty user password is the refusal password_required; a handler other
+// non-empty user password, or a revision 5 or 6 file key that fails its
+// /Perms check, is the refusal password_required; a handler other
 // than /Standard or a revision outside 2 to 6 is unsupported_security_handler.
 // Every file pdfkit writes is unencrypted, so this handler only decrypts.
 
@@ -55,8 +56,8 @@ class SecurityHandler {
                                                       platform::ByteSpan data) const;
 
   [[nodiscard]] const Description& description() const noexcept { return description_; }
-  // Revisions 5 and 6: /Perms did not decrypt to "adb" under the file key,
-  // which is a warning, never a refusal.
+  // Revisions 5 and 6: /Perms is missing or names other permissions than /P,
+  // which is a warning, never a refusal (a /Perms without "adb" is refused).
   [[nodiscard]] bool perms_mismatch() const noexcept { return perms_mismatch_; }
   [[nodiscard]] const std::string& file_key() const noexcept { return file_key_; }
 
