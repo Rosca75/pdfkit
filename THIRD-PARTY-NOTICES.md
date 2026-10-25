@@ -71,17 +71,71 @@ Copyright notice:
 
 ## 5. Adobe Glyph List
 
-- Use: glyph names to Unicode.
+- Use: glyph names to Unicode (`glyphlist.txt`, 4,281 names, and the ITC Zapf
+  Dingbats list `zapfdingbats.txt`, 201 names), compiled into
+  `src/fonts/generated/glyph_list_table.cpp`.
 - Licence: BSD-3-Clause.
+- Version: Adobe Glyph List 2.0, at commit
+  4036a9ca80a62f64f9de4f7321a9a045ad0ecfd6 of the repository.
 - Upstream: https://github.com/adobe-type-tools/agl-aglfn
-- Notice: *(reproduced here when vendored)*
+- Notice (the `LICENSE.md` of the repository; each list carries the copyright
+  line "Copyright 2002-2019 Adobe (http://www.adobe.com/)" in its header):
+
+```
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+Neither the name of Adobe nor the names of its contributors may be
+used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ## 6. Core 14 font metrics
 
-- Use: the widths of the 14 standard fonts when a file embeds none.
-- Licence: Adobe's AFM notice, which permits redistribution with the notice.
-- Upstream: Adobe's Core 14 AFM files.
-- Notice: *(reproduced here when vendored)*
+- Use: the widths, built-in encodings and vertical metrics of the 14 standard
+  fonts when a file embeds none, reduced to font, glyph name, code and width in
+  `src/fonts/generated/core14_table.cpp` (the AFM files are reduced, not
+  modified; the fourteen files and `MustRead.html` are kept unmodified in
+  `third_party/core14/`).
+- Licence: Adobe's AFM notice (`LicenseRef-Adobe-AFM`), which permits use,
+  copying and distribution for any purpose with the notice.
+- Version: the AFM files as Apache PDFBox carries them, at commit
+  19d3a6799f829051e8efb27197af59935fd8179b; each file's SHA-256 is pinned in
+  `build/fonts/core14.lock`.
+- Upstream: https://github.com/apache/pdfbox (`pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/`)
+- Notice (`MustRead.html`, which accompanies the AFM files; each AFM file
+  carries "Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems
+  Incorporated. All Rights Reserved." or the like in its header):
+
+```
+This file and the 14 PostScript(R) AFM files it accompanies may be used,
+copied, and distributed for any purpose and without charge, with or without
+modification, provided that all copyright notices are retained; that the AFM
+files are not distributed without this file; that all modifications to this
+file or any of the AFM files are prominently noted in the modified file(s);
+and that this paragraph is not modified. Adobe Systems has no responsibility
+or obligation to support the use of the AFM files.
+```
 
 ## 7. Unicode Character Database
 
@@ -98,6 +152,9 @@ header names its source.
 | pdfkit component | Ported from | Licence |
 |---|---|---|
 | JBIG2 decoder | pdf.js `src/core/jbig2.js` and `src/core/arithmetic_decoder.js` | Apache-2.0 |
+| The simple-font encoding tables (`src/fonts/encodings.cpp`) | pdf.js `src/core/encodings.js` | Apache-2.0 |
+| The CFF standard strings and predefined charsets (`src/fonts/cff_font.cpp`) | pdf.js `src/core/cff_parser.js` and `src/core/charsets.js` | Apache-2.0 |
+| The 258 standard Macintosh glyph names (`src/fonts/true_type_tables.cpp`) | pdf.js `src/core/fonts_utils.js` | Apache-2.0 |
 | CCITT decoder | pdf.js `src/core/ccitt.js` | Apache-2.0 |
 | Page segmentation (recursive XY-cut, Docstrum) | PdfPig's page segmenters | Apache-2.0 |
 

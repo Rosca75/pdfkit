@@ -100,8 +100,10 @@ def expectations(entry: dict) -> tuple[dict, list[str]]:
     facts = entry["facts"]
     probe = entry.get("pdfium", {})
     notes = []
+    # expect_fonts stays n/a until tests/dataset/font_census.py --write-manifest
+    # measures the new file.
     expect = {"expect_open": "opens", "expect_text": "agree", "expect_images": "decoded",
-              "expect_redact": "n/a", "expect_metadata": "n/a"}
+              "expect_redact": "n/a", "expect_metadata": "n/a", "expect_fonts": "n/a"}
     handler = facts.get("security_handler")
     if probe.get("error") == "password" or "user_password" in tags:
         expect["expect_open"] = "refused:password_required"

@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# The pin of the Core 14 AFM files build/fonts/core14.py reads from
+# third_party/core14/: each file, the URL it was fetched from (Apache PDFBox at
+# commit 19d3a6799f829051e8efb27197af59935fd8179b, whose AFM folder carries Adobe's
+# notice in MustRead.html) and the SHA-256 of its bytes. The generator refuses
+# a file whose bytes differ.
+file	url	sha256
+Courier.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Courier.afm	e72833dda79161e3aaf385adfeb59c61c89a4a3e184f27d21c178056eea30e17
+Courier-Bold.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Courier-Bold.afm	1e86f0a949e316c08df32adc2fc2e2a92ed9902ffd54e3516e5a66a32db856da
+Courier-BoldOblique.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Courier-BoldOblique.afm	e1349f5f306b16338972eaf7f43d7913535cc075a15189b5f3efc841aee3d02e
+Courier-Oblique.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Courier-Oblique.afm	9e3494b4abb127a6586c095a377924514dd6956973f8f3b0bd7d6d00fcc89ea6
+Helvetica.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Helvetica.afm	5654761eab868ccb3080122accf13b4fb79edf37af09e1c57a881c35c334ee03
+Helvetica-Bold.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Helvetica-Bold.afm	59ac93091bc7e76eb6baf60210526a4df88fe107dd5e13eb0ae70c9fc6d91fb9
+Helvetica-BoldOblique.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Helvetica-BoldOblique.afm	1f848276efd76c0e5020ef98ccb459005f5a022f56cb8579e52c98e33ffab03b
+Helvetica-Oblique.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Helvetica-Oblique.afm	8c00ac46ca5963df22d4fc1153ea1246c8778475820378640c8d54d4fd3a46fe
+Symbol.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Symbol.afm	13eeef80def2f9a8d3a31a980731376823e8b48340ff3891ffc1cc0299c0b4fe
+Times-Bold.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Times-Bold.afm	37efa084183acfb06f45ad73bd75f6dd09b20d1e498c66ce1b9aa72b00db4ac7
+Times-BoldItalic.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Times-BoldItalic.afm	1bf83cee5300d4de1ce90681a2a2d70fd1876c664e91c1c4c6b6b5b12873b6da
+Times-Italic.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Times-Italic.afm	2f34d3bc49530532daa690aec165b68368162d4c27d24fbe6a3fb24aae49a74a
+Times-Roman.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/Times-Roman.afm	b6dbde33196ff61f051f8468fb81a0dece63997a80b7fba058e8295f49480026
+ZapfDingbats.afm	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/ZapfDingbats.afm	d3e7b9f6366ab0df06acbb217c8586c5962ff2efbd4e1b5566c7eaf5b745dd41
+MustRead.html	https://raw.githubusercontent.com/apache/pdfbox/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/MustRead.html	b226bfc00e1b8b8a80c7b3cfbbc322d13b4b0401f94cdeafdd93b2210ad802eb

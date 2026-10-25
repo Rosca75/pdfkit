@@ -81,3 +81,4 @@ pdfkit_static_runtime(pdfkit)
 
 add_subdirectory(cli)
 add_subdirectory(tests/unit)
+add_subdirectory(tests/dataset)

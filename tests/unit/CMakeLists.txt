@@ -33,11 +33,24 @@ add_executable(pdfkit_tests
   syntax/repair_test.cpp
   syntax/security_handler_test.cpp
   api/abi_test.cpp
-  api/open_inspect_test.cpp)
+  api/open_inspect_test.cpp
+  fonts/support/font_builder.cpp
+  fonts/support/font_document.cpp
+  fonts/cff_font_test.cpp
+  fonts/cmap_parser_test.cpp
+  fonts/decoding_ladder_test.cpp
+  fonts/encodings_test.cpp
+  fonts/font_census_test.cpp
+  fonts/font_data_test.cpp
+  fonts/font_widths_test.cpp
+  fonts/glyph_list_test.cpp
+  fonts/true_type_tables_test.cpp
+  fonts/type1_font_test.cpp)
 # Fixtures are written by the support library, included as "support/...".
 # The CLI's own SHA-256 is compiled in too, as "cli/sha256.hpp", to check it
 # against the library's.
 target_include_directories(pdfkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+                                                "${CMAKE_CURRENT_SOURCE_DIR}/fonts"
                                                 "${PROJECT_SOURCE_DIR}")
 target_link_libraries(pdfkit_tests PRIVATE pdfkit_core doctest)
 pdfkit_warnings(pdfkit_tests)

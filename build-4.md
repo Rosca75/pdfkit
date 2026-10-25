@@ -232,7 +232,117 @@ that no longer ships, nor lose one while it does.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **Files added beyond §2**, each to keep one public class per header or one
+   concern per file: `src/fonts/cmap.{hpp,cpp}` (`Cmap`, the map
+   `CmapParser` fills and the fonts read), `src/fonts/font_program.{hpp,cpp}`
+   (`FontProgram`: the reader chosen by the bytes, since `/FontFile3`'s
+   subtype is a claim, shared by simple and composite fonts and cached per
+   stream), the hand-written headers `src/fonts/generated/glyph_list_table.hpp`
+   and `core14_table.hpp` of the two generated `.cpp` files,
+   `build/fonts/glyph_list.py` (the glyph-list generator §2 leaves unnamed),
+   `build/fonts/cpp_table.py` (the generators' shared header and digest),
+   `build/check_generated.py` (the new check group `generated` of
+   `build/check.py`; phase 1 left no generated-file check),
+   `tests/unit/fonts/support/font_document.{hpp,cpp}` (a one-page document
+   holding the font objects a test adds, opened with a `FontLoader`), and
+   `tests/dataset/CMakeLists.txt` with `tests/dataset/font_census.cpp`
+   (item 2); the root `CMakeLists.txt` gains `add_subdirectory(tests/dataset)`.
+2. **The census is an executable, not a mode of the `dataset` verb.** The CLI
+   includes only the public header and the C ABI never gains a census symbol
+   (§2), so `pdfkit_font_census` is built from `tests/dataset/font_census.cpp`,
+   links `pdfkit_core` and prints one JSON report per file;
+   `tests/dataset/font_census.py` drives it. `cli/verbs/dataset_fonts.cpp` was
+   not created.
+3. **The vendored data.** `third_party/agl/` holds `glyphlist.txt` and also
+   `zapfdingbats.txt` (the ITC Zapf Dingbats list of the same repository and
+   licence), because the ZapfDingbats glyph names `a1` to `a191` are not in
+   the AGL; both at commit 4036a9ca80a62f64f9de4f7321a9a045ad0ecfd6.
+   `third_party/core14/` holds the fourteen AFM files unmodified, their
+   `MustRead.html` (the AFM notice requires that the files travel with it) and
+   PDFBox's `LICENSE.txt` (the licence file `build/check_third_party.py`
+   requires; it carries the AFM notice), at PDFBox commit
+   19d3a6799f829051e8efb27197af59935fd8179b, each file pinned in
+   `build/fonts/core14.lock`. The files were fetched one by one, so the
+   inventory's archive columns are `-` and the tree hash is what is checked.
+   The AFM files total 642,394 bytes with LF line ends, not the design
+   record's 689,634.
+4. **Ported tables.** The Annex D encodings (Standard, WinAnsi, MacRoman,
+   MacExpert, Symbol, ZapfDingbats, and the CFF Expert encoding), the 391 CFF
+   standard strings, the ISOAdobe, Expert and ExpertSubset charsets and the
+   258 Macintosh glyph names are ported from pdf.js at commit
+   e2a5e1d34517b7e544f234d54eec3aa37df0b846 (Apache-2.0) rather than typed
+   from the annex, and listed among the ported code of
+   `THIRD-PARTY-NOTICES.md`; the unit tier checks Standard, Symbol and
+   ZapfDingbats code by code against the AFM files. PDFDoc is written from
+   Annex D table D.2.
+5. **The ladder beyond `docs/DESIGN.md` §5**, each read from a reader or a
+   specification and recorded in `docs/SOURCES.md`:
+   - a predefined Unicode CMap (`Uni...-UCS2-`, `-UTF16-`, `-UTF8-`,
+     `-UTF32-`) decodes each code as the character it is (rung `glyph_name`),
+     because those CMaps' codes are Unicode by definition and need no data;
+     every other predefined CMap splits codes by the codespace its name
+     implies (Shift-JIS, EUC, GBK, Big5, UHC, else two bytes) and reads them
+     as unreadable without `/ToUnicode`, as §5.3 says;
+   - a `/ToUnicode` written as the name `Identity-H` or `Identity-V` reads
+     each two-byte code as its own UTF-16 value, as pdf.js reads it;
+   - a `bfrange` whose bounds differ in more than the last byte is read as
+     the numeric range, as pdf.js reads it, not clamped as §3 planned: whole
+     identity ranges (`<0000> <FFFF> <0000>`) are common and clamping them
+     would lose every code above 0xFF;
+   - the symbolic TrueType search closes with (3,1) at the code itself, as
+     pdf.js reads a symbolic font whose only cmap is Unicode; the program
+     rung of a TrueType glyph reads the program's Unicode cmaps (all of
+     them, the preferred first) before its `post` name;
+   - a font resource that names no dictionary (a missing object, an object
+     in an undecodable object stream) decodes every code as unreadable
+     rather than through a default encoding;
+   - the number names: `gNN`, `glyphNN` and `GNN` count glyphs, `cidNN`
+     CIDs, `Cdd` and `Cxx` codes (decimal tried before hexadecimal), each
+     read through the program's own map only (§5.2); without a program,
+     including every Type 3 font, they are unreadable
+     (`OPEN-QUESTIONS.md` §2.5 asks whether to read them as PDFium does);
+   - a CID font's width is `/W`, else `/DW`, else 1000; the program's widths
+     are read for simple fonts only, because `/DW`'s default already answers
+     every CID.
+6. **The manifest column is `expect_fonts`** (not `fonts`), placed after
+   `expect_metadata`, with the values `loads`, `unreadable:<count>` and `n/a`.
+   `dataset/tools/common.py` (`MANIFEST_COLUMNS`, `EXPECTATIONS`),
+   `dataset/tools/add.py` (a new file starts `n/a`),
+   `dataset/tools/tests/test_common.py` and `dataset/README.md` gained it,
+   because `common.read_tsv` refuses a header it does not know. Every row
+   changes by one cell: the team lead resolves a conflict with another
+   phase's manifest edit by taking that manifest, inserting the column
+   (`n/a`) after `expect_metadata` and running
+   `python tests/dataset/font_census.py --out <folder> --write-manifest`.
+7. **The census metric** drops white space and control characters (Unicode
+   category Cc) on both sides, because PDFium's text carries `\r\n` and
+   control characters between lines; ligatures U+FB00 to U+FB06 are
+   decomposed on both sides. "Files PDFium extracts text from" are those
+   whose PDFium text is not empty after that filter. The census follows an
+   ExtGState's `/Font` as well as `Tf`.
+8. **The API the interpreter reads**, as built: `fonts::FontLoader(document)`
+   and `load(object)`, where `object` is the `/Font` resource entry as
+   written (pass the reference, not the resolved dictionary, so the font is
+   cached by object number); `PdfFont::decode(bytes)` returns
+   `PdfFont::DecodedCode {code, byte_length, text, rung, decomposed}` (nested,
+   one public class per header) and counts unreadable codes;
+   `answer(code)`, `width(code)` (thousandths of text space, a Type 3 width
+   already through `/FontMatrix`), `vertical_advance(code)` (`w1`, `vx`, `vy`),
+   `vertical_metrics()` (ascent, descent, `fallback`), `is_vertical()`,
+   `is_bold()`, `is_symbolic()`, `kind()`, `program()`, `name()`,
+   `widths_estimated()` (the `font_not_embedded` condition),
+   `object_number()`, `faults()` and `unreadable_count()` (per font, over the
+   whole document).
+9. **The gate, measured** on 2026-10-25 over the 861 rows whose open
+   expectation is `opens` or `repaired` (736 of them scored, PDFium
+   extracting text from them): fonts loaded without an exception 100% (0
+   failures, 0 hangs, 0 crashes); median character F1 1.0; unreadable codes
+   0.54% (88,584 of 16,535,353); `expect_fonts` matched on every row. The
+   report folder is the main checkout's `dataset/reports/phase4-20261025/`
+   (ignored); its summary is in the final commit message. Run under
+   llvm-mingw ASan and UBSan over all 910 files, the census found no error
+   (37 files exceeded 30 s in that debug build only; the slowest release
+   run takes 3.3 s).
 
 ### Deviations of earlier phases that affect this one
 

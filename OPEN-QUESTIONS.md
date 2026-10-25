@@ -127,3 +127,27 @@ rule written into chapter 2?
   text is noise with a `repaired` warning. Price: about 20 minutes and $4 to $6
   to revert the check and its test, and `pdfium-0012`'s `refused:password_required`
   expectation then fails in every dataset run.
+
+### 2.5 Glyph names that only restate their code (raised by phase 4)
+
+`docs/DESIGN.md` §5.2 reads the names `Cdd`, `Cxx`, `gNN` and `cidNN` only
+through the font program's own map, because they name code or glyph numbers,
+not characters; without a program, which is every Type 3 font, the code is
+unreadable and counted. The font census found 17 files tagged
+`differences_cdd` (median character F1 0.0 against PDFium) whose Type 3 fonts
+name each glyph after its own code: `/Differences [65 /C41 /C42 ...]` in
+pdfjs-0047 and the mutated files made from it, the code 65 drawing an "A".
+PDFium reads them because it falls back to the code itself when no map
+answers; pdf.js reads `Cdd` as the decimal character and `Cxx` as the
+hexadecimal one. The census gate passes either way (median F1 1.0, 0.54%
+unreadable). Do you want such names read as text?
+
+- **(a) Keep them unreadable, as the design says — recommended, and kept
+  while this question stands.** A name that restates its code says nothing
+  about the glyph, and an unreadable code is counted and named in the
+  `unreadable_text` warning, while a guessed character is silent. No cost.
+- **(b) Read a `Cdd` or `Cxx` name whose number equals its own code as the
+  code's WinAnsi character, in a font with no program.** The 17 files would
+  read as PDFium reads them; a producer that numbers glyphs by any other
+  scheme would read wrong text in silence. About 1 to 2 hours and $15 to $30
+  (the rule, two unit cases, `docs/DESIGN.md` §5.2 and a census run).

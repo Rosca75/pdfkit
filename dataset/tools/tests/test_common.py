@@ -23,7 +23,7 @@ class ManifestTest(unittest.TestCase):
         base = {c: "" for c in common.MANIFEST_COLUMNS}
         base.update({"id": row_id, "set": row_id.split("-")[0], "expect_open": "opens",
                      "expect_text": "agree", "expect_images": "n/a", "expect_redact": "n/a",
-                     "expect_metadata": "n/a"})
+                     "expect_metadata": "n/a", "expect_fonts": "n/a"})
         base.update(extra)
         return base
 

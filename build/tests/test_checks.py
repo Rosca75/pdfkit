@@ -70,7 +70,7 @@ class CleanTreeTest(CheckTest):
     def test_every_file_check_passes_the_clean_tree(self) -> None:
         for script in ("check_layout.py", "check_headers.py", "check_comments.py",
                        "check_catalogue.py", "check_third_party.py", "check_network.py",
-                       "check_repo.py", "check_paths.py"):
+                       "check_repo.py", "check_paths.py", "check_generated.py"):
             with self.subTest(script=script):
                 result = run_check(self.tree, script)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -83,9 +83,9 @@ class LayoutTest(CheckTest):
                           "includes the writer layer")
 
     def test_a_namespace_that_does_not_match_its_folder(self) -> None:
-        replace(self.tree / "src/fonts/fonts_placeholder.cpp", "namespace pdfkit::fonts",
+        replace(self.tree / "src/fonts/ligatures.cpp", "namespace pdfkit::fonts",
                 "namespace pdfkit::text")
-        self.assert_fails("check_layout.py", "src/fonts/fonts_placeholder.cpp", "pdfkit::text")
+        self.assert_fails("check_layout.py", "src/fonts/ligatures.cpp", "pdfkit::text")
 
     def test_a_header_with_two_public_classes(self) -> None:
         replace(self.tree / "src/platform/budget.hpp", "class Budget {",
@@ -208,6 +208,14 @@ class PathsTest(CheckTest):
     def test_a_pending_path_that_now_exists(self) -> None:
         (self.tree / "src/writer/channel_table.cpp").write_text("// x\n", encoding="utf-8")
         self.assert_fails("check_paths.py", "build/paths_pending.tsv", "src/writer/channel_table.cpp")
+
+
+class GeneratedTest(CheckTest):
+    def test_a_generated_table_edited_by_hand(self) -> None:
+        replace(self.tree / "src/fonts/generated/core14_table.cpp", '{"A", 65, 667}',
+                '{"A", 65, 668}')
+        self.assert_fails("check_generated.py", "src/fonts/generated/core14_table.cpp",
+                          "differs from its generator's output")
 
 
 class FormatTest(CheckTest):
