@@ -60,6 +60,19 @@ def staging_dir() -> Path:
     return common.cache_dir() / "synth-staging"
 
 
+def restore(rows: list[dict], planned) -> int:
+    """Writes back the files of registered rows that are absent, from the same bytes."""
+    by_hash = {common.sha256_bytes(s.data): s.data for _, _, s in planned}
+    count = 0
+    for row in rows:
+        target = common.file_path(row)
+        if row["set"] == "synth" and not target.exists() and row["sha256"] in by_hash:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(by_hash[row["sha256"]])
+            count += 1
+    return count
+
+
 def main() -> int:
     import add
     import pdfium
@@ -70,9 +83,9 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="list the patterns and exit")
     parser.add_argument("--dry-run", action="store_true", help="write the files, register nothing")
     parser.add_argument("--check", action="store_true",
-                        help="fail when a registered synthesised row is no longer reproduced")
+                        help="fail when a registered synthesised row is not reproduced")
     parser.add_argument("--prune", action="store_true",
-                        help="remove the rows of the chosen patterns the generator no longer writes")
+                        help="remove the rows of the chosen patterns whose bytes the generator does not write")
     args = parser.parse_args()
 
     table = pattern_table()
@@ -98,7 +111,7 @@ def main() -> int:
              and r["sha256"] not in written]
     if stale and args.check:
         for row in stale:
-            print(f"{row['id']}: the generator no longer writes these bytes ({row['source']})")
+            print(f"{row['id']}: the generator does not reproduce these bytes ({row['source']})")
         return 1
     if stale and args.prune and not args.dry_run:
         for row in stale:
@@ -106,8 +119,10 @@ def main() -> int:
             print(f"pruned {row['id']} ({row['source']})", file=sys.stderr)
         rows = [r for r in rows if r not in stale]
         common.write_manifest(rows)
+    restored = restore(rows, planned)
     if args.check:
-        print(json.dumps({"patterns": len(chosen), "specimens": len(planned), "reproduced": True}))
+        print(json.dumps({"patterns": len(chosen), "specimens": len(planned), "reproduced": True,
+                          "restored": restored}))
         return 0
     known = {r["sha256"] for r in rows}
     summary = []

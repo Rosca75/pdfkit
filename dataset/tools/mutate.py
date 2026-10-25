@@ -594,6 +594,30 @@ def sources(rows: list[dict], need: str) -> list[dict]:
     return by_gen + rest
 
 
+def restore(rows: list[dict]) -> int:
+    """Rewrites every absent mutated file and checks it against the manifest's hash."""
+    by_id = {r["id"]: r for r in rows}
+    restored, problems = 0, []
+    for row in rows:
+        target = common.file_path(row)
+        if row["set"] != "mutate" or target.exists():
+            continue
+        _, source_id, name, seed = row["source"].split(":")
+        source = common.file_path(by_id[source_id])
+        if not source.exists():
+            problems.append(f"{row['id']}: its source {source_id} is absent; fetch it first")
+            continue
+        data = MUTATIONS[name][0](source.read_bytes(), random.Random(int(seed)))
+        if common.sha256_bytes(data) != row["sha256"]:
+            problems.append(f"{row['id']}: the mutation does not reproduce the registered bytes")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        restored += 1
+    print(json.dumps({"restored": restored, "problems": problems}, indent=1))
+    return 1 if problems else 0
+
+
 def main() -> int:
     import add
     import pdfium
@@ -601,9 +625,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Write and register the seeded mutations.")
     parser.add_argument("--mutation", action="append", help="only these mutations")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--restore", action="store_true",
+                        help="write back absent mutated files from their source, mutation and seed")
     args = parser.parse_args()
 
     rows = common.read_manifest()
+    if args.restore:
+        return restore(rows)
     chosen = args.mutation or list(MUTATIONS)
     staging = common.cache_dir() / "mutate-staging"
     planned = []

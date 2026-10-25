@@ -258,3 +258,9 @@ From `build-1.md` §9:
 - Release links strip symbols, drop unused sections and omit the PE time stamp; at the first package the DLL was 634 KB, the exe 333 KB and the zip 432 KB against budgets of 8 MB, 1 MB and 6 MB (item 9).
 - `CMakePresets.json` uses schema version 11, the newest CMake 4.3.2 accepts (item 10).
 - The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+
+From `build-2.md` §9:
+
+- `dataset/tools/generate_office.ps1` could not drive Word or Edge unattended on the laptop, so `gen_word_pdfa` and `gen_edge` wait on `OPEN-QUESTIONS.md` §2.2 (item 6).
+- The dataset tools have no `cryptography` and no Pillow, because the proxy cuts compiled wheels; a synthesised JPEG or JPEG 2000 needs another route (item 4).
+- The manifest holds 910 rows, which leaves room for 90 more under the ceiling of 1,000 (item 11).

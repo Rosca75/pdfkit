@@ -1,0 +1,3 @@
+# The dataset tables are LF-only whatever core.autocrlf says, because the tools
+# write them with LF and a diff of a table should show rows, not line ends.
+*.tsv text eol=lf

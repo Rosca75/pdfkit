@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import hashlib
 import json
 import os
@@ -81,6 +82,7 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+@functools.lru_cache(maxsize=1)
 def main_checkout() -> Path:
     """The main checkout: the parent of `git rev-parse --git-common-dir`."""
     root = repo_root()
@@ -164,7 +166,8 @@ def read_tsv(path: Path, columns: tuple[str, ...]) -> list[dict]:
     """Reads a tab-separated table whose header must equal `columns`."""
     if not path.exists():
         return []
-    lines = path.read_text(encoding="utf-8").split("\n")
+    # A checkout with core.autocrlf may hand the table over with CR LF line ends.
+    lines = path.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")
     if not lines or not lines[0]:
         return []
     header = tuple(lines[0].split("\t"))

@@ -20,7 +20,6 @@ import random
 import sys
 import zipfile
 from pathlib import Path
-from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "pdfium"))
@@ -30,6 +29,14 @@ import common  # noqa: E402
 import fetch  # noqa: E402
 
 DEFAULT_SEED = 20261024
+
+
+UNRESERVED = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/")
+
+
+def quote(path: str) -> str:
+    """Percent-encodes a repository path for a URL (RFC 3986 unreserved bytes and / kept)."""
+    return "".join(chr(b) if b in UNRESERVED else f"%{b:02X}" for b in path.encode("utf-8"))
 
 
 def parse_rule(text: str) -> dict:
@@ -46,6 +53,9 @@ def parse_rule(text: str) -> dict:
             rule["seed"] = int(value)
         elif key == "random":
             rule["random"] = True
+        elif key == "exclude":
+            rule["exclude"] = {v for v in value.split(",") if v}
+    rule.setdefault("exclude", set())
     return rule
 
 
@@ -111,6 +121,9 @@ def choose(candidates: list[tuple[Path, str]], analysis: dict, rule: dict, rows:
     seen = set()
     for path, url in candidates:
         entry = analysis[str(path)]
+        if path.name in rule["exclude"]:
+            skipped["excluded_by_licence"] = skipped.get("excluded_by_licence", 0) + 1
+            continue
         if entry["sha256"] in known or entry["sha256"] in seen:
             skipped["duplicate"] += 1
             continue

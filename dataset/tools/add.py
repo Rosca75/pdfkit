@@ -50,20 +50,20 @@ def analyse(paths: list[Path], pool, workers: int = 8, cache: Path | None = None
     entries = stored.setdefault("entries", {})
     stored["version"] = ANALYSIS_VERSION
     results: dict[str, dict] = {}
-    todo = []
+    pending = []
     for path in paths:
         key = str(path)
         entry = entries.get(key)
         if entry and entry.get("bytes") == path.stat().st_size and entry.get("mtime") == path.stat().st_mtime:
             results[key] = entry
         else:
-            todo.append(path)
-    if todo:
+            pending.append(path)
+    if pending:
         with concurrent.futures.ProcessPoolExecutor(workers) as procs, \
                 concurrent.futures.ThreadPoolExecutor(workers) as threads:
-            scans = {p: procs.submit(analyse_one, str(p)) for p in todo}
-            probes = {p: threads.submit(pool.probe, p, ["info", "text"]) for p in todo}
-            for path in todo:
+            scans = {p: procs.submit(analyse_one, str(p)) for p in pending}
+            probes = {p: threads.submit(pool.probe, p, ["info", "text"]) for p in pending}
+            for path in pending:
                 entry = scans[path].result()
                 probe = probes[path].result()
                 text = probe.pop("text", None) or []
@@ -195,6 +195,8 @@ def main() -> int:
                         help="the source: a URL prefix the file name is appended to, or a "
                              "generator form such as synth:<pattern>")
     parser.add_argument("--tags", default="", help="tags to add, comma-separated")
+    parser.add_argument("--drop-tags", default="",
+                        help="tags the scan infers that provenance contradicts, comma-separated")
     parser.add_argument("--notes", default="")
     parser.add_argument("--expect", action="append", default=[],
                         help="an expectation override, column=value")
@@ -223,7 +225,8 @@ def main() -> int:
 
     with pdfium.Pool(4) as pool:
         added = register(files, args.set, args.licence, source_for, pool,
-                         extra_tags=common.split_tags(args.tags), overrides=overrides,
+                         extra_tags=common.split_tags(args.tags),
+                         drop_tags=common.split_tags(args.drop_tags), overrides=overrides,
                          notes=args.notes)
     print(json.dumps([{"id": r["id"], "tags": r["tags"], "expect_open": r["expect_open"]}
                       for r in added], indent=1))
