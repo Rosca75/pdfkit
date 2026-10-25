@@ -260,3 +260,4 @@ From `build-6.md` §9:
 - CMYK converts through `images::AdobeCmyk` (PDFium's table), not the naive complement; re-encode a treated CMYK JPEG from `PixelImage::cmyk` (item 5, `OPEN-QUESTIONS.md` §2.7).
 - A CMYK JPEG's samples are used as libjpeg returns them, never inverted for an Adobe marker (item 6).
 - libjpeg-turbo's compressor is linked into `pdfkit_core` (public), so re-encoding needs no new dependency; `tests/unit/images/image_fixture.hpp` has `encode_jpeg` for test fixtures (items 11, 13).
+- Images by identity with their draws: `images::ImageListing` (`src/images/image_listing.hpp`), kept on the handle as `pdfkit_document::listing`; its occurrences carry page, ordinal, box and form path but not the stream walk and operator index, so a removal reads `text::ImageOccurrence` from `TextReader::interpret` itself (`build-6.md` §9 item 16).
