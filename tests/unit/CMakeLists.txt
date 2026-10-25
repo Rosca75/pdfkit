@@ -37,6 +37,7 @@ add_executable(pdfkit_tests
   platform/error_test.cpp
   platform/json_reader_test.cpp
   platform/json_writer_test.cpp
+  unicode/folding_test.cpp
   support/content_builder.cpp
   support/document_summary.cpp
   support/pdf_builder.cpp

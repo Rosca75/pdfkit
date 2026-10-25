@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# The pin of the Unicode Character Database files build/unicode/generate.py
+# reads from third_party/unicode/: each file, the URL it was fetched from
+# (Unicode 18.0.0, under the Unicode License v3 kept beside them as
+# license.txt) and the SHA-256 of its bytes. The generator refuses a file
+# whose bytes differ.
+file	url	sha256
+CaseFolding.txt	https://www.unicode.org/Public/18.0.0/ucd/CaseFolding.txt	a004797658a457bec4dc11683e39f69249ea3b595b752dbea6721c4c9f587b0d
+UnicodeData.txt	https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt	0736451de439ae7baf1425136617da495e09ee5afbe6e394374db7009ea08950
+license.txt	https://www.unicode.org/license.txt	e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96

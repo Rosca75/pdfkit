@@ -17,4 +17,5 @@ target_sources(pdfkit_core PRIVATE
   json_reader.cpp
   json_value.cpp
   json_writer.cpp
+  unicode/folding.cpp
   utf8_sequence.cpp)
