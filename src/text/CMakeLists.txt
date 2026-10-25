@@ -5,4 +5,14 @@
 # layer is one line in this list and touches no other layer's list.
 
 target_sources(pdfkit_core PRIVATE
-  text_placeholder.cpp)
+  colour.cpp
+  content_interpreter.cpp
+  content_serialiser.cpp
+  glyph_record.cpp
+  graphics_state.cpp
+  matrix.cpp
+  optional_content.cpp
+  page_content.cpp
+  rect.cpp
+  string_operands.cpp
+  text_string.cpp)
