@@ -129,7 +129,7 @@ int run_images(std::span<char* const> args) {
       parsed_listing ? parsed_listing->member(parsed_listing->root(), "images") : nullptr;
   const std::string folder = folder_path(*out_folder);
   std::vector<Written> written;
-  if (images != nullptr) {
+  if (parsed_listing && images != nullptr) {
     for (const std::size_t index : images->items) {
       const JsonText::Node& image = parsed_listing->node(index);
       const JsonText::Node* identity = parsed_listing->member(image, "identity");
