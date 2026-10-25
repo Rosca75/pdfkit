@@ -118,7 +118,9 @@ class SummaryTest(unittest.TestCase):
 
     def test_every_expectation_column_is_known_to_the_harness(self):
         import common
-        self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
+        # expect_fonts belongs to the font census (tests/dataset/font_census.py), not to a
+        # catalogue function the dataset verb runs.
+        self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS) - {"expect_fonts"})
         self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select"})
 
 
