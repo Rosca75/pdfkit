@@ -129,15 +129,18 @@ bool is_implemented(std::string_view symbol) {
   pdfkit_buffer_free(&out);
   std::size_t error_offset = 0;
   const std::optional<JsonText> version = JsonText::parse(text, error_offset);
-  const JsonText::Node* catalogue =
-      version ? version->member(version->root(), "catalogue") : nullptr;
+  if (!version) {
+    return false;
+  }
+  const JsonText& document = *version;
+  const JsonText::Node* catalogue = document.member(document.root(), "catalogue");
   if (catalogue == nullptr || catalogue->kind != JsonText::Kind::array) {
     return false;
   }
   for (const std::size_t index : catalogue->items) {
-    const JsonText::Node& row = version->node(index);
-    const JsonText::Node* name = version->member(row, "symbol");
-    const JsonText::Node* implemented = version->member(row, "implemented");
+    const JsonText::Node& row = document.node(index);
+    const JsonText::Node* name = document.member(row, "symbol");
+    const JsonText::Node* implemented = document.member(row, "implemented");
     if (name != nullptr && name->text == symbol && implemented != nullptr) {
       return implemented->text == "true";
     }

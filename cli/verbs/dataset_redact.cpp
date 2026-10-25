@@ -217,8 +217,46 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
       }
     }
   }
-  rectangles += "]";
-  placeholders += "]";
+  rectangles += ']';
+  placeholders += ']';
+  // The crop box and the rotation of each page the rectangles name (the job
+  // selects no page, so an output page is its source page): a renderer draws
+  // the crop box turned by the rotation, so a comparison of renderings places
+  // the rectangles through them.
+  std::string geometry = "[";
+  {
+    std::set<std::string> numbered;
+    if (const std::optional<JsonText> report = JsonText::parse(call.text, offset)) {
+      if (const JsonText::Node* changed = report->member(report->root(), "rectangles")) {
+        for (const std::size_t index : changed->items) {
+          if (const JsonText::Node* page = report->member(report->node(index), "page")) {
+            numbered.insert(std::string(page->raw));
+          }
+        }
+      }
+    }
+    pdfkit_buffer inspected{nullptr, 0, nullptr};
+    const Call inspect = take(pdfkit_inspect(document, nullptr, &inspected), inspected);
+    const std::optional<JsonText> shape = JsonText::parse(inspect.text, offset);
+    const JsonText::Node* list =
+        shape && inspect.status == PDFKIT_OK ? shape->member(shape->root(), "pages") : nullptr;
+    bool first = true;
+    for (const std::size_t index : list != nullptr ? list->items : std::vector<std::size_t>{}) {
+      const JsonText::Node& entry = shape->node(index);
+      const JsonText::Node* page = shape->member(entry, "page");
+      const JsonText::Node* crop = shape->member(entry, "crop_box");
+      const JsonText::Node* rotate = shape->member(entry, "rotate");
+      if (page == nullptr || crop == nullptr || rotate == nullptr ||
+          !numbered.contains(std::string(page->raw))) {
+        continue;
+      }
+      geometry += (first ? "[" : ", [") + std::string(page->raw) + ", " +
+                  std::string(crop->raw.substr(1, crop->raw.size() - 2)) + ", " +
+                  std::string(rotate->raw) + "]";
+      first = false;
+    }
+  }
+  geometry += ']';
 
   std::string path = out_dir;
   if (!path.empty() && path.back() != '/' && path.back() != '\\') {
@@ -242,7 +280,7 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
          ", \"sha256\": " + json_quote(Sha256::hex(data, pdf.size())) +
          ", \"bytes\": " + std::to_string(pdf.size()) + ", \"pages\": " + pages +
          ", \"self_check\": " + self_check + ", \"rectangles\": " + rectangles +
-         ", \"placeholders\": " + placeholders +
+         ", \"placeholders\": " + placeholders + ", \"geometry\": " + geometry +
          ", \"codes\": " + list(std::vector<std::string>(codes.begin(), codes.end())) +
          ", \"reopen\": " + dataset_reopen(pdf) + "}";
 }

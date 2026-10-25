@@ -138,10 +138,35 @@ struct Geometry {
   // Boxes per reading line, keyed by the line's first position (a pointer key
   // would order them by address).
   std::map<std::size_t, Rect> per_line;
+  // Per line, the first removed glyph (its draw index and walk).
+  std::map<std::size_t, std::pair<std::size_t, std::size_t>> first_removed;
+  std::map<std::size_t, const text::TextLayout::Line*> lines;
   for (const std::size_t draw : out.removed) {
     const std::size_t p = layout.position[draw];
     const text::TextLayout::Line* line = p == none ? nullptr : layout.line[p];
-    per_line[line == nullptr ? none : line->first].add(glyph_box(glyphs[draw]));
+    const std::size_t key = line == nullptr ? none : line->first;
+    per_line[key].add(glyph_box(glyphs[draw]));
+    if (line != nullptr) {
+      lines[key] = line;
+      const auto [it, added] = first_removed.try_emplace(key, draw, glyphs[draw].stream);
+      if (!added && draw < it->second.first) {
+        it->second = {draw, glyphs[draw].stream};
+      }
+    }
+  }
+  // The glyphs drawn after a hole on its line are placed from another
+  // sequence of advances than before, which a renderer sums in its own
+  // floating point and can round to a neighbouring sub-pixel: the line's
+  // rectangle runs over them too, so a comparison of renderings reads the
+  // change where it is.
+  for (const auto& [key, line] : lines) {
+    const auto [first_draw, walk] = first_removed.at(key);
+    for (std::size_t p = line->first; p < line->last && p < page.order.size(); ++p) {
+      const GlyphRecord& record = glyphs[page.order[p]];
+      if (record.stream == walk && record.draw > first_draw && !out.removed.contains(record.draw)) {
+        per_line[key].add(glyph_box(record));
+      }
+    }
   }
   for (const auto& [line, box] : per_line) {
     if (!box.is_empty()) {

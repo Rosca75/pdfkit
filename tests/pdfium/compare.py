@@ -375,12 +375,40 @@ def pixel_check(run_id: str, rows: list[dict], workers: int, kind: str) -> int:
     return 0
 
 
+def rendered_box(box, crop, rotate: int) -> list:
+    """A rectangle of default user space in the space of the rendered page: the crop box's
+    lower-left corner at the origin, then turned clockwise by /Rotate (ISO 32000-1 table 30,
+    read), as a renderer draws the page."""
+    x0, y0, x1, y1 = box
+    cx0, cy0, cx1, cy1 = crop
+    width, height = cx1 - cx0, cy1 - cy0
+
+    def turn(u: float, v: float) -> tuple[float, float]:
+        quarter = int(rotate) % 360
+        if quarter == 90:
+            return v, width - u
+        if quarter == 180:
+            return width - u, height - v
+        if quarter == 270:
+            return height - v, u
+        return u, v
+
+    a, b = turn(x0 - cx0, y0 - cy0)
+    c, d = turn(x1 - cx0, y1 - cy0)
+    return [min(a, c), min(b, d), max(a, c), max(b, d)]
+
+
 def redact_entry(pool, before: Path, after: Path, part: dict) -> dict:
     """One text redaction: every page against its input outside the reported rectangles, and the
     placeholders PDFium reads on each page against those pdfkit drew there."""
+    geometry = {int(row[0]): ([float(v) for v in row[1:5]], int(row[5])) for row in part.get("geometry") or []}
     boxes: dict = {}
     for row in part.get("rectangles") or []:
-        boxes.setdefault(int(row[0]), []).append([float(v) for v in row[1:5]])
+        page = int(row[0])
+        box = [float(v) for v in row[1:5]]
+        if page in geometry:
+            box = rendered_box(box, *geometry[page])
+        boxes.setdefault(page, []).append(box)
     drawn = {int(page): int(count) for page, count in part.get("placeholders") or []}
     before_pages = render.page_counts(pool, before)
     entry = {"input_opens": before_pages is not None, "pages": 0, "stable": 0, "unstable": [],
