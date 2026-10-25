@@ -312,9 +312,9 @@ the `text` column of the manifest is reverted with the merge.
     `OPEN-QUESTIONS.md` §2.10; its recommended answer (b) stands.
 17. **Speed**: the largest file (dccc-0135, 910 pages, 3.6 million glyphs)
     reads in 6 to 10 s alone in the release build, most of it the
-    interpreter; under the laptop's load from other sessions the dataset
-    verb (text, write and select together) came near the 30 s limit on four
-    files in one run of six workers and passed in the others.
+    interpreter. Other sessions loaded the laptop during the runs: with six
+    workers a run saw up to four files pass 30 s (dccc-0074 among them,
+    0.4 s alone); the final run, four workers and two passes, saw none.
 18. **Known reader gaps for a later fonts session**: Latin codes of a
     non-embedded CJK font with no `/W` take `/DW` 1000 and run off the page
     (dccc-0012, synth-0151); CJK predefined CMaps have no data
@@ -326,6 +326,10 @@ the `text` column of the manifest is reverted with the merge.
     soft-mask group a page sets, which the interpreter does not walk, so the
     listing reports the images inside as `image_in_pattern` without
     numbering them.
+20. **AddressSanitizer over the dataset** (llvm-mingw, the `dataset` verb on
+    all 937 files) found a pointer kept into a temporary (a colour space's
+    resolved name, 115 files); fixed, the rerun found no error (25 files pass
+    30 s in that debug build only).
 
 ### Deviations of earlier phases that affect this one
 
