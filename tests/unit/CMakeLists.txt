@@ -9,8 +9,11 @@ add_executable(pdfkit_tests
   main.cpp
   ../../cli/sha256.cpp
   cli/sha256_test.cpp
+  images/arithmetic_decoder_test.cpp
   images/ccitt_decoder_test.cpp
   images/ccitt_test_encoder.cpp
+  images/jbig2_decoder_test.cpp
+  images/mq_test_encoder.cpp
   platform/budget_test.cpp
   platform/buffer_test.cpp
   platform/checked_test.cpp
