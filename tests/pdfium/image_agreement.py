@@ -259,6 +259,12 @@ def expectation(result: dict) -> str:
 def agrees(image: dict, comparison: dict | None) -> bool | None:
     if comparison is None or comparison.get("status") != "compared":
         return None
+    if (image["colour_space"].startswith("Indexed") and image.get("channels") == 3
+            and comparison.get("pdfium_format") == 1):
+        # FPDFImageObj_GetBitmap widens a 1-bit image to an 8-bit bitmap that
+        # keeps the palette, and the API exposes the indices but not the
+        # palette, so the colours cannot be compared.
+        return None
     if image["encoding"] in BITONAL:
         return comparison["differing"] == 0
     return comparison["mad"] <= CONTINUOUS_LIMIT

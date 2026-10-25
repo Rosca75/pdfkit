@@ -44,8 +44,7 @@ class ImageCatalogue {
   };
 
   // Walks every page's resources. A resource tree nests at most 32 forms
-  // deep, and a form or pattern already on the current path is not entered
-  // again.
+  // deep, and a form or pattern is entered once per page and context.
   explicit ImageCatalogue(syntax::Document& document);
 
   [[nodiscard]] const std::vector<Entry>& entries() const noexcept { return entries_; }
@@ -61,10 +60,10 @@ class ImageCatalogue {
   std::map<std::string, std::size_t, std::less<>> by_identity_;
   // The identity of each image object number already hashed.
   std::map<std::uint32_t, std::string> identity_of_object_;
-  // The resource dictionaries on the current path, by object number, and per
-  // page the ones already walked.
-  std::set<std::uint32_t> path_;
+  // Per page, the resource dictionaries walked and the form, pattern and
+  // group streams entered, by object number and context.
   std::set<std::pair<std::uint32_t, bool>> walked_;
+  std::set<std::pair<std::uint32_t, bool>> entered_;
 };
 
 }  // namespace pdfkit::images

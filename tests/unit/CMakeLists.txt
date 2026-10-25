@@ -14,6 +14,7 @@ add_executable(pdfkit_tests
   images/ccitt_test_encoder.cpp
   images/colour_space_test.cpp
   images/dct_decoder_test.cpp
+  images/image_catalogue_test.cpp
   images/image_data_test.cpp
   images/image_fixture.cpp
   images/image_identity_test.cpp

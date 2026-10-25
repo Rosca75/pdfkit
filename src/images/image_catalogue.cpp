@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// The resource walk of ImageCatalogue. A resource dictionary is walked once per
-// page and per context (normal or inside a pattern), so a page's list of
-// images is complete without walking a shared form twice on one page.
+// The resource walk of ImageCatalogue. A resource dictionary and a form,
+// pattern or group stream are walked once per page and per context (normal or
+// inside a pattern), so a page's list of images is complete and the walk stays
+// linear in the resources however the forms share one another.
 
 #include "images/image_catalogue.hpp"
 
@@ -24,6 +25,7 @@ constexpr int max_depth = 32;
 ImageCatalogue::ImageCatalogue(syntax::Document& document) : document_(&document) {
   for (const syntax::Page& page : document.pages()) {
     walked_.clear();
+    entered_.clear();
     walk(page.resources, page.number, false, 0);
   }
 }
@@ -58,21 +60,20 @@ void ImageCatalogue::walk(const syntax::Object& resources, std::uint32_t page, b
       }
     }
   };
-  // Enters a form, pattern or group stream's own resources, unless it is on
-  // the current path already.
+  // Enters a form, pattern or group stream's own resources.
   const auto enter = [&](const syntax::Object& item, bool pattern) {
     const syntax::Object resolved = document_->resolve(item);
     const syntax::Stream* stream = resolved.stream();
     if (stream == nullptr) {
       return;
     }
-    const std::uint32_t number = stream->owner().number;
-    if (path_.contains(number)) {
+    // A stream already entered on this page in this context adds nothing, and
+    // entering it once is what keeps a cycle, or a tree of forms sharing
+    // forms, from multiplying the walk.
+    if (!entered_.emplace(stream->owner().number, pattern).second) {
       return;
     }
-    path_.insert(number);
     walk(stream->dictionary().get("Resources"), page, pattern, depth + 1);
-    path_.erase(number);
   };
   each("XObject", [&](const syntax::Object& item) {
     const syntax::Object resolved = document_->resolve(item);

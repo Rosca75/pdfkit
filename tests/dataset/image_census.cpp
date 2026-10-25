@@ -122,10 +122,15 @@ ImageDecoder::Result decode(pdfkit::syntax::Document& document,
 }
 
 void census(pdfkit::syntax::Document& document, JsonWriter& json, const std::string& folder) {
+  // Progress goes to standard error, so a file that runs out of time names
+  // the step it was in.
+  std::cerr << "walking the resources\n";
   const ImageCatalogue catalogue(document);
+  std::cerr << "walked: " << catalogue.entries().size() << " images\n";
   json.key("images").begin_array();
   for (const ImageCatalogue::Entry& entry : catalogue.entries()) {
     const pdfkit::syntax::Stream& stream = *entry.stream.stream();
+    std::cerr << entry.identity << " object " << entry.object_number << "\n";
     const pdfkit::syntax::Dictionary& dictionary = stream.dictionary();
     json.begin_object();
     json.key("identity").string(entry.identity);
@@ -205,6 +210,8 @@ pdfkit::syntax::Limits limits() {
 struct Raster {
   std::uint32_t width = 0;
   std::uint32_t height = 0;
+  // PDFium's bitmap format; 0 for a census dump.
+  std::uint64_t format = 0;
   // RGB, 8 bits per sample.
   std::vector<std::uint8_t> rgb;
 };
@@ -237,6 +244,7 @@ bool read_raster(const std::string& path, bool pdfium, Raster& raster) {
   if (!in) {
     return false;
   }
+  raster.format = format;
   raster.width = static_cast<std::uint32_t>(width);
   raster.height = static_cast<std::uint32_t>(height);
   raster.rgb.assign(static_cast<std::size_t>(width * height * 3), 0);
@@ -299,6 +307,7 @@ int compare(const std::string& list) {
         mad = std::max(mad, static_cast<double>(sum) / static_cast<double>(pixels));
       }
       json.key("status").string("compared");
+      json.key("pdfium_format").unsigned_integer(b.format);
       json.key("mad").fixed(mad, 3);
       json.key("largest").integer(largest);
       json.key("differing").unsigned_integer(differing);
