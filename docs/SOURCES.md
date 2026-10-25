@@ -166,8 +166,8 @@ to find it.
 | Component | Source | Status |
 |---|---|---|
 | zlib 1.3.2 (zlib licence; released 2026-02-17; the archive's SHA-256 as the release page lists it, in `third_party/inventory.tsv`) | https://zlib.net | read |
-| libjpeg-turbo | https://github.com/libjpeg-turbo/libjpeg-turbo | recalled |
-| OpenJPEG | https://github.com/uclouvain/openjpeg | recalled |
+| libjpeg-turbo 3.2.0 (IJG, BSD-3-Clause and zlib licences in `third_party/libjpeg-turbo/LICENSE.md`; released 2026-06-30, the newest stable release on 2026-10-25 by the GitHub releases API; the archive SHA-256 equals the digest GitHub lists, in `third_party/inventory.tsv`; the library source list of its `CMakeLists.txt`) | https://github.com/libjpeg-turbo/libjpeg-turbo/releases/tag/3.2.0 | read |
+| OpenJPEG 2.5.4 (BSD-2-Clause in its `LICENSE`; released 2025-09-20, the newest release on 2026-10-25 by the GitHub releases API; the tag archive pinned by SHA-256 in `third_party/inventory.tsv`; the `openjp2` source list of the release's own openjp2 CMake list) | https://github.com/uclouvain/openjpeg/releases/tag/v2.5.4 | read |
 | doctest 2.5.3 (MIT; release list, archive and its SHA-256 in `third_party/inventory.tsv`) | https://github.com/doctest/doctest/releases/tag/v2.5.3 | read |
 | Liberation fonts | https://github.com/liberationfonts/liberation-fonts | recalled |
 | Unicode data | https://www.unicode.org/Public/ | recalled |
