@@ -132,6 +132,15 @@ class MatchFinder {
   std::map<unsigned, Haystack> folded_;
   // The reading-order position of each draw index, built on first use.
   std::vector<std::size_t> position_;
+  // The code bytes of each string operand (consecutive records of one walk,
+  // operator and operand), as drawn and with ASCII lowered, and the draw
+  // index each byte came from; built on first use of find_codes.
+  struct Operand {
+    std::string bytes;
+    std::string lowered;
+    std::vector<std::size_t> owner;
+  };
+  std::vector<Operand> operands_;
 };
 
 }  // namespace pdfkit::redact

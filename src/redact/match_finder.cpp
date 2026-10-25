@@ -262,27 +262,29 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_codes(const Match& match,
       }
     }
   }
-  std::size_t start = 0;
-  while (start < glyphs.size()) {
-    // One string operand: consecutive records of one walk, operator and
-    // operand.
-    std::size_t end = start + 1;
-    while (end < glyphs.size() && glyphs[end].stream == glyphs[start].stream &&
-           glyphs[end].operation == glyphs[start].operation &&
-           glyphs[end].operand == glyphs[start].operand) {
-      ++end;
-    }
-    std::string bytes;
-    std::vector<std::size_t> owner;
-    for (std::size_t g = start; g < end; ++g) {
-      for (std::size_t i = glyphs[g].code_length; i > 0; --i) {
-        bytes.push_back(static_cast<char>((glyphs[g].code >> (8U * (i - 1))) & 0xFFU));
-        owner.push_back(g);
+  if (operands_.empty()) {
+    std::size_t start = 0;
+    while (start < glyphs.size()) {
+      std::size_t end = start + 1;
+      while (end < glyphs.size() && glyphs[end].stream == glyphs[start].stream &&
+             glyphs[end].operation == glyphs[start].operation &&
+             glyphs[end].operand == glyphs[start].operand) {
+        ++end;
       }
+      Operand& operand = operands_.emplace_back();
+      for (std::size_t g = start; g < end; ++g) {
+        for (std::size_t i = glyphs[g].code_length; i > 0; --i) {
+          operand.bytes.push_back(static_cast<char>((glyphs[g].code >> (8U * (i - 1))) & 0xFFU));
+          operand.owner.push_back(g);
+        }
+      }
+      operand.lowered = lower_ascii(operand.bytes);
+      start = end;
     }
-    if (match.folding.text.case_fold) {
-      bytes = lower_ascii(std::move(bytes));
-    }
+  }
+  for (const Operand& operand : operands_) {
+    const std::string& bytes = match.folding.text.case_fold ? operand.lowered : operand.bytes;
+    const std::vector<std::size_t>& owner = operand.owner;
     for (const std::string& form : forms) {
       for (std::size_t at = bytes.find(form); at != std::string::npos;
            at = bytes.find(form, at + 1)) {
@@ -307,7 +309,6 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_codes(const Match& match,
         }
       }
     }
-    start = end;
   }
   return found;
 }
