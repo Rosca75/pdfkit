@@ -554,7 +554,7 @@ the same objects.
 | `/Filter` (last of the chain) | Decoded by |
 |---|---|
 | none, `FlateDecode`, `LZWDecode`, `RunLengthDecode`, `ASCII85Decode`, `ASCIIHexDecode`, with predictors | the syntax filters (§3), then the colour pipeline (§9.4) |
-| `DCTDecode` | libjpeg-turbo; CMYK and YCCK JPEGs decoded to CMYK, an Adobe APP14 marker meaning inverted CMYK values, as every viewer reads them |
+| `DCTDecode` | libjpeg-turbo; CMYK and YCCK JPEGs decoded to CMYK as stored, an Adobe APP14 marker inverting nothing, as PDFium reads them (measured: inverting the dataset's YCCK JPEGs makes them differ from PDFium by a mean of 248 per channel); a `/Decode` array inverts where a file means it |
 | `JPXDecode` | OpenJPEG; the codestream's own colour space wins over `/ColorSpace` when the dictionary has none; `/SMaskInData` 1 or 2 takes the alpha channel as the soft mask |
 | `JBIG2Decode` | written here, ported from pdf.js's `jbig2.js` (Apache 2.0): the file header and embedded organisation, `/JBIG2Globals`, generic regions (arithmetic with templates 0 to 3, TPGDON, and MMR), refinement regions, symbol dictionaries and text regions (with and without Huffman tables, the standard tables), pattern dictionaries and halftone regions, page information and end-of-stripe; 1 is black unless `/Decode [1 0]` |
 | `CCITTFaxDecode` | written here, ported from pdf.js's `ccitt.js` (Apache 2.0): `/K` < 0 (G4), 0 (G3 1D), > 0 (G3 2D), `/Columns`, `/Rows`, `/EncodedByteAlign`, `/EndOfLine`, `/EndOfBlock`, `/BlackIs1`, `/DamagedRowsBeforeError` |
@@ -575,8 +575,13 @@ treatments are limited to keep and remove (§14).
   through their alternate space and tint transform. Tint transforms implement
   function types 0 (sampled), 2 (exponential), 3 (stitching) and 4 (the
   PostScript calculator, with an operator budget per evaluation and a
-  per-image cache of evaluated inputs). CMYK becomes RGB by the naive complement
-  (`R = (1-C)(1-K)`), stated, because no colour management is vendored.
+  per-image cache of evaluated inputs). CMYK becomes RGB through PDFium's
+  Adobe CMYK table (a 9 x 9 x 9 x 9 grid of sRGB samples interpolated per
+  axis, ported from PDFium under BSD-3), because the naive complement
+  (`R = (1-C)(1-K)`) differs from the independent reader by 10 to 20 per
+  channel on real CMYK images; no colour management is vendored, so an
+  `ICCBased` profile is read as its device space (`OPEN-QUESTIONS.md` §2
+  holds the owner's confirmation).
 - Masks: `/SMask` (a grey image, with `/Matte` un-premultiplied), `/Mask` as a
   colour-key range array or as a stencil image; a mask whose size differs from
   the base is kept at its own size.
@@ -914,6 +919,7 @@ Every refusal carries the three fields of CLAUDE.md §3.3 (`failed`,
 | `unsupported_security_handler` | `/Encrypt` names a handler other than `/Standard`, or a revision outside 2 to 6 | the handler and revision found, and to remove the protection in the producing application |
 | `limit_exceeded` | a stream, the document, an image or an allocation past a limit of §3.2 | the object, the limit, and to re-save or split the file or raise the limit at open |
 | `page_ceiling` | the page count is above the configured ceiling | the count and the ceiling, and to split the file or raise the ceiling at open |
+| `undecodable_image` | `pdfkit_image_data` asked for an image whose encoding does not decode (the call is refused, the document is not) | the identity, the encoding, the object and the fault, and that only keep and remove apply |
 
 | Warning code | When | The message names |
 |---|---|---|

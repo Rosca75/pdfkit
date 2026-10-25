@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The pdfkit authors
 #
-# The image agreement: the decoder gate of the images layer (build-6.md
-# section 4). It runs pdfkit_image_census (tests/dataset/image_census.cpp)
+# The image agreement: the decoder gate of the images layer. It runs
+# pdfkit_image_census (tests/dataset/image_census.cpp)
 # over every manifest file whose open expectation is opens or repaired, each
 # file in its own child process with a 30 s limit, and asks PDFium for the
 # bitmap of the same images: PDFium's image objects (pages and the forms they

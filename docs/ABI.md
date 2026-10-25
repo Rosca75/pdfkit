@@ -43,7 +43,7 @@ change that implements it.
 |---|---|---|---|
 | 0 | `PDFKIT_OK` | the call succeeded; the buffer holds the result | none |
 | 1 | `PDFKIT_E_INVALID_ARGUMENT` | a null handle or required argument, or malformed JSON input | `invalid_argument` |
-| 2 | `PDFKIT_E_REFUSED` | the input document is refused | `not_pdf`, `no_page`, `password_required`, `unsupported_security_handler`, `limit_exceeded`, `page_ceiling` (`docs/DESIGN.md` §19) |
+| 2 | `PDFKIT_E_REFUSED` | the input document is refused | `not_pdf`, `no_page`, `password_required`, `unsupported_security_handler`, `limit_exceeded`, `page_ceiling`, and `undecodable_image` for one image that does not decode (`docs/DESIGN.md` §19) |
 | 3 | `PDFKIT_E_SELF_CHECK` | the self-check found a redacted string in the output; no output is returned | `self_check` (`docs/DESIGN.md` §18) |
 | 4 | `PDFKIT_E_NOT_IMPLEMENTED` | the catalogue function is not part of this build | `not_implemented` |
 | 5 | `PDFKIT_E_INTERNAL` | a defect in pdfkit | `internal` |
@@ -314,6 +314,44 @@ bytes.
 | `rectangles` | the rectangles a redaction changed, per page; empty when nothing was redacted |
 | `self_check` | `{"status": "not_run", "reason": ...}` when the plan redacts no text; the self-check's verdict otherwise (`docs/DESIGN.md` §18) |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode and was dropped |
+
+### 4.8 pdfkit_image_data (catalogue 3.2)
+
+`pdfkit_image_data(doc, identity, options_json, out)` writes one image's file
+bytes into `out` (`docs/DESIGN.md` §9.5); the bytes are not JSON. `identity`
+is an image identity (`img:` and 16 lower-case hexadecimal digits, `CLAUDE.md`
+§4) of an image XObject the document's pages reach through their resources,
+their forms' resources, or the resources of a tiling pattern or soft-mask
+group. The options:
+
+| Key | Value | Default | Effect |
+|---|---|---|---|
+| `mask` | `true` or `false` | `false` | the image's mask instead of the image: the `/SMask` (grey, 8 or 16 bits), a `/Mask` stencil or colour key (1-bit grey, white where the image shows), or the JPEG 2000 alpha of `/SMaskInData`, at the mask's own size |
+| `decode_jpeg` | `true` or `false` | `false` | a PNG of a `DCTDecode` image's decoded pixels instead of its JPEG bytes |
+
+On success `out` holds:
+
+- for a `DCTDecode` image (the codec last in its chain), the JPEG bytes as
+  stored, after any non-image filter before the codec;
+- for every other image, a PNG: grey, grey with alpha, RGB or RGB with
+  alpha, at 1 bit (a bitonal grey image), 8 bits, or 16 bits when the source
+  is 16-bit; an `/ImageMask` stencil is a 1-bit grey PNG, black where it
+  paints, its white made transparent by `tRNS`. CMYK, Lab, Indexed,
+  Separation and DeviceN images are converted to RGB (`docs/DESIGN.md` §9.4).
+
+The PNG bytes depend on the pixels alone, so two calls give the same bytes.
+
+| Failure | Status | `code` |
+|---|---|---|
+| a null `doc` or `out`, a null or empty `identity`, malformed `options_json`, an unknown option, a non-boolean option | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| an identity that names no image of the document | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| `mask` on an image without a mask | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| an image whose encoding does not decode (the message names the identity, the encoding, the object and the fault) | `PDFKIT_E_REFUSED` | `undecodable_image` |
+| decoding past a limit of the open options | `PDFKIT_E_REFUSED` | `limit_exceeded` |
+
+The first image call on a handle lists the document's images once and keeps
+the list with the handle; every call charges the bytes it decodes to the
+document's decoding budget (`docs/DESIGN.md` §3.2).
 
 ## 5. Versioning
 
