@@ -32,7 +32,9 @@ using pdfkit::syntax::Object;
 using pdfkit::test::PdfBuilder;
 using pdfkit::test::PdfEncryptor;
 
-const std::string content = "BT /F1 12 Tf 72 720 Td (Stream copier content) Tj ET";
+std::string_view content() {
+  return "BT /F1 12 Tf 72 720 Td (Stream copier content) Tj ET";
+}
 
 std::string write_identity(const std::string& file) {
   const auto document = pdfkit::test::open_document(file);
@@ -69,29 +71,28 @@ std::string first_page_content(const std::string& output) {
 TEST_CASE("an untouched Flate stream is copied byte for byte with its filter") {
   PdfBuilder builder;
   builder.begin_document();
-  (void)builder.add_page(content, "", true);
+  (void)builder.add_page(std::string(content()), "", true);
   const std::string output = write_identity(builder.build());
-  CHECK(output.find(PdfBuilder::deflate(content)) != std::string::npos);
+  CHECK(output.find(PdfBuilder::deflate(std::string(content()))) != std::string::npos);
   CHECK(output.find("/Filter /FlateDecode") != std::string::npos);
-  CHECK(first_page_content(output) == content);
+  CHECK(first_page_content(output) == std::string(content()));
 }
 
 TEST_CASE("an ASCII85 and Flate chain is kept") {
   PdfBuilder builder;
   builder.begin_document();
-  const std::string encoded = ascii85(PdfBuilder::deflate(content));
-  const std::uint32_t stream =
-      builder.add_stream("/Filter [/ASCII85Decode /FlateDecode]", encoded);
+  const std::string encoded = ascii85(PdfBuilder::deflate(std::string(content())));
+  const std::uint32_t stream = builder.add_stream("/Filter [/ASCII85Decode /FlateDecode]", encoded);
   const std::uint32_t page = builder.reserve();
   builder.set(page, "<< /Type /Page /Parent " + std::to_string(builder.page_tree()) +
                         " 0 R /MediaBox [0 0 612 792] /Contents " + std::to_string(stream) +
                         " 0 R >>");
-  builder.set(builder.page_tree(), "<< /Type /Pages /Kids [" + std::to_string(page) +
-                                       " 0 R] /Count 1 >>");
+  builder.set(builder.page_tree(),
+              "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
   const std::string output = write_identity(builder.build());
   CHECK(output.find(encoded) != std::string::npos);
   CHECK(output.find("/Filter [/ASCII85Decode /FlateDecode]") != std::string::npos);
-  CHECK(first_page_content(output) == content);
+  CHECK(first_page_content(output) == std::string(content()));
 }
 
 TEST_CASE("streams of an encrypted source are written decrypted with their filters") {
@@ -111,16 +112,17 @@ TEST_CASE("streams of an encrypted source are written decrypted with their filte
     CAPTURE(test.name);
     PdfBuilder builder;
     builder.begin_document();
-    (void)builder.add_page(content, "", true);
-    const std::uint32_t info = builder.add("<< /Title " + PdfBuilder::str("Encrypted title") + " >>");
+    (void)builder.add_page(std::string(content()), "", true);
+    const std::uint32_t info =
+        builder.add("<< /Title " + PdfBuilder::str("Encrypted title") + " >>");
     builder.set_info(info);
     builder.encrypt(test.spec);
     const std::string output = write_identity(builder.build());
     const auto document = pdfkit::test::reopen(output);
     CHECK_FALSE(document->security().has_value());
     CHECK_FALSE(document->trailer().contains("Encrypt"));
-    CHECK(pdfkit::test::page_text(*document, 1) == content);
-    CHECK(output.find(PdfBuilder::deflate(content)) != std::string::npos);
+    CHECK(pdfkit::test::page_text(*document, 1) == std::string(content()));
+    CHECK(output.find(PdfBuilder::deflate(std::string(content()))) != std::string::npos);
     const Object title = document->resolve_entry(*document->info().dictionary(), "Title");
     REQUIRE(title.string() != nullptr);
     CHECK(title.string()->bytes == "Encrypted title");
@@ -132,13 +134,13 @@ TEST_CASE("a /Crypt filter goes with the encryption") {
   builder.begin_document();
   const std::uint32_t stream =
       builder.add_stream("/Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name /Identity >> null]",
-                         PdfBuilder::deflate(content));
+                         PdfBuilder::deflate(std::string(content())));
   const std::uint32_t page = builder.reserve();
   builder.set(page, "<< /Type /Page /Parent " + std::to_string(builder.page_tree()) +
                         " 0 R /MediaBox [0 0 612 792] /Contents " + std::to_string(stream) +
                         " 0 R >>");
-  builder.set(builder.page_tree(), "<< /Type /Pages /Kids [" + std::to_string(page) +
-                                       " 0 R] /Count 1 >>");
+  builder.set(builder.page_tree(),
+              "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
   PdfEncryptor::Spec spec;
   spec.revision = 4;
   spec.stream_filter = "Identity";
@@ -146,12 +148,12 @@ TEST_CASE("a /Crypt filter goes with the encryption") {
   const std::string output = write_identity(builder.build());
   CHECK(output.find("/Crypt") == std::string::npos);
   CHECK(output.find("/Filter [/FlateDecode] /DecodeParms [null]") != std::string::npos);
-  CHECK(first_page_content(output) == content);
+  CHECK(first_page_content(output) == std::string(content()));
 
   // A created stream is never decrypted, so its filters stay as written.
   Dictionary dictionary;
-  dictionary.set("Filter",
-                 Object::make_array({Object::make_name("Crypt"), Object::make_name("FlateDecode")}));
+  dictionary.set(
+      "Filter", Object::make_array({Object::make_name("Crypt"), Object::make_name("FlateDecode")}));
   const auto document = pdfkit::test::open_document(builder.build());
   const pdfkit::syntax::Stream created(dictionary, std::vector<std::byte>{});
   const auto copy = pdfkit::writer::StreamCopier::copy(*document, created);
@@ -166,7 +168,7 @@ TEST_CASE("a rewritten stream is Flate-compressed and its /Length is right") {
   dictionary.set("DecodeParms", Object::make_name("Junk"));
   dictionary.set("Type", Object::make_name("XObject"));
   const auto stream =
-      pdfkit::writer::StreamCopier::compress(dictionary, pdfkit::platform::as_bytes(content));
+      pdfkit::writer::StreamCopier::compress(dictionary, pdfkit::platform::as_bytes(content()));
   CHECK(stream.dictionary().get("Filter").is_name("FlateDecode"));
   CHECK_FALSE(stream.dictionary().contains("DL"));
   CHECK_FALSE(stream.dictionary().contains("DecodeParms"));
@@ -181,5 +183,5 @@ TEST_CASE("a rewritten stream is Flate-compressed and its /Length is right") {
         static_cast<std::int64_t>(stream.owned_data().size()));
   const auto decoded = document->decode(stream);
   CHECK(std::string(reinterpret_cast<const char*>(decoded.bytes.data()), decoded.bytes.size()) ==
-        content);
+        std::string(content()));
 }

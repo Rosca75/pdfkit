@@ -46,8 +46,7 @@ class StreamCopier {
                                                platform::ByteSpan decoded);
 
   // A created stream holding data as it is, uncompressed (the XMP packet).
-  [[nodiscard]] static syntax::Stream plain(syntax::Dictionary dictionary,
-                                            platform::ByteSpan data);
+  [[nodiscard]] static syntax::Stream plain(syntax::Dictionary dictionary, platform::ByteSpan data);
 
   // data as a zlib stream (RFC 1950, recalled) at compression_level.
   [[nodiscard]] static std::vector<std::byte> deflate(platform::ByteSpan data);

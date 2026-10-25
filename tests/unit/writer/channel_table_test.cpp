@@ -52,7 +52,7 @@ JsonValue channels_of(const std::string& file) {
 std::int64_t count_of(const JsonValue& report, std::string_view id) {
   for (const JsonValue& row : report.find("channels")->as_array()) {
     if (row.find("id")->as_string() == id) {
-      return *row.find("count")->as_int64();
+      return row.find("count")->as_int64().value_or(-1);
     }
   }
   FAIL("no row " << id);
@@ -62,7 +62,7 @@ std::int64_t count_of(const JsonValue& report, std::string_view id) {
 std::int64_t stripped_of(const JsonValue& report, std::string_view id) {
   for (const JsonValue& row : report.find("channels")->as_array()) {
     if (row.find("id")->as_string() == id) {
-      return *row.find("stripped")->as_int64();
+      return row.find("stripped")->as_int64().value_or(-1);
     }
   }
   return -1;
@@ -232,4 +232,20 @@ TEST_CASE("a /Redact annotation is counted as a pending redaction with its warni
   REQUIRE(warnings.size() == 1);
   CHECK(warnings.front().find("code")->as_string() == "pending_redactions");
   CHECK(warnings.front().find("page")->as_int64() == 2);
+}
+
+TEST_CASE("the XMP packet loses its media-management properties and keeps the rest") {
+  const std::string marker = PdfBuilderChannels::marker(16, 2);
+  const std::string output =
+      pdfkit::test::identity_write(PdfBuilderChannels::planted("ch_xmp_history", marker));
+  const std::string all = pdfkit::test::everything(output);
+  CHECK(all.find("xmpMM:History") == std::string::npos);
+  CHECK(all.find("xmpMM:DocumentID") == std::string::npos);
+  CHECK(all.find("xmpMM:InstanceID") == std::string::npos);
+  CHECK(all.find("uuid:1234") == std::string::npos);
+  CHECK(all.find("An ordinary title") != std::string::npos);
+  CHECK(all.find("<?xpacket end='w'?>") != std::string::npos);
+  // The packet is written uncompressed, so a tool scanning the raw bytes
+  // finds it.
+  CHECK(output.find("An ordinary title") != std::string::npos);
 }

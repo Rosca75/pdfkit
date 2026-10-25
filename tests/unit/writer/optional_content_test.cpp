@@ -44,8 +44,8 @@ std::string fixture() {
   (void)builder.add_page("/OC /c BDC 0 0 m 30 30 l S EMC",
                          "/Resources << /Properties << /c " + ref(c) + " >> >>");
   builder.set(builder.catalog(),
-              "<< /Type /Catalog /Pages " + ref(builder.page_tree()) +
-                  " /OCProperties << /OCGs [" + ref(c) + " " + ref(a) + " " + ref(b) +
+              "<< /Type /Catalog /Pages " + ref(builder.page_tree()) + " /OCProperties << /OCGs [" +
+                  ref(c) + " " + ref(a) + " " + ref(b) +
                   "] /D << /Name (Default config) /Creator (Someone) /BaseState /ON /OFF [" +
                   ref(b) + "] /Order [(Label) [" + ref(a) + " " + ref(b) + "] " + ref(c) +
                   "] /AS [] >> /Configs [<< /Name (Alternate) /OFF [" + ref(a) + "] >>] >> >>");
@@ -61,9 +61,8 @@ std::string name_of(pdfkit::syntax::Document& document, const Object& group) {
 
 TEST_CASE("groups are renamed, their state and order kept, the rest dropped") {
   const std::string output = pdfkit::test::identity_write(fixture());
-  for (const char* text :
-       {"Jane Doe layer", "Hidden notes", "Only page two", "Secret app", "Default config",
-        "Someone", "Alternate", "Label"}) {
+  for (const char* text : {"Jane Doe layer", "Hidden notes", "Only page two", "Secret app",
+                           "Default config", "Someone", "Alternate", "Label"}) {
     CHECK_FALSE(pdfkit::test::contains_marker(output, text));
   }
   const auto document = pdfkit::test::reopen(output);
@@ -109,7 +108,8 @@ TEST_CASE("a group only a removed page uses goes with the page") {
   REQUIRE(groups.size() == 2);
   CHECK(name_of(*document, groups[0]) == "OC1");
   CHECK(name_of(*document, groups[1]) == "OC2");
-  const Object::Array& order = *properties.dictionary()->get("D").dictionary()->get("Order").array();
+  const Object::Array& order =
+      *properties.dictionary()->get("D").dictionary()->get("Order").array();
   CHECK(order.size() == 1);
 }
 
@@ -126,8 +126,8 @@ TEST_CASE("optional content no kept page uses is dropped whole") {
   const std::uint32_t lone = builder.add("<< /Type /OCG /Name (Nobody) >>");
   (void)builder.add_page("BT ET");
   builder.set(builder.catalog(), "<< /Type /Catalog /Pages " + ref(builder.page_tree()) +
-                                     " /OCProperties << /OCGs [" + ref(lone) +
-                                     "] /D << /ON [" + ref(lone) + "] >> >> >>");
+                                     " /OCProperties << /OCGs [" + ref(lone) + "] /D << /ON [" +
+                                     ref(lone) + "] >> >> >>");
   const auto none = pdfkit::test::reopen(pdfkit::test::identity_write(builder.build()));
   CHECK_FALSE(none->catalog().dictionary()->contains("OCProperties"));
 }

@@ -11,6 +11,7 @@
 
 #include <set>
 #include <string>
+#include <utility>
 
 namespace pdfkit::redact {
 
@@ -27,7 +28,7 @@ void EditPlan::select_pages(const std::vector<std::int64_t>& pages) {
   std::vector<std::uint32_t> kept;
   kept.reserve(pages.size());
   for (const std::int64_t page : pages) {
-    if (page < 1 || static_cast<std::uint64_t>(page) > count) {
+    if (page < 1 || std::cmp_greater(page, count)) {
       throw platform::Error(
           platform::ErrorCode::invalid_argument,
           "pdfkit_select_pages was given page " + std::to_string(page) + ", but the document has " +
@@ -35,11 +36,11 @@ void EditPlan::select_pages(const std::vector<std::int64_t>& pages) {
           range, "remove page " + std::to_string(page) + " from the list or check the document");
     }
     if (!seen.insert(page).second) {
-      throw platform::Error(platform::ErrorCode::invalid_argument,
-                            "pdfkit_select_pages was given page " + std::to_string(page) +
-                                " more than once",
-                            "each page named once, " + range,
-                            "remove the repeated " + std::to_string(page) + " from the list");
+      throw platform::Error(
+          platform::ErrorCode::invalid_argument,
+          "pdfkit_select_pages was given page " + std::to_string(page) + " more than once",
+          "each page named once, " + range,
+          "remove the repeated " + std::to_string(page) + " from the list");
     }
     kept.push_back(static_cast<std::uint32_t>(page));
   }

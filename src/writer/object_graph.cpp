@@ -60,11 +60,11 @@ Object ObjectGraph::resolve_entry(const Dictionary& dictionary, std::string_view
 
 void ObjectGraph::set(std::uint32_t number, Object value) {
   if (number == 0 || number >= next_) {
-    throw platform::Error(platform::ErrorCode::internal,
-                          "the writer replaced object " + std::to_string(number) +
-                              ", which the graph never numbered",
-                          "an edit of a source object or of an object the graph added",
-                          "this is a defect in pdfkit; report it with the input file");
+    throw platform::Error(
+        platform::ErrorCode::internal,
+        "the writer replaced object " + std::to_string(number) + ", which the graph never numbered",
+        "an edit of a source object or of an object the graph added",
+        "this is a defect in pdfkit; report it with the input file");
   }
   edits_[number] = std::move(value);
 }

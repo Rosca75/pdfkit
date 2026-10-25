@@ -96,10 +96,10 @@ TEST_CASE("pdfkit_edit_new refuses a null document and a null out_edit") {
 TEST_CASE("pdfkit_select_pages refuses an empty, duplicated or out-of-range list") {
   Session session(three_pages());
   std::string text;
-  for (const char* bad : {R"({"pages": []})", R"({"pages": [1, 2, 1]})", R"({"pages": [0]})",
-                          R"({"pages": [4]})", R"({"pages": [-1]})", R"({"pages": [1.5]})",
-                          R"({"pages": ["1"]})", R"({"pages": 1})", R"({})",
-                          R"({"pages": [1], "order": "reverse"})", "[1, 2]", "not json"}) {
+  for (const char* bad :
+       {R"({"pages": []})", R"({"pages": [1, 2, 1]})", R"({"pages": [0]})", R"({"pages": [4]})",
+        R"({"pages": [-1]})", R"({"pages": [1.5]})", R"({"pages": ["1"]})", R"({"pages": 1})",
+        R"({})", R"({"pages": [1], "order": "reverse"})", "[1, 2]", "not json"}) {
     INFO(bad);
     CHECK(select(session, bad, text) == PDFKIT_E_INVALID_ARGUMENT);
     check_error(text, "invalid_argument");

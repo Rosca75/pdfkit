@@ -52,8 +52,7 @@ std::string FileWriter::header_version(const std::string& version) {
 FileWriter::Result FileWriter::write(ObjectGraph& graph) {
   const std::uint32_t root = graph.root();
   if (root == 0 || graph.get(root).dictionary() == nullptr) {
-    throw platform::Error(platform::ErrorCode::internal,
-                          "the writer has no catalog to write",
+    throw platform::Error(platform::ErrorCode::internal, "the writer has no catalog to write",
                           "a document whose trailer names its catalog",
                           "this is a defect in pdfkit; report it with the input file");
   }
@@ -75,7 +74,7 @@ FileWriter::Result FileWriter::write(ObjectGraph& graph) {
   for (const std::uint32_t number : reachable.order()) {
     offsets.push_back(out.size());
     const Object value = graph.get(number);
-    out += std::to_string(*numbers.find(number));
+    out += std::to_string(offsets.size());
     out += " 0 obj\n";
     if (const syntax::Stream* stream = value.stream()) {
       const StreamCopier::Copy copy = StreamCopier::copy(graph.document(), *stream);
@@ -93,8 +92,8 @@ FileWriter::Result FileWriter::write(ObjectGraph& graph) {
   if (const auto reference = graph.trailer().get("Info").reference()) {
     info = numbers.find(reference->number);
   }
-  const XrefStreamWriter::Placed placed =
-      XrefStreamWriter::write(out, offsets, *numbers.find(root), info);
+  // The catalog is reached first, so it is object 1.
+  const XrefStreamWriter::Placed placed = XrefStreamWriter::write(out, offsets, 1, info);
   result.id = DocumentId::patch(out, placed.id_first, placed.id_second);
   result.objects = offsets.size();
   result.missing_references = reachable.missing();

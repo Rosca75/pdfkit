@@ -59,9 +59,11 @@ void write_literal(std::string& out, const std::string& bytes) {
           // Three octal digits (ISO 32000-1 section 7.3.4.2), so a following
           // digit is never read as part of the escape.
           out += '\\';
-          out += static_cast<char>('0' + ((byte >> 6U) & 7U));
-          out += static_cast<char>('0' + ((byte >> 3U) & 7U));
-          out += static_cast<char>('0' + (byte & 7U));
+          constexpr std::string_view octal = "01234567";
+          const unsigned value = byte;
+          out += octal[(value >> 6U) & 7U];
+          out += octal[(value >> 3U) & 7U];
+          out += octal[value & 7U];
         } else {
           out += c;
         }
@@ -85,8 +87,7 @@ void write_hex(std::string& out, const std::string& bytes) {
 void Serialiser::write_number(std::string& out, const Object::Number& number) {
   std::array<char, 400> buffer{};
   if (number.is_integer) {
-    const auto result =
-        std::to_chars(buffer.data(), buffer.data() + buffer.size(), number.integer);
+    const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), number.integer);
     out.append(buffer.data(), result.ptr);
     return;
   }
@@ -96,8 +97,8 @@ void Serialiser::write_number(std::string& out, const Object::Number& number) {
     out += "0.0";
     return;
   }
-  const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value,
-                                    std::chars_format::fixed);
+  const auto result =
+      std::to_chars(buffer.data(), buffer.data() + buffer.size(), value, std::chars_format::fixed);
   if (result.ec != std::errc{}) {
     out += "0.0";
     return;
@@ -187,8 +188,7 @@ void Serialiser::write(std::string& out, const Object& object, const Numbering& 
     case Object::Kind::stream:
       break;
   }
-  throw platform::Error(platform::ErrorCode::internal,
-                        "the writer met a stream as a direct object",
+  throw platform::Error(platform::ErrorCode::internal, "the writer met a stream as a direct object",
                         "every stream written as an indirect object of its own",
                         "this is a defect in pdfkit; report it with the input file");
 }

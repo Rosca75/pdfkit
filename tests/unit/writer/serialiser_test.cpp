@@ -135,10 +135,9 @@ TEST_CASE("references are renumbered and a missing one is written as null") {
     return std::nullopt;
   };
   std::string out;
-  Serialiser::write(out,
-                    Object::make_array({Object::make_reference({5, 0}),
-                                        Object::make_reference({6, 2})}),
-                    numbering);
+  Serialiser::write(
+      out, Object::make_array({Object::make_reference({5, 0}), Object::make_reference({6, 2})}),
+      numbering);
   CHECK(out == "[1 0 R null]");
 }
 

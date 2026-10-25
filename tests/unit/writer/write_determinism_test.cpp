@@ -45,8 +45,8 @@ TEST_CASE("one plan written twice gives the same bytes and the same /ID") {
   // Twice on one handle: the write leaves the document as it found it.
   pdfkit_buffer out{nullptr, 0, nullptr};
   pdfkit_document* doc = nullptr;
-  REQUIRE(pdfkit_open(reinterpret_cast<const std::uint8_t*>(source.data()), source.size(),
-                      nullptr, &doc, &out) == PDFKIT_OK);
+  REQUIRE(pdfkit_open(reinterpret_cast<const std::uint8_t*>(source.data()), source.size(), nullptr,
+                      &doc, &out) == PDFKIT_OK);
   pdfkit_buffer_free(&out);
   pdfkit_edit* edit = nullptr;
   REQUIRE(pdfkit_edit_new(doc, &edit, &out) == PDFKIT_OK);

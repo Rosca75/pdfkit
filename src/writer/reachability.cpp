@@ -30,7 +30,9 @@ void collect(const Object& value, std::vector<Object::Reference>& out) {
     pending.pop_back();
     switch (current->kind()) {
       case Object::Kind::reference:
-        out.push_back(*current->reference());
+        if (const auto reference = current->reference()) {
+          out.push_back(*reference);
+        }
         break;
       case Object::Kind::array:
         for (const Object& item : std::views::reverse(*current->array())) {

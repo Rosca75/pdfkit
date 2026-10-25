@@ -48,9 +48,8 @@ TEST_CASE("an unreferenced object is not reached; a cycle ends; a missing object
   const std::uint32_t b = builder.reserve();
   builder.set(a, "<< /Next " + std::to_string(b) + " 0 R /Gone 900 0 R /Again 900 0 R >>");
   builder.set(b, "<< /Next " + std::to_string(a) + " 0 R >>");
-  builder.set(builder.catalog(), "<< /Type /Catalog /Pages " +
-                                     std::to_string(builder.page_tree()) + " 0 R /Ring " +
-                                     std::to_string(a) + " 0 R >>");
+  builder.set(builder.catalog(), "<< /Type /Catalog /Pages " + std::to_string(builder.page_tree()) +
+                                     " 0 R /Ring " + std::to_string(a) + " 0 R >>");
   const auto document = pdfkit::test::open_document(builder.build());
   ObjectGraph graph(*document);
   const Reachability walk(graph);
@@ -68,9 +67,8 @@ TEST_CASE("an object reachable only through a dropped reference is not reached")
   builder.begin_document();
   (void)builder.add_page("BT ET");
   const std::uint32_t outline = builder.add("<< /Title (Bookmark) >>");
-  builder.set(builder.catalog(), "<< /Type /Catalog /Pages " +
-                                     std::to_string(builder.page_tree()) + " 0 R /Outlines " +
-                                     std::to_string(outline) + " 0 R >>");
+  builder.set(builder.catalog(), "<< /Type /Catalog /Pages " + std::to_string(builder.page_tree()) +
+                                     " 0 R /Outlines " + std::to_string(outline) + " 0 R >>");
   const auto document = pdfkit::test::open_document(builder.build());
   ObjectGraph graph(*document);
   CHECK(Reachability(graph).contains(outline));
@@ -86,10 +84,9 @@ TEST_CASE("the walk is depth first in stored order; numbers are dense from 1") {
   const std::uint32_t deep = builder.add("<< /Leaf true >>");
   const std::uint32_t second = builder.add("<< /Child " + std::to_string(deep) + " 0 R >>");
   const std::uint32_t first = builder.add("(first)");
-  builder.set(builder.catalog(), "<< /Type /Catalog /Pages " +
-                                     std::to_string(builder.page_tree()) + " 0 R /A [" +
-                                     std::to_string(second) + " 0 R " + std::to_string(first) +
-                                     " 0 R] >>");
+  builder.set(builder.catalog(), "<< /Type /Catalog /Pages " + std::to_string(builder.page_tree()) +
+                                     " 0 R /A [" + std::to_string(second) + " 0 R " +
+                                     std::to_string(first) + " 0 R] >>");
   const std::uint32_t page = builder.add_page("BT ET");
   const auto document = pdfkit::test::open_document(builder.build());
   ObjectGraph graph(*document);
@@ -124,9 +121,10 @@ TEST_CASE("a shuffled source numbering gives the same output") {
       }
     }
     builder.begin_document();
-    const std::uint32_t font =
-        shuffled ? builder.reserve() : builder.add("<< /Type /Font /Subtype /Type1 /BaseFont "
-                                                   "/Helvetica >>");
+    const std::uint32_t font = shuffled ? builder.reserve()
+                                        : builder.add(
+                                              "<< /Type /Font /Subtype /Type1 /BaseFont "
+                                              "/Helvetica >>");
     (void)builder.add_page("BT /F1 12 Tf 72 720 Td (Hello) Tj ET",
                            "/Resources << /Font << /F1 " + std::to_string(font) + " 0 R >> >>");
     if (shuffled) {

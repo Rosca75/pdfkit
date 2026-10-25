@@ -34,10 +34,8 @@ class WritePipeline {
   [[nodiscard]] static Output run(EditPlan& plan);
 
  private:
-  static void select_pages(EditPlan& plan, writer::ObjectGraph& graph,
-                           writer::WriteReport& report);
-  static void text_surgery(EditPlan& plan, writer::ObjectGraph& graph,
-                           writer::WriteReport& report);
+  static void select_pages(EditPlan& plan, writer::ObjectGraph& graph, writer::WriteReport& report);
+  static void text_surgery(EditPlan& plan, writer::ObjectGraph& graph, writer::WriteReport& report);
   static void image_treatments(EditPlan& plan, writer::ObjectGraph& graph,
                                writer::WriteReport& report);
   static void metadata(EditPlan& plan, writer::ObjectGraph& graph, writer::WriteReport& report);

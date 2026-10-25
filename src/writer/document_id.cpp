@@ -15,7 +15,7 @@
 namespace pdfkit::writer {
 
 std::string DocumentId::placeholder() {
-  return std::string(digits, '0');
+  return {std::string(digits, '0')};
 }
 
 std::string DocumentId::patch(std::string& file, std::size_t first, std::size_t second) {

@@ -36,8 +36,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_write(pdfkit_edit* edit, const char* 
               "\", but write takes none",
           "an empty JSON object or NULL", "pass NULL or {} as options_json");
     }
-    pdfkit::redact::WritePipeline::Output output =
-        pdfkit::redact::WritePipeline::run(*handle.plan);
+    pdfkit::redact::WritePipeline::Output output = pdfkit::redact::WritePipeline::run(*handle.plan);
     std::string report = output.report.json();
     pdfkit::api::write_buffer(out_pdf, std::move(output.pdf));
     pdfkit::api::write_buffer(out, std::move(report));

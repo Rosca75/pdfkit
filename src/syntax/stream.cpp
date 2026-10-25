@@ -28,8 +28,7 @@ std::string Stream::describe() const {
 
 bool operator==(const Stream& a, const Stream& b) {
   if (a.dictionary_ != b.dictionary_ || a.data_offset_ != b.data_offset_ ||
-      a.data_length_ != b.data_length_ || a.owner_ != b.owner_ ||
-      a.owns_data() != b.owns_data()) {
+      a.data_length_ != b.data_length_ || a.owner_ != b.owner_ || a.owns_data() != b.owns_data()) {
     return false;
   }
   return !a.owns_data() || std::ranges::equal(a.owned_data(), b.owned_data());

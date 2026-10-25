@@ -41,8 +41,7 @@ class Reachability {
 
   // The references in value in the walk's order (a stream's /Length left
   // out), appended to out.
-  static void references(const syntax::Object& value,
-                         std::vector<syntax::Object::Reference>& out);
+  static void references(const syntax::Object& value, std::vector<syntax::Object::Reference>& out);
 
  private:
   std::vector<std::uint32_t> order_;

@@ -33,7 +33,7 @@ Call take(pdfkit_status status, pdfkit_buffer& out) {
   return call;
 }
 
-std::string status_name(pdfkit_status status) {
+std::string_view status_name(pdfkit_status status) {
   switch (status) {
     case PDFKIT_OK:
       return "PDFKIT_OK";
@@ -58,15 +58,15 @@ std::string failure(const Call& call) {
   const std::optional<JsonText> error = JsonText::parse(call.text, offset);
   const JsonText::Node* code = error ? error->member(error->root(), "code") : nullptr;
   if (call.status == PDFKIT_E_REFUSED) {
-    return "\"status\": \"refused\", \"code\": " +
+    return R"("status": "refused", "code": )" +
            json_quote(code != nullptr ? code->text : std::string("refused"));
   }
   if (call.status == PDFKIT_E_NOT_IMPLEMENTED) {
     return R"("status": "not_implemented", "code": "PDFKIT_E_NOT_IMPLEMENTED")";
   }
   const JsonText::Node* failed = error ? error->member(error->root(), "failed") : nullptr;
-  return "\"status\": \"error\", \"code\": " + json_quote(status_name(call.status)) +
-         ", \"message\": " + json_quote(failed != nullptr ? failed->text : call.text);
+  return R"("status": "error", "code": )" + json_quote(status_name(call.status)) +
+         R"(, "message": )" + json_quote(failed != nullptr ? failed->text : call.text);
 }
 
 std::string strings(const std::vector<std::string>& values) {
@@ -101,7 +101,7 @@ std::string reopen(const std::string& pdf) {
                            out);
   pdfkit_close(document);
   if (opened.status != PDFKIT_OK) {
-    return "{" + failure(opened) + ", \"pages\": null, \"repairs\": []}";
+    return "{" + failure(opened) + R"(, "pages": null, "repairs": []})";
   }
   std::size_t offset = 0;
   const std::optional<JsonText> report = JsonText::parse(opened.text, offset);
@@ -155,8 +155,8 @@ std::optional<std::string> store(const Written& written, const std::string& out_
   if (!write_output_file("dataset", path + relative, data, written.pdf.size())) {
     return std::nullopt;
   }
-  return "\"output\": " + json_quote(relative) + ", \"sha256\": " +
-         json_quote(Sha256::hex(data, written.pdf.size())) +
+  return "\"output\": " + json_quote(relative) +
+         ", \"sha256\": " + json_quote(Sha256::hex(data, written.pdf.size())) +
          ", \"bytes\": " + std::to_string(written.pdf.size());
 }
 
@@ -207,10 +207,10 @@ DatasetWrite dataset_write(pdfkit_document* document, std::string_view id, std::
   if (channels.status == PDFKIT_OK) {
     std::size_t offset = 0;
     const std::optional<JsonText> report = JsonText::parse(channels.text, offset);
-    members.channels = R"({"status": "ok", "code": null, "present": )" +
-                       raw_or_null(report ? &*report : nullptr,
-                                   report ? &report->root() : nullptr, "present") +
-                       "}";
+    members.channels =
+        R"({"status": "ok", "code": null, "present": )" +
+        raw_or_null(report ? &*report : nullptr, report ? &report->root() : nullptr, "present") +
+        "}";
   } else {
     members.channels = "{" + failure(channels) + "}";
   }
@@ -234,10 +234,10 @@ DatasetWrite dataset_write(pdfkit_document* document, std::string_view id, std::
         }
       }
     }
-    const std::optional<std::string> stored =
-        store(identity, out_dir, std::string(id) + ".pdf");
+    const std::optional<std::string> stored = store(identity, out_dir, std::string(id) + ".pdf");
     if (!stored) {
-      members.write = R"({"status": "error", "code": "output_failed", "message": "the output could not be written"})";
+      members.write =
+          R"({"status": "error", "code": "output_failed", "message": "the output could not be written"})";
     } else {
       const JsonText* document_report = report ? &*report : nullptr;
       const JsonText::Node* root = report ? &report->root() : nullptr;
@@ -262,11 +262,12 @@ DatasetWrite dataset_write(pdfkit_document* document, std::string_view id, std::
   const std::optional<std::string> stored =
       store(selected, out_dir, std::string(id) + ".select.pdf");
   if (!stored) {
-    members.select = R"({"status": "error", "code": "output_failed", "message": "the output could not be written"})";
+    members.select =
+        R"({"status": "error", "code": "output_failed", "message": "the output could not be written"})";
     return members;
   }
-  members.select = R"({"status": "ok", "code": null, "pages": )" + numbers(kept) + ", " +
-                   *stored + ", \"reopen\": " + reopen(selected.pdf) + "}";
+  members.select = R"({"status": "ok", "code": null, "pages": )" + numbers(kept) + ", " + *stored +
+                   ", \"reopen\": " + reopen(selected.pdf) + "}";
   return members;
 }
 

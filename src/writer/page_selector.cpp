@@ -120,9 +120,9 @@ class Pruner {
         // /DefaultGray, /DefaultRGB and /DefaultCMYK are named by no operator:
         // they replace the device spaces wherever those are used (ISO 32000-1
         // section 8.6.5.6, read).
-        const bool default_space = key == "ColorSpace" && (name == "DefaultGray" ||
-                                                           name == "DefaultRGB" ||
-                                                           name == "DefaultCMYK");
+        const bool default_space =
+            key == "ColorSpace" &&
+            (name == "DefaultGray" || name == "DefaultRGB" || name == "DefaultCMYK");
         if (default_space || usage.uses(key, name)) {
           kept.set(name, entry);
         }
@@ -183,8 +183,7 @@ class Pruner {
     }
   }
 
-  Object entry_of(const Dictionary& resources, std::string_view category,
-                  const std::string& name) {
+  Object entry_of(const Dictionary& resources, std::string_view category, const std::string& name) {
     const Object group = graph_.resolve_entry(resources, category);
     if (const Dictionary* entries = group.dictionary()) {
       return entries->get(name);
@@ -299,7 +298,8 @@ PageSelector::Result PageSelector::apply(ObjectGraph& graph,
       graph.set(own, Object::make_dictionary(std::move(dictionary)));
       kids.push_back(Object::make_reference({own, 0}));
     } else {
-      kids.push_back(Object::make_reference(graph.add(Object::make_dictionary(std::move(dictionary)))));
+      kids.push_back(
+          Object::make_reference(graph.add(Object::make_dictionary(std::move(dictionary)))));
     }
   }
   Dictionary tree;
@@ -319,7 +319,8 @@ PageSelector::Result PageSelector::apply(ObjectGraph& graph,
     created.set("Type", Object::make_name("Catalog"));
     created.set("Pages", Object::make_reference(node));
     Dictionary trailer = graph.trailer();
-    trailer.set("Root", Object::make_reference(graph.add(Object::make_dictionary(std::move(created)))));
+    trailer.set("Root",
+                Object::make_reference(graph.add(Object::make_dictionary(std::move(created)))));
     graph.set_trailer(std::move(trailer));
   }
   result.unpruned = pruner.unpruned();

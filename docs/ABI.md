@@ -140,7 +140,7 @@ type and never a time, so two builds of one tree report the same text.
 | 6 | `pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json, pdfkit_buffer* out)` | `edit`, `treatments_json`, `out` | the per-treatment JSON | `build-9.md` |
 | 7 | `pdfkit_set_metadata(pdfkit_edit* edit, const char* fields_json, pdfkit_buffer* out)` | `edit`, `fields_json`, `out` | the fields as they will be written | `build-10.md` |
 | 8 | `pdfkit_channels(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the channel report JSON | `build-7.md` |
-| 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{}` | `build-7.md` |
+| 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `build-7.md` |
 | 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `build-7.md`, self-check `build-8.md` |
 | 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `build-8.md` |
 
@@ -224,6 +224,97 @@ the rotation (0, 90, 180 or 270). `encryption`, `repairs` and `warnings` are
 those of the open report at the time of the call. Keys are written in the order
 shown, so two calls give the same bytes.
 
+### 4.5 pdfkit_channels (catalogue 8)
+
+`pdfkit_channels` reports, per row of the channel table (`docs/DESIGN.md`
+§15, `src/writer/channel_table.cpp`), whether the channel is present in the
+document and how many occurrences it holds; every `pdfkit_write` strips the
+same rows. It takes no options (`NULL` or `{}`; anything else is
+`invalid_argument`) and never fails on a valid handle.
+
+```json
+{
+  "channels": [{"id": "ch_revisions", "name": "earlier revisions (incremental updates)", "present": true, "count": 1}],
+  "present": ["ch_revisions"],
+  "pending_redactions": 0,
+  "warnings": [{"code": "pending_redactions", "message": "...", "page": 2}]
+}
+```
+
+`channels` holds the 23 rows in the table's order, each with its `id` (the
+dataset's taxonomy tag), its `name`, `present` and `count`; `present` lists the
+ids whose count is above zero. The counts: `ch_revisions` the sections the
+`startxref` chain adds after the first (a linearized file's first-page section
+discounted); `ch_unreferenced` the objects of the table no reference from the
+trailer reaches (cross-reference and object streams aside); `ch_thumbnail`,
+`ch_web_capture` the pages carrying the key (plus one for `/SpiderInfo`);
+`ch_pieceinfo`, `ch_last_modified`, `ch_object_metadata` the dictionaries
+carrying the key (the catalog's `/Metadata` aside); `ch_javascript` the
+JavaScript actions; `ch_embedded_file` the `/EF` and `/AF` entries;
+`ch_annotation` the annotations of every page; `ch_acroform` the top-level
+fields plus one for `/XFA`; `ch_outline` the outline items; `ch_named_dest` the
+`/Dests` entries and the leaves of every `/Names` tree; `ch_struct_tree` the
+structure elements; `ch_optional_content` the groups of `/OCGs`;
+`ch_page_labels` the label ranges; `ch_xmp_history` 1 when the catalog's
+packet holds `xmpMM:History`; `ch_threads` the threads; the catalog keys
+(`ch_portfolio`, `ch_perms_legal`, `ch_uri_base`, `ch_search_index`) 1 per key
+present; `ch_encrypt` 1 for an encrypted input. A structure that is present
+but empty counts 1. `pending_redactions` counts the `/Redact` annotations
+never applied, and each page holding one has a `pending_redactions` warning.
+
+### 4.6 pdfkit_select_pages (catalogue 9)
+
+`pdfkit_select_pages` records on an edit plan the pages the output keeps, in
+the order given; `pdfkit_write` applies it. The input is
+`{"pages": [3, 1, 2]}`, 1-based page numbers of the document as pdfkit reads
+it. It is refused with `invalid_argument` (and the three message parts naming
+the page and the document's page count) when the list is empty, names a page
+twice or a page outside 1 to the page count, holds anything but whole numbers,
+or the object holds another key. A later call replaces the list. On success
+`out` holds `{"pages": [3, 1, 2]}`.
+
+### 4.7 pdfkit_write (catalogue 10.1)
+
+`pdfkit_write` applies the edit plan in the order of `CLAUDE.md` §3.2 and
+returns a fresh, unencrypted file of the reachable objects
+(`docs/DESIGN.md` §17) with every channel of §15 stripped and, when pages were
+selected, only those pages (§16). It takes no options (`NULL` or `{}`). On
+success `out_pdf` holds the PDF bytes and `out` the write report; on failure
+`out_pdf` stays empty and `out` holds the error (a refusal met while decoding
+a content stream for pruning, such as `limit_exceeded`, is the document's
+refusal under `PDFKIT_E_REFUSED`). Writing one plan twice gives the same
+bytes.
+
+```json
+{
+  "page_count": 2,
+  "pages": [3, 1],
+  "bytes": 18273,
+  "sha256": "<hex of the output>",
+  "objects": 41,
+  "channels": [{"id": "ch_revisions", "stripped": 1}],
+  "pending_redactions": 0,
+  "missing_references": 0,
+  "unpruned_resources": 0,
+  "rectangles": [],
+  "self_check": {"status": "not_run", "reason": "no text redaction in the edit plan"},
+  "warnings": []
+}
+```
+
+| Key | Holds |
+|---|---|
+| `page_count`, `pages` | the output's pages and, in output order, the source page each one is |
+| `bytes`, `sha256` | the output's size and SHA-256 |
+| `objects` | the indirect objects written, the cross-reference stream aside |
+| `channels` | per row of the table, in its order, the occurrences the source held, which the output no longer carries (`ch_optional_content` is kept in its minimal form) |
+| `pending_redactions` | the source's `/Redact` annotations never applied; the output drops them with every annotation |
+| `missing_references` | the distinct object numbers referenced but missing, written as `null` |
+| `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
+| `rectangles` | the rectangles a redaction changed, per page; empty when nothing was redacted |
+| `self_check` | `{"status": "not_run", "reason": ...}` when the plan redacts no text; the self-check's verdict otherwise (`docs/DESIGN.md` §18) |
+| `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode and was dropped |
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -248,7 +339,7 @@ version object of §4.1. The tool calls the C ABI and nothing beneath it.
 | `images` | `<file.pdf> [--out <folder>] [--options <json>] [--open-options <json>]` | 3.1, 3.2, 1.1 |
 | `metadata` | `<file.pdf> [--options <json>] [--open-options <json>]` | 4, 1.1 |
 | `redact` | `<job.json>` | 5, 6, 7, 9 (each section present), 10.1, 1.1 |
-| `select-pages` | `<file.pdf> --pages <json> --out <output.pdf> [--open-options <json>]` | 9, 10.1, 1.1 |
+| `select-pages` | `<file.pdf> --pages <list> --out <output.pdf> [--open-options <json>]`, the list being page numbers and ascending ranges separated by commas (`1,3-5`) | 9, 10.1, 1.1 |
 | `check` | `<file.pdf> --strings <json>` | 10.2 |
 | `channels` | `<file.pdf> [--options <json>] [--open-options <json>]` | 8, 1.1 |
 | `dataset` | `--file <file.pdf> --id <id> --out <folder>`, or `--manifest <manifest.tsv> --files <files root> --out <folder>` | every function this build implements (`tests/dataset/outcome.md` owns the outcome) |

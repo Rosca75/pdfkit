@@ -39,8 +39,8 @@ std::string sample(const std::string& version = "1.7") {
   PdfBuilder builder;
   builder.begin_document();
   for (int i = 0; i < 3; ++i) {
-    (void)builder.add_page("BT /F1 12 Tf 72 720 Td (page " + std::to_string(i + 1) + ") Tj ET",
-                           "", i % 2 == 0);
+    (void)builder.add_page("BT /F1 12 Tf 72 720 Td (page " + std::to_string(i + 1) + ") Tj ET", "",
+                           i % 2 == 0);
   }
   PdfBuilder::Layout layout;
   layout.version = version;

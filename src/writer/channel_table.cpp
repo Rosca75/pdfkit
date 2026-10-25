@@ -42,23 +42,36 @@ using Edits = ChannelTable::Edits;
 constexpr std::size_t walk_bound = 1000000;
 
 // ISO 32000-1 table 28 (read): the catalog keys kept; DESIGN.md section 15.
-constexpr std::array<std::string_view, 12> catalog_keys{
-    "Type",       "Pages",    "Version",  "OCProperties", "OutputIntents", "ViewerPreferences",
-    "PageMode",   "PageLayout", "Lang",   "Metadata",     "Extensions",    "NeedsRendering"};
+constexpr std::array<std::string_view, 11> catalog_keys{
+    "Type",     "Pages",      "Version", "OCProperties", "OutputIntents", "ViewerPreferences",
+    "PageMode", "PageLayout", "Lang",    "Metadata",     "Extensions"};
 // ISO 32000-1 table 30 (read): the page keys kept.
 constexpr std::array<std::string_view, 16> page_keys{
-    "Type",   "Parent", "Resources", "MediaBox", "CropBox", "BleedBox", "TrimBox", "ArtBox",
-    "Rotate", "Contents", "Group",   "UserUnit", "VP",      "BoxColorInfo", "Trans", "Dur"};
+    "Type",   "Parent",   "Resources", "MediaBox", "CropBox", "BleedBox",     "TrimBox", "ArtBox",
+    "Rotate", "Contents", "Group",     "UserUnit", "VP",      "BoxColorInfo", "Trans",   "Dur"};
 // ISO 32000-1 table 150 (read), with /Enforce of ISO 32000-2: the standard
 // viewer preferences.
-constexpr std::array<std::string_view, 18> viewer_keys{
-    "HideToolbar",  "HideMenubar",  "HideWindowUI",  "FitWindow",         "CenterWindow",
-    "DisplayDocTitle", "NonFullScreenPageMode", "Direction", "ViewArea",  "ViewClip",
-    "PrintArea",    "PrintClip",    "PrintScaling",  "Duplex",            "PickTrayByPDFSize",
-    "PrintPageRange", "NumCopies",  "Enforce"};
+constexpr std::array<std::string_view, 18> viewer_keys{"HideToolbar",
+                                                       "HideMenubar",
+                                                       "HideWindowUI",
+                                                       "FitWindow",
+                                                       "CenterWindow",
+                                                       "DisplayDocTitle",
+                                                       "NonFullScreenPageMode",
+                                                       "Direction",
+                                                       "ViewArea",
+                                                       "ViewClip",
+                                                       "PrintArea",
+                                                       "PrintClip",
+                                                       "PrintScaling",
+                                                       "Duplex",
+                                                       "PickTrayByPDFSize",
+                                                       "PrintPageRange",
+                                                       "NumCopies",
+                                                       "Enforce"};
 // ISO 32000-1 table 28, /PageMode (read): the standard modes.
-constexpr std::array<std::string_view, 6> page_modes{"UseNone", "UseOutlines", "UseThumbs",
-                                                     "FullScreen", "UseOC", "UseAttachments"};
+constexpr std::array<std::string_view, 6> page_modes{"UseNone",    "UseOutlines", "UseThumbs",
+                                                     "FullScreen", "UseOC",       "UseAttachments"};
 
 template <std::size_t N>
 bool listed(const std::array<std::string_view, N>& list, std::string_view key) {
@@ -100,7 +113,8 @@ std::size_t tree_leaves(ObjectGraph& graph, const Object& root, std::string_view
   while (!pending.empty() && ++visits < walk_bound) {
     const Object current = pending.back();
     pending.pop_back();
-    if (const auto reference = current.reference(); reference && !seen.insert(reference->number).second) {
+    if (const auto reference = current.reference();
+        reference && !seen.insert(reference->number).second) {
       continue;
     }
     const Object node = graph.resolve(current);
@@ -130,7 +144,8 @@ std::size_t linked_nodes(ObjectGraph& graph, const Object& root,
   while (!pending.empty() && ++visits < walk_bound) {
     const Object current = pending.back();
     pending.pop_back();
-    if (const auto reference = current.reference(); reference && !seen.insert(reference->number).second) {
+    if (const auto reference = current.reference();
+        reference && !seen.insert(reference->number).second) {
       continue;
     }
     const Object node = graph.resolve(current);
@@ -295,9 +310,10 @@ std::size_t detect_structure(Scan& scan) {
   const Object tree = graph_of(scan).resolve(root);
   const Dictionary* dictionary = tree.dictionary();
   const std::size_t elements =
-      dictionary == nullptr ? 0
-                            : linked_nodes(graph_of(scan), dictionary->get("K"), {"K"},
-                                           [](const Dictionary& node) { return node.contains("S"); });
+      dictionary == nullptr
+          ? 0
+          : linked_nodes(graph_of(scan), dictionary->get("K"), {"K"},
+                         [](const Dictionary& node) { return node.contains("S"); });
   return std::max<std::size_t>(elements, 1);
 }
 
@@ -469,8 +485,7 @@ constexpr std::array<ChannelTable::Row, 23> table{{
     {"ch_javascript", "JavaScript and automatic actions", &detect_javascript, &strip_javascript},
     {"ch_embedded_file", "embedded and associated files", &detect_embedded_files,
      &strip_embedded_files},
-    {"ch_annotation", "annotations and their appearances", &detect_annotations,
-     &strip_annotations},
+    {"ch_annotation", "annotations and their appearances", &detect_annotations, &strip_annotations},
     {"ch_acroform", "interactive forms /AcroForm and /XFA", &detect_forms, &strip_forms},
     {"ch_outline", "outlines /Outlines", &detect_outlines, &strip_outlines},
     {"ch_named_dest", "named destinations and name trees", &detect_named_destinations,
@@ -522,7 +537,7 @@ class Rewriter {
       if (value.is_null()) {
         continue;
       }
-      const Role role = number == root_ ? Role::catalog
+      const Role role = number == root_           ? Role::catalog
                         : pages_.contains(number) ? Role::page
                                                   : Role::other;
       bool changed = false;
@@ -759,8 +774,8 @@ void minimise_optional_content(ObjectGraph& graph) {
     for (const std::string_view key : {"ON", "OFF", "RBGroups"}) {
       const Object list = graph.resolve_entry(*defaults, key);
       if (const Object::Array* items = list.array()) {
-        Object::Array kept = key == "RBGroups" ? kept_order(graph, *items, used, 0)
-                                               : kept_references(*items, used);
+        Object::Array kept =
+            key == "RBGroups" ? kept_order(graph, *items, used, 0) : kept_references(*items, used);
         configuration.set(std::string(key), Object::make_array(std::move(kept)));
       }
     }

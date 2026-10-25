@@ -126,12 +126,10 @@ TEST_CASE("the identity write keeps every drawn marker and strips every channel 
   const std::string all = pdfkit::test::everything(pdfkit::test::identity_write(source));
   for (std::uint32_t page = 1; page <= page_count; ++page) {
     for (const int row : PdfBuilderChannels::drawn_rows) {
-      CHECK(all.find(PdfBuilderChannels::marker(row, static_cast<int>(page))) !=
-            std::string::npos);
+      CHECK(all.find(PdfBuilderChannels::marker(row, static_cast<int>(page))) != std::string::npos);
     }
     for (const int row : PdfBuilderChannels::stripped_rows) {
-      CHECK(all.find(PdfBuilderChannels::marker(row, static_cast<int>(page))) ==
-            std::string::npos);
+      CHECK(all.find(PdfBuilderChannels::marker(row, static_cast<int>(page))) == std::string::npos);
     }
   }
 }
@@ -141,13 +139,12 @@ TEST_CASE("inherited boxes and rotation are copied onto the kept page") {
   builder.begin_document();
   const std::uint32_t font = builder.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   const std::uint32_t contents = builder.add_stream("", "BT /F1 9 Tf (x) Tj ET");
-  const std::uint32_t page = builder.add("<< /Type /Page /Parent " +
-                                         std::to_string(builder.page_tree()) + " 0 R /Contents " +
-                                         std::to_string(contents) + " 0 R >>");
-  const std::uint32_t second = builder.add("<< /Type /Page /Parent " +
-                                           std::to_string(builder.page_tree()) +
-                                           " 0 R /Contents " + std::to_string(contents) +
-                                           " 0 R >>");
+  const std::uint32_t page =
+      builder.add("<< /Type /Page /Parent " + std::to_string(builder.page_tree()) +
+                  " 0 R /Contents " + std::to_string(contents) + " 0 R >>");
+  const std::uint32_t second =
+      builder.add("<< /Type /Page /Parent " + std::to_string(builder.page_tree()) +
+                  " 0 R /Contents " + std::to_string(contents) + " 0 R >>");
   builder.set(builder.page_tree(),
               "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R " + std::to_string(second) +
                   " 0 R] /Count 2 /MediaBox [0 0 500 700] /CropBox [10 10 400 600] /Rotate 90 "
@@ -171,8 +168,9 @@ TEST_CASE("inherited boxes and rotation are copied onto the kept page") {
 TEST_CASE("a form drawing a form keeps both; a content stream two kept pages share is one") {
   PdfBuilder builder;
   builder.begin_document();
-  const std::uint32_t inner = builder.add_stream(
-      "/Type /XObject /Subtype /Form /BBox [0 0 100 100]", "0 0 m 10 10 l S BT (PDFKITMARK95X01) Tj ET");
+  const std::uint32_t inner =
+      builder.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 100 100]",
+                         "0 0 m 10 10 l S BT (PDFKITMARK95X01) Tj ET");
   const std::uint32_t unused = builder.add_stream(
       "/Type /XObject /Subtype /Form /BBox [0 0 100 100]", "BT (PDFKITMARK95X02) Tj ET");
   const std::uint32_t outer = builder.add_stream(

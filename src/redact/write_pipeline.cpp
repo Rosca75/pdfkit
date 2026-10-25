@@ -20,8 +20,8 @@ namespace pdfkit::redact {
 WritePipeline::Output WritePipeline::run(EditPlan& plan) {
   Output output;
   {
-    // What the output no longer carries is counted in the source, before any
-    // stage edits it, so a channel only a removed page held is counted too.
+    // The channels are counted in the source, before any stage edits it, so
+    // a channel only a removed page held is counted as stripped too.
     writer::ObjectGraph source(plan.document());
     writer::ChannelTable::Report found = writer::ChannelTable::detect(source);
     output.report.channels = std::move(found.counts);
