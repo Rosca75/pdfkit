@@ -371,6 +371,12 @@ after they merge reverts them too.
     qpdf-0039; `refused:unsupported_security_handler` for qpdf-0002 (a
     `/CFM /AESV1`, which no revision defines).
 
+17. **Added by phase 7** (the one change `build-7.md` §1 allows it in
+    `src/syntax/`): `Stream` gains its created form, `Stream(dictionary,
+    data)`, holding its encoded bytes behind a shared pointer (`owns_data()`,
+    `owned_data()`, `with_dictionary()`); `Document::raw` hands a created
+    stream's bytes back and `Document::decode` never decrypts them.
+
 ### Deviations of earlier phases that affect this one
 
 From `build-1.md` §9:

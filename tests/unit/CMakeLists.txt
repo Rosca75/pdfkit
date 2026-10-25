@@ -32,6 +32,7 @@ add_executable(pdfkit_tests
   syntax/parser_test.cpp
   syntax/repair_test.cpp
   syntax/security_handler_test.cpp
+  syntax/stream_test.cpp
   api/abi_test.cpp
   api/open_inspect_test.cpp
   fonts/support/font_builder.cpp

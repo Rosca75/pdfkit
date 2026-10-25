@@ -246,7 +246,10 @@ rollback after they land reverts them too.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **`syntax::Stream` gains a created form** (`Stream(dictionary, data)`,
+   `owns_data()`, `owned_data()`, `with_dictionary()`), its own commit, recorded
+   in `build-3.md` §9 item 17; `Document::raw` and `Document::decode` read it
+   and never decrypt it.
 
 ### Deviations of earlier phases that affect this one
 

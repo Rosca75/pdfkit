@@ -654,6 +654,9 @@ Object Document::info() {
 }
 
 platform::ByteSpan Document::raw(const Stream& stream) const noexcept {
+  if (stream.owns_data()) {
+    return stream.owned_data();
+  }
   const std::size_t start = std::min(stream.data_offset(), file_.size());
   const std::size_t length = std::min(stream.data_length(), file_.size() - start);
   return file_.subspan(start, length);
@@ -667,7 +670,7 @@ Filters::Result Document::decode(const Stream& stream, std::optional<std::uint32
   }
   platform::ByteSpan data = raw(stream);
   std::vector<std::byte> clear;
-  if (security_) {
+  if (security_ && !stream.owns_data()) {
     clear = security_->decrypt_stream(stream.owner(), dictionary, data);
     data = clear;
   }
