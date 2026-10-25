@@ -147,6 +147,9 @@ def hidden_check(rows: list[dict], command: list[str]) -> dict:
 def summarise(results: list[dict], run_dir: Path, causes: dict, hidden: dict | None) -> dict:
     scored = [r for r in results if r["f1"] is not None]
     below = [r for r in scored if r["f1"] < AGREE]
+    # The files with words on either side, where agreement says something.
+    worded = [r for r in scored if r["words_pdfkit"] or r["words_pdfium"]]
+    causes_count = collections.Counter(causes.get(r["id"], ("unclassified", ""))[0] for r in below)
     per_tag = collections.defaultdict(list)
     for r in scored:
         for tag in common.split_tags(r["tags"]):
@@ -170,6 +173,11 @@ def summarise(results: list[dict], run_dir: Path, causes: dict, hidden: dict | N
         "median": round(statistics.median([r["f1"] for r in scored]), 4) if scored else None,
         "below_0_90": len(below),
         "share_below_0_90": round(len(below) / len(scored), 4) if scored else None,
+        "files_with_words": len(worded),
+        "median_with_words": round(statistics.median([r["f1"] for r in worded]), 4) if worded else None,
+        "share_below_0_90_with_words": round(len(below) / len(worded), 4) if worded else None,
+        "below_by_cause": dict(sorted(causes_count.items())),
+        "share_below_0_90_pdfkit_cause": round(causes_count.get("pdfkit", 0) / len(scored), 4) if scored else None,
         "below": [{"id": r["id"], "f1": r["f1"], "cause": causes.get(r["id"], ("unclassified", ""))[0],
                    "evidence": causes.get(r["id"], ("", ""))[1]} for r in sorted(below, key=lambda r: r["f1"])],
         "per_tag_median": {t: round(statistics.median(v), 4) for t, v in sorted(per_tag.items())},
@@ -205,6 +213,10 @@ def write_report(results: list[dict], summary: dict, run_dir: Path, causes: dict
           f"- files scored (both readers open): {summary['files_scored']}",
           f"- median F1: {summary['median']} (gate {MEDIAN})",
           f"- below 0.90: {summary['below_0_90']} ({summary['share_below_0_90']}; gate {SHARE_BELOW})",
+          f"- files with words on either side: {summary['files_with_words']}, median "
+          f"{summary['median_with_words']}, below 0.90 {summary['share_below_0_90_with_words']}",
+          f"- below 0.90 by cause: {summary['below_by_cause']} (pdfkit-caused share "
+          f"{summary['share_below_0_90_pdfkit_cause']})",
           f"- re-serialisation: {summary['reserialisation']}",
           f"- determinism: {summary['determinism']}",
           f"- hidden text: {summary['hidden']}",
@@ -223,7 +235,8 @@ def write_manifest(rows: list[dict], results: list[dict], causes: dict) -> int:
         r = by_id.get(row["id"])
         if r is None:
             continue
-        if r["pdfkit"] != "ok" or r["f1"] is None:
+        if r["pdfkit"] != "ok" or r["f1"] is None or (r["words_pdfkit"] == 0 and r["words_pdfium"] == 0):
+            # Nothing to agree on: a refused file, or one neither reader finds words in.
             text = "n/a"
         elif r["f1"] >= AGREE:
             text = "agree"
@@ -271,7 +284,9 @@ def main() -> int:
     if args.write_manifest:
         print(f"manifest rows changed: {write_manifest(rows, results, causes)}")
     print(json.dumps({k: summary[k] for k in ("files_scored", "median", "below_0_90", "share_below_0_90",
-                                             "reserialisation", "gate")}, indent=1))
+                                             "files_with_words", "median_with_words",
+                                             "share_below_0_90_with_words", "below_by_cause",
+                                             "reserialisation", "hidden", "gate")}, indent=1))
     return 0 if summary["gate"] == "passed" else 1
 
 
