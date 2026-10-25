@@ -12,11 +12,14 @@ target_sources(pdfkit_core PRIVATE
   filters.cpp
   lexer.cpp
   limits.cpp
+  metadata_reader.cpp
   object.cpp
   object_streams.cpp
   page_tree.cpp
   parser.cpp
+  pdf_doc_encoding.cpp
   repair.cpp
   resources.cpp
   security_handler.cpp
-  stream.cpp)
+  stream.cpp
+  xmp_scanner.cpp)
