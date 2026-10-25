@@ -21,6 +21,7 @@ GENERATORS = [
     ("build/fonts/glyph_list.py", ["src/fonts/generated/glyph_list_table.cpp"]),
     ("build/fonts/core14.py", ["src/fonts/generated/core14_table.cpp"]),
     ("build/fonts/subset.py", ["src/writer/placeholder_font_data.inc"]),
+    ("build/fonts/bitmap_font.py", ["src/images/bitmap_font_data.inc"]),
     ("build/unicode/generate.py", ["src/platform/unicode/tables.inc"]),
 ]
 
