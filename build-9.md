@@ -231,6 +231,11 @@ no-op form.
 
 ### Deviations of earlier phases that affect this one
 
+From `build-5.md` §9:
+
+- Image occurrences are `text::PageContent::images` from `text::TextReader::interpret(page)`: `ctm` (the unit square under it is the image's place; its inverse maps a page-space rectangle into image space), `box`, `form_path`, and `stream`/`operation` naming the `Do` or `BI` to remove with an edit of `text::ContentSerialiser::write` (empty bytes remove the operation). An inline image's `data_start`/`data_end` name its data in the walk's bytes.
+- One form drawn twice is two walks with the same `ContentStream::form`; a removal inside it is made once in the form's bytes.
+
 From `build-1.md` §9:
 
 - The redact job's `images` section is forwarded byte for byte to `pdfkit_redact_images` (`docs/ABI.md` §6, item 7).

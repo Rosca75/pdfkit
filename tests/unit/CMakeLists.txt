@@ -69,12 +69,18 @@ add_executable(pdfkit_tests
   fonts/cmap_parser_test.cpp
   fonts/decoding_ladder_test.cpp
   fonts/encodings_test.cpp
-  fonts/font_census_test.cpp
   fonts/font_data_test.cpp
   fonts/font_widths_test.cpp
   fonts/glyph_list_test.cpp
   fonts/true_type_tables_test.cpp
-  fonts/type1_font_test.cpp)
+  fonts/type1_font_test.cpp
+  text/support/text_document.cpp
+  text/content_interpreter_test.cpp
+  text/content_serialiser_test.cpp
+  text/actual_text_test.cpp
+  text/hidden_text_test.cpp
+  text/text_json_test.cpp
+  text/text_layout_test.cpp)
 # Fixtures are written by the support library, included as "support/...".
 # The CLI's own SHA-256 is compiled in too, as "cli/sha256.hpp", to check it
 # against the library's.

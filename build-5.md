@@ -218,7 +218,118 @@ the `text` column of the manifest is reverted with the merge.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **Rebased on phase 7.** Phase 7 merged while this phase ran; the branch
+   was rebased onto it (`dataset/manifest.tsv` with `expect_write` and
+   `expect_select`, `cli/verbs/dataset_write.cpp`, the writer). The `text`
+   member of the dataset outcome is written beside phase 7's members.
+2. **Files added beyond §2**, each to keep one public class per header or one
+   concern per file: `src/text/matrix.*` (`Matrix`), `rect.*` (`Rect`),
+   `colour.*` (`Colour` and the white test), `hidden_class.hpp` (the class
+   bits and names), `content_stream.hpp` (`ContentStream`, one walk of a
+   stream: bytes, operations, form path), `marked_span.hpp` (`MarkedSpan`),
+   `page_content.*` (`PageContent`, the interpreter's result),
+   `string_operands.*` (the map from a string operand's bytes to the bytes
+   that wrote them), `text_string.*` (PDF text strings to UTF-8),
+   `optional_content.*` (the default configuration and `/OCMD`),
+   `structure_order.*` (the tagged reading order), `text_reader.*`
+   (`TextReader`, the passes in their order, shared per document);
+   `tests/unit/text/support/text_document.*` (the fixture: three fonts, every
+   interpretation checked for the re-serialisation identity);
+   `cli/verbs/dataset_text.*` (the dataset verb's `text` member);
+   `tests/pdfium/text_causes.tsv` (the cause of every file below 0.90).
+3. **The glyph list is in reading order**, not draw order: the visible blocks'
+   glyphs, then the hidden blocks', each record naming its `draw` index, so
+   every word, line and block is a half-open range of that list
+   (`docs/DESIGN.md` §7 says so now).
+4. **Hyphenation** keeps the two halves as words of their own lines, the
+   first marked `hyphenated`, so ranges stay inside their lines; the join
+   across a page break is made when both pages are asked together.
+5. **Duplicates**: the copy stays a record of its own, in the hidden set with
+   the class `duplicate` and `duplicate_of` naming its partner, which lists
+   it among its `duplicates`; the page's `text` reads a word whose only class
+   is `duplicate` once. Fonts compare by name, because a stamp that adds its
+   own Helvetica object on every draw (tika-0012) is one face; a glyph of no
+   size is never a duplicate.
+6. **The rules the dataset proved wrong**, changed in `docs/DESIGN.md` §7:
+   the word gap is 0.1 of the font size on a line with no space glyph
+   (pdfminer's `word_margin`; measured: gaps inside words within 0.07, between
+   positioned words from 0.15; 0.3 merged words on 95 files), 0.3 on a line
+   with space glyphs (its other gaps are letter spacing), 1.0 between two
+   ideographic glyphs; a baseline's glyphs keep the content's runs whole
+   (an overprinted name was read with its letters interleaved); the
+   direction pass reverses runs from visual order (a drawing-order rule read
+   Arabic backwards when a line mixed scripts); text at a negative size or
+   scaling reads along its advance.
+7. **Blocks and order**: Docstrum groups lines into blocks and XY-cut orders
+   the blocks in the page's dominant direction (the plan cut over lines with
+   Docstrum refining); a ruling drawn between two lines keeps them apart, so a
+   ruled table's rows are blocks; the structure order reorders the geometric
+   blocks by their lowest structure rank rather than re-segmenting. PdfPig's
+   two files could not be cloned (the session's sandbox refused git and
+   scripted downloads); they were read through the web reader at commit
+   e17fc2d577a24db986d8642ec7190188d0f6a0a9 and the algorithm ported, no
+   code copied (`docs/SOURCES.md`, `THIRD-PARTY-NOTICES.md`).
+8. **Bounds chosen here**: a `q` past 256 is counted and saves nothing (not a
+   refusal), recorded in `docs/DESIGN.md` §6.1; forms nest 32 deep; the
+   structure tree is walked 256 deep and 1,000,000 nodes at most; `covered`
+   is not decided on a page past 50,000,000 glyph-shape comparisons; more
+   than 5,000 thin shapes are not used as rulings.
+9. **Hidden classes as built**: `covered` needs an image without a mask or an
+   opaque filled rectangle (one `re` under an axis-aligned CTM), because the
+   bound of any other path is not what it paints; `white_fill` tests the
+   colour the render mode paints with (the stroke for modes 1 and 5). The
+   glyph record keeps the fill colour and only whether the stroke is white.
+10. **A vertical glyph's box** is its cell: across, its width about the
+    position vector's `vx`; down the column, the vertical advance.
+11. **`pdfkit_text` options**: `pages`, `blocks`, `glyphs`, `reserialisation`;
+    the shape is the `pdfkit_text` section of `docs/ABI.md` (numbered 4.8
+    after phase 7's sections; phase 6 adds its own, the team lead
+    renumbers). The CLI verb takes `--pages 1-3,7` and `--glyphs`.
+12. **The re-serialisation identity** is a field of `pdfkit_text`
+    (`reserialisation`) that the dataset verb asks for, rather than a test
+    mode of the verb; `ContentSerialiser::write(stream, index, records,
+    edits)` decodes each record's bytes again, so an off-by-one range is a
+    named mismatch.
+13. **The census is removed** and `expect_fonts` is driven by the `text`
+    outcome: `tests/dataset/run.py` judges it from the pages' `unreadable`
+    counts, `tests/pdfium/text_agreement.py --write-manifest` fills it with
+    `expect_text`; `dataset/tools/common.py`, `add.py`, `dataset/README.md`,
+    `tests/dataset/outcome.md` and `tests/dataset/test_run.py` say so.
+    `expect_text` is `n/a` for a file where neither reader finds a word.
+14. **`dataset/tools/synth/hidden_text.py` was not written**: phase 2's
+    `dataset/tools/synth/patterns/hidden.py` already writes three files per
+    hidden class with planted markers (24 files); the check of gate item 4 is
+    `python tests/pdfium/text_agreement.py --run <id> --hidden`. Every
+    text-layout tag of the taxonomy is at its minimum, so nothing was
+    synthesised.
+15. **The gate commands as run**: `python tests/dataset/run.py --checks
+    open,text --runs 2 --run-id phase5-final` (run.py has no `--out` or
+    `--compare-to`; its second run is the determinism check) and `python
+    tests/pdfium/text_agreement.py --run phase5-final --hidden` (compare.py's
+    `--check text` is phase 7's writer check).
+16. **The gate failed on its share below 0.90** (6.4 % against 5 %, median
+    1.0); every other item passed. The question with the evidence is
+    `OPEN-QUESTIONS.md` §2.10; its recommended answer (b) stands.
+17. **Speed**: the largest file (dccc-0135, 910 pages, 3.6 million glyphs)
+    reads in 6 to 10 s alone in the release build, most of it the
+    interpreter. Other sessions loaded the laptop during the runs: with six
+    workers a run saw up to four files pass 30 s (dccc-0074 among them,
+    0.4 s alone); the final run, four workers and two passes, saw none.
+18. **Known reader gaps for a later fonts session**: Latin codes of a
+    non-embedded CJK font with no `/W` take `/DW` 1000 and run off the page
+    (dccc-0012, synth-0151); CJK predefined CMaps have no data
+    (`docs/DESIGN.md` §5.3); a few subset fonts read no rung (pdfdiff-0025,
+    pdfdiff-0026, pdfjs-0042).
+19. **What the images listing reads** (`build-6.md` §9's request): an inline
+    occurrence carries `colour_spaces`, the drawing content's `/ColorSpace`
+    resources; `PageContent::unwalked` names every tiling pattern and
+    soft-mask group a page sets, which the interpreter does not walk, so the
+    listing reports the images inside as `image_in_pattern` without
+    numbering them.
+20. **AddressSanitizer over the dataset** (llvm-mingw, the `dataset` verb on
+    all 937 files) found a pointer kept into a temporary (a colour space's
+    resolved name, 115 files); fixed, the rerun found no error (25 files pass
+    30 s in that debug build only).
 
 ### Deviations of earlier phases that affect this one
 

@@ -10,7 +10,6 @@ target_sources(pdfkit_core PRIVATE
   cmap_parser.cpp
   decoding_ladder.cpp
   encodings.cpp
-  font_census.cpp
   font_loader.cpp
   font_program.cpp
   generated/core14_table.cpp

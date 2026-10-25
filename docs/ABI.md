@@ -353,6 +353,73 @@ The first image call on a handle lists the document's images once and keeps
 the list with the handle; every call charges the bytes it decodes to the
 document's decoding budget (`docs/DESIGN.md` §3.2).
 
+### 4.9 pdfkit_text (catalogue 2)
+
+`pdfkit_text` reads each page through the content interpreter, the decoding
+ladder's `/ActualText` rung, the hidden-text classes and the layout
+(`docs/DESIGN.md` chapters 6 to 8) and returns the pages in the order asked.
+Options, each optional; any other key, or a value of another type, is
+`invalid_argument`:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `pages` | every page | an array of page numbers from 1, each at most once; a number outside the document is `invalid_argument`, checked before any page is read |
+| `blocks` | `true` | write `blocks` and `hidden_blocks` (the page's `text` is always written) |
+| `glyphs` | `false` | write `glyphs` (every glyph record) and `spans` (the marked-content spans carrying `/ActualText`, `/Alt` or `/E`) |
+| `reserialisation` | `false` | write `reserialisation`, the check that every content stream walk writes back to its own bytes |
+
+```json
+{"pages": [{
+  "page": 1,
+  "text": "Hello World\n\nHid",
+  "structure_order": false,
+  "blocks": [{"box": [72, 697.93, 123.67, 707.18], "glyphs": [0, 11], "lines": [
+    {"box": [72, 697.93, 123.67, 707.18], "glyphs": [0, 11], "direction": "ltr", "angle": 0,
+     "words": [{"text": "Hello", "box": [72, 697.93, 94.78, 707.18], "glyphs": [0, 5],
+                "hyphenated": false, "hidden": []}]}]}],
+  "hidden_blocks": [],
+  "unreadable": {"count": 0, "fonts": []},
+  "hidden": {"count": 0, "classes": {"render_invisible": 0, "white_fill": 0, "clipped": 0,
+             "off_media": 0, "off_crop": 0, "optional_content_off": 0, "duplicate": 0, "covered": 0}},
+  "rungs": {"to_unicode": 0, "glyph_name": 11, "font_program": 0, "actual_text": 0, "unreadable": 0},
+  "warnings": [{"code": "hidden_text", "message": "...", "page": 1}],
+  "reserialisation": {"streams": 1, "identical": 1, "damaged": 0, "failed": 0, "mismatches": []},
+  "spans": [{"tag": "Span", "actual_text": "fi", "alt": null, "expansion": null, "walk": 0, "operator": 4}],
+  "glyphs": [{"draw": 0, "stream": {"walk": 0, "form": null, "form_path": []}, "operator": 3,
+              "operand": 0, "bytes": [31, 32], "hex": false,
+              "font": {"object": 3, "name": "Helvetica"}, "code": 72, "code_length": 1,
+              "text": "H", "rung": "glyph_name", "decomposed": false, "width": 722,
+              "adjustment": 0, "advance": 7.22, "vertical": false,
+              "text_matrix": [1, 0, 0, 1, 72, 700], "ctm": [1, 0, 0, 1, 0, 0],
+              "char_spacing": 0, "word_spacing": 0, "horizontal_scaling": 100, "leading": 0,
+              "rise": 0, "font_size": 10, "render_mode": 0, "origin": [72, 700],
+              "advance_end": [79.22, 700], "box": [72, 697.93, 79.22, 707.18], "size": 10,
+              "angle": 0, "fill": {"space": "DeviceGray", "family": "DeviceGray", "components": [0]},
+              "marked_content": null, "actual_text": null,
+              "optional_content": {"groups": [], "off": false}, "clip": null, "hidden": [],
+              "duplicate_of": null, "duplicates": []}]
+}]}
+```
+
+| Key | Holds |
+|---|---|
+| `text` | the page's text in reading order: words joined by a space, lines by a line feed, blocks by an empty line; the hidden blocks follow the visible ones; a word whose only hidden class is `duplicate` is a copy of a word already read and is not read again |
+| `structure_order` | whether the tagged structure ordered the visible blocks (`/StructTreeRoot` present and every MCID it orders on the page drawn by the page's content) |
+| `blocks`, `hidden_blocks` | the visible and the hidden blocks in reading order, each with `lines`, each with `words`; every one carries its `box` (`[left, bottom, right, top]` in default user space, points, rounded to 0.01) and `glyphs`, the half-open range of positions it covers in the page's glyph list; a line carries its `direction` (`ltr`, `rtl`, `ttb`) and `angle` (degrees, the direction its text advances); a word its `hidden` classes and `hyphenated`, true when its line-ending hyphen joins it to the first word of the next line (on the next page too, when both pages are asked together) |
+| `unreadable` | the codes no rung of the decoding ladder read, in all and per font name |
+| `hidden` | the glyphs of a hidden class, in all and per class (a glyph of several classes counts once in `count` and once per class) |
+| `rungs` | the glyphs per decoding rung |
+| `warnings` | the page's warnings of `docs/DESIGN.md` chapter 19: those the document met while the page was read (`damaged_stream`, `resource_missing`), then `unreadable_text`, `hidden_text` and `font_not_embedded` |
+| `reserialisation` | the walks of the page's content (its `/Contents` and each form draw), those that write back to their own bytes, those read only up to a fault, the undamaged walks that do not (`failed`, always 0 for a sound reader), and the first mismatch of each failing walk |
+| `glyphs` | the glyph list in reading order (the visible blocks' glyphs, then the hidden blocks'), each record with every field of `CLAUDE.md` §4: `draw` (its place in draw order), `stream` (the walk: its index, the form object or `null` for the page, the form path), `operator` and `operand` (the operator's index in its walk and the operand holding the code, for `TJ` the index inside the array), `bytes` (the half-open byte range of the code as written in the walk's bytes) and `hex`, `font`, `code` and `code_length`, `text` and `rung`, `decomposed` (a ligature's letters), `width` (thousandths of text space), `adjustment` (the `TJ` number before it), `advance` (text space, `Tc` and `Tw` included), `vertical`, the text state (`text_matrix` before the glyph, `ctm`, `char_spacing`, `word_spacing`, `horizontal_scaling`, `leading`, `rise`, `font_size`, `render_mode`), the device geometry (`origin`, `advance_end`, `box`, `size`, `angle`), `fill`, `marked_content` (innermost tag and MCID), `actual_text` (the span and whether the span's text went to an earlier glyph), `optional_content`, `clip` (`null` when nothing clips), `hidden`, `duplicate_of` and `duplicates` (draw indices) |
+| `spans` | per marked-content span with replacement text, in the order met: its tag, `/ActualText`, `/Alt` and `/E`, and the walk and operator of its `BDC` |
+
+Every key is written in the order shown and every geometric number rounded to
+0.01 pt, so two calls give the same bytes. Failures: `invalid_argument` for a
+null handle or `out`, malformed or unknown options, or a page number outside
+the document; a refusal of the document itself met while a page is decoded
+(`limit_exceeded`) under `PDFKIT_E_REFUSED`.
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -373,7 +440,7 @@ version object of §4.1. The tool calls the C ABI and nothing beneath it.
 | Verb | Arguments | Catalogue functions |
 |---|---|---|
 | `inspect` | `<file.pdf> [--options <json>] [--open-options <json>]` | 1.2, 1.1 |
-| `text` | `<file.pdf> [--options <json>] [--open-options <json>]` | 2, 1.1 |
+| `text` | `<file.pdf> [--pages <1-3,7>] [--glyphs] [--options <json>] [--open-options <json>]`; the flags are written into the options and exclude `--options` | 2, 1.1 |
 | `images` | `<file.pdf> [--out <folder>] [--options <json>] [--open-options <json>]` | 3.1, 3.2, 1.1 |
 | `metadata` | `<file.pdf> [--options <json>] [--open-options <json>]` | 4, 1.1 |
 | `redact` | `<job.json>` | 5, 6, 7, 9 (each section present), 10.1, 1.1 |

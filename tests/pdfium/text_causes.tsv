@@ -1,0 +1,57 @@
+id	cause	evidence
+dccc-0012	pdfkit	Latin text set in a non-embedded CJK font (STSongStd-Light, UniGB-UCS2-H, no /W) takes /DW 1000 per glyph, so lines run past the media box and their words split at its edge ("Algebr" + "a")
+dccc-0066	pdfium	PDFium joins words across visible gaps ("commemoratedinperpetuitybythecommonwealth"); pdfkit reads each word
+dccc-0073	legitimate	Japanese text has no word spaces; PDFium splits at script changes ("2021" "年"), pdfkit joins below 1.0 em
+dccc-0147	legitimate	a letter-spaced Japanese heading; PDFium splits some letters and joins others, pdfkit joins the heading below 1.0 em
+mutate-0008	pdfkit	Type 3 /Differences names Cdd that restate their code; read as unreadable by docs/DESIGN.md section 5.2 while OPEN-QUESTIONS.md section 2.5 stands; PDFium reads the code as a character
+mutate-0011	pdfkit	as mutate-0008 (Type 3 Cdd names, OPEN-QUESTIONS.md section 2.5)
+mutate-0018	pdfkit	as mutate-0008 (Type 3 Cdd names, OPEN-QUESTIONS.md section 2.5)
+mutate-0023	pdfkit	as mutate-0008 (Type 3 Cdd names, OPEN-QUESTIONS.md section 2.5)
+mutate-0028	pdfkit	as mutate-0008 (Type 3 Cdd names, OPEN-QUESTIONS.md section 2.5)
+mutate-0038	legitimate	a damaged stream (damaged_stream); both readers read garbage after the fault ("jeticn0" against "怀퀀eticn0")
+mutate-0044	pdfium	the Type 3 glyphs /square and /triangle draw shapes, not letters; PDFium emits their codes as "a" and "b"
+pdfdiff-0017	pdfkit	text drawn at a negative font size turns half a turn; one "o" of "operator" lands within a tenth of the size of another and is folded as a duplicate
+pdfdiff-0018	pdfkit	two lines of 500 pt and 660 pt glyphs 80 pt apart fall within a fifth of the size of one baseline and read as one line ("B8 B8")
+pdfdiff-0024	pdfium	as mutate-0044 (Type 3 shape glyphs read as letters by PDFium)
+pdfdiff-0025	pdfkit	a subset TrueType font whose codes no rung reads (122 unreadable); PDFium's text is the letters shifted by 29 ("*RXUQLHU" for "Gournier"), so neither reads the page
+pdfdiff-0026	pdfkit	as pdfdiff-0025 (728 unreadable; PDFium's text shifted by 29)
+pdfdiff-0034	legitimate	the page's only font lies in an object stream with the unknown filter XXXDecode; docs/DESIGN.md chapter 4 draws nothing for a resource that resolves to nothing, PDFium substitutes a font
+pdfdiff-0036	pdfkit	HiraMinPro-W3, a non-embedded Adobe-Japan1 font written Identity-V with no /ToUnicode: its CIDs need the Adobe-Japan1 ordering, which does not ship (docs/DESIGN.md section 5.3), 52 codes unreadable
+pdfium-0049	pdfkit	vertical text whose TJ adjustments leave a 0.2 em gap inside "Hello"; pdfkit splits the word, PDFium joins it
+pdfjs-0002	pdfium	PDFium reads a math font's codes as digits and letters ("iii", "700"); pdfkit reads the article's words and counts 49,914 codes of its Type 3 fonts unreadable
+pdfjs-0041	pdfium	PDFium reads garbage ("3fgli", "pmep"); pdfkit reads "Könyvajánló", "Think like a programmer"
+pdfjs-0042	pdfkit	a subset font (MSTT31c64e) whose three codes no rung reads; PDFium reads punctuation garbage
+pdfjs-0047	pdfkit	as mutate-0008 (Type 3 Cdd names, OPEN-QUESTIONS.md section 2.5)
+pdfjs-0053	pdfkit	Ryumin-Light with the predefined CMap H and no /ToUnicode: no CJK CMap data ships (docs/DESIGN.md section 5.3)
+pdfminer-0007	legitimate	duplicate fold: the map's labels are drawn twice (fake bold); PDFium interleaves the copies ("MMuunniicciippaalliittéé"), pdfkit reads each word once
+pdfminer-0013	legitimate	two forms draw each other; docs/DESIGN.md section 6.1 refuses a form already on the path, PDFium recurses and reads the shrinking copies ("helo", "wrd")
+pdfminer-0019	pdfium	PDFium reads garbage ("3hqčåqtsurvwĝhgn"); pdfkit reads "Peněžní prostředky na účtech"
+pdfminer-0022	pdfium	a technical drawing; PDFium's text lacks dimension labels ("40,00", "20,00") the page draws and pdfkit reads
+pdfminer-0023	pdfium	PDFium reads two CJK characters wrongly ("哾㦓"); pdfkit reads "黎荣" through the file's /ToUnicode
+pdfminer-0025	legitimate	single digits drawn apart; PDFium joins five of them into "02468", pdfkit keeps them apart (one two-character word in the file)
+pdfminer-0039	pdfkit	Ryumin-Light, a non-embedded Adobe-Japan1 font written Identity-V with no /ToUnicode: its CIDs need the Adobe-Japan1 ordering, which does not ship (docs/DESIGN.md section 5.3), 898 codes unreadable
+pdfminer-0044	pdfkit	Ryumin-Light with the predefined CMap V and no /ToUnicode: no CJK CMap data ships (docs/DESIGN.md section 5.3)
+pdfpig-0002	pdfkit	7,493 codes of its fonts unreadable; PDFium reads them as Latin garbage ("ëî", "yz")
+pdfpig-0003	pdfkit	a Shift-JIS font (83pv-RKSJ-H) without /ToUnicode on page 5: no CJK CMap data ships, 181 codes unreadable
+pdfpig-0015	legitimate	duplicate fold: a signature stamp drawn 37 times at one place reads once in pdfkit and 37 times in PDFium
+pdfplumber-0011	pdfium	PDFium drops the last letter of "dummy"
+pdfplumber-0023	pdfkit	SimSun with the predefined CMap GBK-EUC-H and no /ToUnicode: no CJK CMap data ships, 4,264 codes unreadable
+pikepdf-0022	pdfium	the file's /ToUnicode maps byte-swapped (both readers read "倀甀爀攀" for "Pure"); PDFium joins words across the gap between them
+pypdf-0019	pdfium	PDFium reverses the Arabic word ("يبيب") and joins Greek and Latin across a gap ("σβθβhabibi"); pdfkit reads "بيبي" in logical order
+pypdf-0020	pdfium	as pypdf-0019
+pypdf-0021	pdfium	as pypdf-0019
+safedocs-0007	pdfium	the Type 3 glyphs /rect and /triangle draw shapes, not letters; PDFium emits their codes as "a" and "b"
+safedocs-0008	pdfium	as safedocs-0007
+safedocs-0010	pdfium	as safedocs-0007
+synth-0151	pdfkit	as dccc-0012: Latin text in a non-embedded CJK font (UniGB-UCS2-H, no /W) runs off the page at /DW 1000 and "Example" splits at the media box
+synth-0195	pdfium	pdfkit reads the specimen's stated text ("Redaction keeps the layout of every page intact", the manifest's notes) through the program's map; PDFium reads "32 05"
+synth-0196	pdfium	as synth-0195 (/Differences Cdd names read through the program; PDFium reads digits)
+synth-0197	pdfium	as synth-0195
+synth-0198	pdfium	as synth-0195
+synth-0199	pdfium	as synth-0195
+synth-0200	pdfium	as synth-0195 (/Differences gNN glyph-index names read through the program)
+synth-0201	pdfium	as synth-0200
+synth-0202	pdfium	as synth-0200
+synth-0203	pdfium	as synth-0200
+synth-0204	pdfium	as synth-0200
+synth-0209	pdfium	an Identity-H CIDFontType2 without /ToUnicode: pdfkit reads the stated text through the program's cmap, PDFium reads nothing

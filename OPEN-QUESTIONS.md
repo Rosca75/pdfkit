@@ -229,3 +229,57 @@ it is. Do you want it changed?
   size.** About 1 hour and $15 to $25 (a budget scope in `syntax::Document`,
   shared with phase 3's code, tests); one handle can then decode without
   bound over many calls.
+
+### 2.10 The reading gate misses its share below 0.90 (raised by phase 5)
+
+pdfkit agrees with PDFium on 819 of 875 files at the gate; the files below it
+fail on Type 3 glyph names that restate their codes (6, §2.5), CJK fonts with
+no CMap data (6) or with estimated widths (2), unreadable subset fonts (3),
+four layout faults (two lines merged, a vertical word split, a fold in
+mirrored text, a math font's unreadable codes), PDFium misreading the file
+(27) and legitimate differences (8: a duplicate fold, a self-drawing form, a
+missing font, scripts without spaces, a damaged stream); do you want (a) one
+more fonts/layout session on those causes (~8-12 h, ~$150-250), (b) accept
+the reader as is and continue to redaction, recording the named files as
+known gaps, or (c) stop and re-plan?
+
+The numbers, from the run of 2026-10-25 over the 875 files both readers open
+(`agreement.json` and `summary-text.md` in the run folder
+`phase5-final` of the main checkout's dataset reports): median F1 **1.0**
+(gate 0.97, passed); **56** files below 0.90, **6.4 %** (gate 5 %, failed);
+over the 755 files where either reader finds words, median 1.0 and 7.4 %
+below. By cause (`tests/pdfium/text_causes.tsv` gives each file its line of
+evidence): **pdfkit 21** (2.4 % of the files), **PDFium 27**, **legitimate
+8**. Every other item of the gate passed: the re-serialisation identity on
+12,072 of 12,072 content stream walks (the 87 damaged walks identical too),
+two runs byte-identical on every file, every planted hidden marker of the 24
+synthesised hidden-text files extracted and flagged with its class, no hang
+and no crash.
+
+The twenty worst files (F1 0.0 each):
+
+| Files | Cause | Evidence |
+|---|---|---|
+| mutate-0008, mutate-0011, mutate-0018, mutate-0023, mutate-0028, pdfjs-0047 | pdfkit | Type 3 `Cdd` names read as unreadable while §2.5 stands; PDFium reads the code as a character |
+| synth-0195 to synth-0204, synth-0209 | PDFium | pdfkit reads the specimen's stated text through the font program; PDFium reads digits or nothing |
+| safedocs-0007, safedocs-0008, safedocs-0010 | PDFium | Type 3 glyphs that draw shapes, which PDFium emits as "a" and "b" |
+
+The PDFium-caused files count against the gate as it is written ("at most one
+file in twenty below 0.90", whatever the cause).
+
+- **(b) Accept the reader as is and continue — recommended, and taken while
+  this question stands** (the branch carries `Build-Phase: 5 gate-failed`;
+  the named files are `known_gap:<cause>` in the manifest). The pdfkit-caused
+  share is 2.4 %, most of it a decision already on this list (§2.5) or CJK
+  data that ships later, and phases 8 and 9 rely on the text model existing,
+  not on the agreement number. No cost now. Consider also amending the gate
+  of `build-5.md` §4 to count only `pdfkit`-caused files, which this run
+  passes.
+- **(a) One more fonts/layout session on those causes** (~8-12 h,
+  ~$150-250): the Adobe CMap resources (BSD-3, 6.79 MB, named in
+  `docs/SOURCES.md`), a half-width default for the Latin codes of a
+  non-embedded CJK font, §2.5 (b), and the four layout faults. The 27
+  PDFium-caused files stay below 0.90 whatever pdfkit does, so (a) passes the
+  gate as written only if it fixes at least 13 of the 21 pdfkit-caused files.
+- **(c) Stop and re-plan.** The cost of re-planning; nothing in the numbers
+  points to a reader that does not work.

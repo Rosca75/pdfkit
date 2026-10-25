@@ -33,9 +33,9 @@ import common  # noqa: E402
 TIMEOUT = 30.0
 COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "images",
            "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
-           "expect_select": "select"}
-# The names --checks accepts are the outcome keys the columns read.
-CHECKS = tuple(COLUMNS.values())
+           "expect_select": "select", "expect_fonts": "text"}
+# The names --checks accepts are the outcome keys the columns read, each once.
+CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
 
 
 def find_pdfkit(explicit: str | None) -> list[str] | None:
@@ -119,6 +119,11 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return "fail", "metadata disagrees"
     if column == "expect_text" and expected.startswith("known_gap:"):
         return "pass", "known_gap"
+    if column == "expect_fonts":
+        # The decoding ladder's unreadable codes over every page the text read.
+        found = sum(p.get("unreadable", 0) for p in part.get("pages") or [])
+        wanted = 0 if expected == "loads" else int(expected.split(":", 1)[1])
+        return ("pass" if found == wanted else "fail"), f"expected {wanted} unreadable codes, found {found}"
     if column == "expect_write":
         return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
     if column == "expect_select":

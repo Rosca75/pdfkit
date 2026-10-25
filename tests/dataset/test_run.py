@@ -95,7 +95,7 @@ class SummaryTest(unittest.TestCase):
     def rows_and_runs(self, body):
         rows = [{"id": "x", "set": "synth", "sha256": "h", "expect_open": "opens", "expect_text": "n/a",
                  "expect_images": "n/a", "expect_redact": "n/a", "expect_metadata": "n/a",
-                 "expect_write": "identical", "expect_select": "n/a"}]
+                 "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a"}]
         written = {"x": {"id": "x", "result": "written", "bytes": json.dumps(body).encode(), "seconds": 0.1}}
         return rows, written
 
@@ -116,11 +116,20 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary["nondeterministic"], ["x"])
         self.assertEqual(summary["runs"], 2)
 
+    def test_expect_fonts_counts_the_unreadable_codes_of_the_text(self):
+        text = {"status": "ok", "code": None,
+                "pages": [{"page": 1, "text": "a", "unreadable": 2, "hidden": 0},
+                          {"page": 2, "text": "b", "unreadable": 1, "hidden": 0}]}
+        self.assertEqual(run.check("expect_fonts", "unreadable:3", {"text": text})[0], "pass")
+        self.assertEqual(run.check("expect_fonts", "loads", {"text": text})[0], "fail")
+        clean = dict(text, pages=[{"page": 1, "text": "a", "unreadable": 0, "hidden": 0}])
+        self.assertEqual(run.check("expect_fonts", "loads", {"text": clean})[0], "pass")
+
     def test_every_expectation_column_is_known_to_the_harness(self):
         import common
-        # expect_fonts belongs to the font census (tests/dataset/font_census.py), not to a
-        # catalogue function the dataset verb runs.
-        self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS) - {"expect_fonts"})
+        # expect_fonts reads the text outcome's unreadable codes.
+        self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
+        self.assertEqual(run.COLUMNS["expect_fonts"], "text")
         self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select"})
 
 
