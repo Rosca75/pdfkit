@@ -33,7 +33,7 @@ import common  # noqa: E402
 TIMEOUT = 30.0
 COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "images",
            "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
-           "expect_select": "select", "expect_fonts": "text"}
+           "expect_select": "select", "expect_fonts": "text", "expect_redact_text": "redact_text"}
 # The names --checks accepts are the outcome keys the columns read, each once.
 CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
 
@@ -109,6 +109,10 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return "pass", ""
     if status == "skipped":
         return "fail", "not run because open did not succeed"
+    # A text redaction the manifest names a known gap (its self-check refuses a
+    # surface the job does not redact, such as metadata) passes apart.
+    if column == "expect_redact_text" and expected.startswith("known_gap:"):
+        return "pass", "known_gap"
     if status != "ok":
         return "fail", f"{status} {part.get('code')} {part.get('message', '')}"[:160]
     if column == "expect_images" and expected == "decoded" and part.get("undecodable"):
@@ -128,6 +132,10 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
     if column == "expect_select":
         return judge_output(part, len(part.get("pages") or []), None, expected)
+    if column == "expect_redact_text":
+        if part.get("self_check") != "passed":
+            return "fail", f"the self-check did not pass: {part.get('self_check')}"
+        return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
     return "pass", ""
 
 

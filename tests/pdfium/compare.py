@@ -14,7 +14,10 @@
 # renders every page of a run's identity-write and page-selection outputs against
 # their inputs (render.py, exact pixels, annotations off) and compares PDFium's
 # text of an identity write with its text of the input, writing
-# pdfium-write.json, pdfium-select.json and pdfium-write-text.json into the run.
+# pdfium-write.json, pdfium-select.json and pdfium-write-text.json into the run;
+# `--check redact` renders every page of each text redaction's output against its
+# input outside the reported rectangles (one pixel of dilation) and counts the
+# placeholders PDFium reads against those drawn, into pdfium-redact.json.
 
 from __future__ import annotations
 
@@ -262,7 +265,7 @@ def redaction_run(run_id: str, rows: list[dict], workers: int, render: bool, lea
     return 1 if unstable or leaking else 0
 
 
-CHECKS = ("write", "select", "text")
+CHECKS = ("write", "select", "text", "redact")
 
 
 def load_outcomes(run_id: str, rows: list[dict]) -> tuple[Path, list[tuple[dict, dict]]]:
@@ -372,6 +375,73 @@ def pixel_check(run_id: str, rows: list[dict], workers: int, kind: str) -> int:
     return 0
 
 
+def redact_entry(pool, before: Path, after: Path, part: dict) -> dict:
+    """One text redaction: every page against its input outside the reported rectangles, and the
+    placeholders PDFium reads on each page against those pdfkit drew there."""
+    boxes: dict = {}
+    for row in part.get("rectangles") or []:
+        boxes.setdefault(int(row[0]), []).append([float(v) for v in row[1:5]])
+    drawn = {int(page): int(count) for page, count in part.get("placeholders") or []}
+    before_pages = render.page_counts(pool, before)
+    entry = {"input_opens": before_pages is not None, "pages": 0, "stable": 0, "unstable": [],
+             "placeholders_drawn": sum(drawn.values()), "placeholders_found": 0, "placeholder_pages": []}
+    if before_pages is None:
+        return entry
+    pairs = [[i, i] for i in range(before_pages)]
+    rectangles = [boxes.get(i + 1, []) for i in range(before_pages)]
+    result = render.compare_pages(pool, before, after, pairs, rectangles)
+    entry["pages"] = len(pairs)
+    for pair, answer in zip(pairs, result["pairs"]):
+        if answer.get("stable"):
+            entry["stable"] += 1
+        else:
+            entry["unstable"].append({"page": pair[0] + 1, "outside_pixels": answer.get("outside_pixels"),
+                                      "cause": answer.get("error") or ("size_differs" if answer.get("size_differs")
+                                                                       else None)})
+    probe = pool.probe(after, ["text"])
+    texts = page_texts(probe) if probe.get("ok") else []
+    for page, count in sorted(drawn.items()):
+        text = texts[page - 1] if page - 1 < len(texts) else ""
+        seen = min(count, text.count("[REDACTED]"))
+        entry["placeholders_found"] += seen
+        if seen < count:
+            entry["placeholder_pages"].append({"page": page, "drawn": count, "found": seen})
+    return entry
+
+
+def redact_check(run_id: str, rows: list[dict], workers: int) -> int:
+    """Pixel stability outside the reported rectangles and the placeholder count of every
+    redact_text output of a run; writes pdfium-redact.json."""
+    run_dir, found = load_outcomes(run_id, rows)
+    jobs = [(row, outcome["redact_text"]) for row, outcome in found
+            if (outcome.get("redact_text") or {}).get("status") == "ok" and outcome["redact_text"].get("output")]
+    entries = {}
+    with render.render_pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
+        futures = {row["id"]: threads.submit(redact_entry, pool, common.file_path(row), run_dir / part["output"],
+                                             part) for row, part in jobs}
+        for row_id, future in futures.items():
+            entries[row_id] = future.result()
+    opened = [e for e in entries.values() if e["input_opens"]]
+    pages = sum(e["pages"] for e in opened)
+    stable = sum(e["stable"] for e in opened)
+    drawn = sum(e["placeholders_drawn"] for e in opened)
+    seen = sum(e["placeholders_found"] for e in opened)
+    summary = {"files": len(entries), "input_opens": len(opened), "pages_compared": pages,
+               "pages_stable": stable, "stable_share": round(stable / pages, 6) if pages else None,
+               "placeholders_drawn": drawn, "placeholders_found": seen,
+               "placeholder_share": round(seen / drawn, 6) if drawn else None,
+               "unstable_files": sorted(k for k, e in entries.items() if e["unstable"]),
+               "placeholder_files": sorted(k for k, e in entries.items() if e["placeholder_pages"])}
+    (run_dir / "pdfium-redact.json").write_text(
+        json.dumps({"files": dict(sorted(entries.items())), "summary": summary}, indent=1), encoding="utf-8")
+    print(json.dumps({"check": "redact"} | summary | {"unstable_files": len(summary["unstable_files"]),
+                                                      "placeholder_files": len(summary["placeholder_files"])},
+                     indent=1))
+    if not entries:
+        print("SKIPPED redact check: no outcome of this run carries a redact_text output", file=sys.stderr)
+    return 0
+
+
 def write_text_check(run_id: str, rows: list[dict], workers: int) -> int:
     """PDFium's text of each identity-write output against its text of the input (word-bag F1)."""
     run_dir, found = load_outcomes(run_id, rows)
@@ -442,6 +512,8 @@ def main() -> int:
         for check in checks:
             if check == "text":
                 write_text_check(args.run, rows, args.workers)
+            elif check == "redact":
+                redact_check(args.run, rows, args.workers)
             else:
                 pixel_check(args.run, rows, args.workers, check)
         return 0

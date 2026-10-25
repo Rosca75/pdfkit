@@ -131,3 +131,15 @@ overlapped_text	traps	3	two text runs drawn over one another	synth
 incremental_redaction	traps	3	a later revision removes a name an earlier revision drew	synth
 deniable_removal	traps	1	text removed from the drawn content but kept in a reachable object	synth
 box_over_live_text	traps	3	a filled box drawn over text that is still extractable	synth
+redact_kerning	traps	1	the redaction marker split by TJ kerning numbers	synth
+redact_font_change	traps	1	the redaction marker drawn in two fonts by three operators	synth
+redact_hyphen	traps	1	the redaction marker hyphenated across a line break	synth
+redact_two_contents	traps	1	the redaction marker split across a page's two /Contents streams	synth
+redact_form_three_pages	traps	1	the redaction marker inside one form drawn on three pages	synth
+redact_actual_text	traps	1	the redaction marker given as /ActualText of abbreviated glyphs	synth
+redact_invisible_over_image	traps	1	the redaction marker in render mode 3 over an image	synth
+redact_white_on_white	traps	1	the redaction marker in white on a white page	synth
+redact_fake_bold	traps	1	the redaction marker drawn twice for a fake bold	synth
+redact_overlapped	traps	1	the redaction marker with other text drawn over it	synth
+redact_type3	traps	1	the redaction marker in a Type 3 font	synth
+redact_identity_h	traps	1	the redaction marker in two-byte Identity-H codes	synth

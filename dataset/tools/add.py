@@ -162,6 +162,7 @@ def register(paths: list[Path], set_name: str, licence: str, source_for, pool,
         probe = entry.get("pdfium", {})
         # The writer's expectations follow from the open expectation and the page count.
         expect.setdefault("expect_write", common.default_expect_write(expect["expect_open"]))
+        expect.setdefault("expect_redact_text", common.default_expect_redact_text(expect["expect_open"]))
         expect.setdefault("expect_select", common.default_expect_select(
             expect["expect_open"], str(probe["pages"]) if probe.get("ok") else ""))
         row = {
