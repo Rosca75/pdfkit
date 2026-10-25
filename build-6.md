@@ -267,7 +267,9 @@ to their phase-1 stubs. Nothing persisted changes shape.
    6,092 page occurrences (99.90%), every failure with its fault; bitonal
    agreement 491 of 492 (99.80%; JBIG2 16 of 16, CCITT 475 of 476);
    continuous-tone agreement 3,663 of 3,697 (99.08%); identities and PNG
-   bytes equal over two runs on every file; no crash or hang. The one bitonal
+   bytes equal over two runs on every file; no crash or hang; `python
+   build/check.py` (15 groups), the unit tier and both sanitizer tiers green
+   at the branch tip. The one bitonal
    disagreement is `qpdf-0026` (a 2500 x 3250 Group 4 page): its first coding
    line reads, by T.4's tables, as horizontal mode with a white run of 0 and a
    black run of 2496 + 4, so pdfkit's page is black where PDFium's bitmap and
