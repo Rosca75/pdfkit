@@ -321,7 +321,7 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `pending_redactions` | the source's `/Redact` annotations never applied; the output drops them with every annotation |
 | `missing_references` | the distinct object numbers referenced but missing, written as `null` |
 | `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
-| `rectangles` | per output page a text redaction changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line and each placeholder drawn, widened by a sixth of the glyph size) and the `placeholders` drawn there; empty when nothing was redacted |
+| `rectangles` | per output page a text redaction changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line with the glyphs drawn after it on that line, and each placeholder drawn, widened by a sixth of the glyph size) and the `placeholders` drawn there; empty when nothing was redacted |
 | `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match; `{"status": "passed", "strings": n}` when the output was re-read and none of the n redacted strings survives (`docs/DESIGN.md` §18); a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface and page, and no PDF is returned |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode and was dropped |
 

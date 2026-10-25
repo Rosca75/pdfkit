@@ -118,6 +118,7 @@ did not run is `null`.
     "self_check": "passed",
     "rectangles": [[1, 70.0, 715.52, 117.36, 730.62]],
     "placeholders": [[1, 6]],
+    "geometry": [[1, 0, 0, 612, 792, 0]],
     "codes": ["4163636f756e74"],
     "reopen": {"status": "ok", "code": null, "pages": 1, "repairs": []}
   }
@@ -151,6 +152,10 @@ one `pdfkit_redact_text` call and written with `pdfkit_write` to
 `<dir>/outputs/<id>.redact.pdf`. `counts` holds the occurrences found per
 string, `rectangles` the write report's boxes as `[page, left, bottom, right,
 top]`, `placeholders` the placeholders drawn per page as `[page, count]`,
+`geometry` each such page's crop box and rotation as `[page, left, bottom,
+right, top, rotate]` (from `pdfkit_inspect`; a renderer draws the crop box
+turned by the rotation, so `compare.py --check redact` places the rectangles
+through it),
 `codes` the removed codes of four bytes or more (hexadecimal, per font run),
 and `reopen` the output opened again. A self-check refusal is `status`
 `error` with `code` `PDFKIT_E_SELF_CHECK`, the `message` naming the surfaces,

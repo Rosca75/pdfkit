@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The pdfkit authors
 #
-# The second extractor's leak check of a text redaction run (build-8.md
-# section 3.3): for every outcome whose redact_text output was written, each
+# The second extractor's leak check of a text redaction run: for every outcome whose redact_text output was written, each
 # redacted string is searched for
 #   - in PDFium's text of every output page, under the default folding of
 #     docs/DESIGN.md section 11 (canonical decomposition with the combining
@@ -23,8 +22,8 @@
 # hexadecimal) and reported as `codes`, not counted: a code means a glyph
 # only in its own font, and the same codes in another font's string draw
 # other text, which the two searches above judge.
-# A counted hit is a leak: build-8.md section 5 stops the line on one. The
-# report goes to <run>/pdfium-leak.json.
+# A counted hit is a leak, and one stops the line. The report goes to
+# <run>/pdfium-leak.json.
 """Search a redaction run's outputs for the redacted strings: python tests/pdfium/leak.py --run <id>."""
 
 from __future__ import annotations

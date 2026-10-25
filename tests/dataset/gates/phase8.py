@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The pdfkit authors
 #
-# The gate of text redaction (build-8.md section 4): judges a dataset run made
+# The gate of text redaction: judges a dataset run made
 # with `tests/dataset/run.py --checks open,redact_text --runs 2`, then
 # `tests/pdfium/compare.py --check redact` and `tests/pdfium/leak.py`, over
 # every manifest row whose open expectation is `opens` or `repaired` and whose
 # redact_text expectation is not `n/a`. It reads <run>/summary.json, the
 # outcomes, pdfium-redact.json and pdfium-leak.json, and writes the table of
 # every measure (measure, value, threshold, pass or fail) with the files behind
-# each failure into phase8.md and phase8.json in the run folder. A row the
-# manifest names a known gap is counted apart and named. A survivor is a leak:
-# build-8.md section 5 stops the line on one.
+# each failure into a markdown and a JSON file named after this script in the
+# run folder. A row the manifest names a known gap is counted apart and named.
+# A survivor is a leak, and one stops the line.
 
 from __future__ import annotations
 
