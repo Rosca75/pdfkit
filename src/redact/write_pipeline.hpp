@@ -8,9 +8,11 @@
 // reorders the pipeline. A stage the plan gives nothing to do leaves the
 // output as it found it: the text surgery runs only for text matches
 // (docs/DESIGN.md section 12), the image treatments only for treatments
-// (section 14), the metadata stage only for field values (section 10), and
-// the self-check (section 18) only when a text match was redacted, which the
-// report says with its reason.
+// (section 14), and the self-check (section 18) only when a text match was
+// redacted or a metadata field rewritten, which the report says with its
+// reason. The metadata stage (section 10) runs on every write, because the
+// XMP packet's identifiers and history name the original whatever the plan
+// holds.
 
 #ifndef PDFKIT_REDACT_WRITE_PIPELINE_HPP
 #define PDFKIT_REDACT_WRITE_PIPELINE_HPP

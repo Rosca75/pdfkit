@@ -12,7 +12,10 @@
 // dropping it would make every switched-off layer visible. The XMP packet
 // loses its xmpMM (media management) properties, which hold the history of
 // every save and the identifiers of the original (XMP specification part 2,
-// section 3.3, recalled); every other byte of the packet is kept.
+// section 3.3, recalled); every other byte of the packet is kept. The one
+// exception is an xmpMM:DocumentID or xmpMM:InstanceID whose value is the
+// placeholder the metadata writer put there, which the file writer patches
+// with the output's own identifier (writer::DocumentId).
 
 #include "writer/channel_table.hpp"
 
@@ -20,6 +23,7 @@
 #include "syntax/filters.hpp"
 #include "syntax/parser.hpp"
 #include "syntax/stream.hpp"
+#include "writer/document_id.hpp"
 #include "writer/reachability.hpp"
 #include "writer/stream_copier.hpp"
 
@@ -865,6 +869,13 @@ bool is_name_byte(char c) {
   return c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != '>' && c != '/' && c != '=';
 }
 
+// Whether an xmpMM property named name holding value is an identifier the
+// metadata writer left for the file writer to patch.
+bool kept_identifier(std::string_view name, std::string_view value) {
+  return (name == "xmpMM:DocumentID" && value == DocumentId::xmp_document_placeholder) ||
+         (name == "xmpMM:InstanceID" && value == DocumentId::xmp_instance_placeholder);
+}
+
 // The packet without its xmpMM elements and attributes; no value when an
 // element does not close, which is a packet that does not scan.
 std::optional<std::string> without_media_management(const std::string& packet) {
@@ -910,6 +921,13 @@ std::optional<std::string> without_media_management(const std::string& packet) {
       std::size_t at = close + 1;
       const std::string open = "<" + name;
       const std::string shut = "</" + name + ">";
+      if (const std::size_t first_shut = packet.find(shut, at);
+          first_shut != std::string::npos &&
+          kept_identifier(name, std::string_view(packet).substr(at, first_shut - at))) {
+        out.append(packet, i, first_shut + shut.size() - i);
+        i = first_shut + shut.size();
+        continue;
+      }
       while (depth > 0) {
         const std::size_t next_open = packet.find(open, at);
         const std::size_t next_shut = packet.find(shut, at);
@@ -936,6 +954,7 @@ std::optional<std::string> without_media_management(const std::string& packet) {
       while (at < packet.size() && is_name_byte(packet[at])) {
         ++at;
       }
+      const std::string_view attribute = std::string_view(packet).substr(i + 1, at - i - 1);
       while (at < packet.size() && (packet[at] == ' ' || packet[at] == '=')) {
         ++at;
       }
@@ -944,8 +963,10 @@ std::optional<std::string> without_media_management(const std::string& packet) {
         if (end == std::string::npos) {
           return std::nullopt;
         }
-        i = end + 1;
-        continue;
+        if (!kept_identifier(attribute, std::string_view(packet).substr(at + 1, end - at - 1))) {
+          i = end + 1;
+          continue;
+        }
       }
     }
     if (!in_tag && c == '<' && i + 1 < packet.size() && packet[i + 1] != '!' &&

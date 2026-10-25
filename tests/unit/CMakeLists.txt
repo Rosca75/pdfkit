@@ -27,7 +27,10 @@ add_executable(pdfkit_tests
   images/pdf_function_test.cpp
   images/png_writer_test.cpp
   images/sample_unpacker_test.cpp
+  metadata/api_metadata_test.cpp
   metadata/metadata_reader_test.cpp
+  metadata/metadata_writer_test.cpp
+  metadata/self_check_metadata_test.cpp
   metadata/support/metadata_fixture.cpp
   metadata/xmp_scanner_test.cpp
   platform/budget_test.cpp

@@ -416,7 +416,11 @@ MetadataReader::Result MetadataReader::read(Document& document) {
       for (const Pair& pair : pairs(field)) {
         if (const XmpScanner::Property* property = scanned.find(pair.ns, pair.local)) {
           if (property->form != XmpScanner::Form::structure) {
-            row.xmp.push_back({std::string(pair.name), property->value});
+            XmpValue value{std::string(pair.name), property->value, {}};
+            for (const XmpScanner::Item& item : property->items) {
+              value.items.push_back(item.text);
+            }
+            row.xmp.push_back(std::move(value));
           }
         }
       }

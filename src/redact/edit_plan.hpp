@@ -17,6 +17,7 @@
 
 #include "redact/text_plan.hpp"
 #include "syntax/document.hpp"
+#include "writer/metadata_writer.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -51,11 +52,28 @@ class EditPlan {
   // bytes in lower-case hexadecimal, computed on first use.
   [[nodiscard]] const std::string& fingerprint();
 
+  // The metadata values pdfkit_set_metadata recorded, by field; a later
+  // value of a field replaces an earlier one.
+  [[nodiscard]] writer::MetadataWriter::Values& metadata() noexcept { return metadata_; }
+  [[nodiscard]] const writer::MetadataWriter::Values& metadata() const noexcept {
+    return metadata_;
+  }
+  // The source's values of every field set, which the self-check searches
+  // the output for: each Info value and each paired XMP value and item.
+  [[nodiscard]] std::vector<std::string>& metadata_originals() noexcept {
+    return metadata_originals_;
+  }
+  [[nodiscard]] const std::vector<std::string>& metadata_originals() const noexcept {
+    return metadata_originals_;
+  }
+
  private:
   syntax::Document* document_;
   std::optional<std::vector<std::uint32_t>> pages_;
   TextPlan text_;
   std::string fingerprint_;
+  writer::MetadataWriter::Values metadata_;
+  std::vector<std::string> metadata_originals_;
 };
 
 }  // namespace pdfkit::redact

@@ -335,10 +335,14 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     info_number = reference->number;
   }
   if (const Dictionary* info = document->info().dictionary()) {
+    // Every string of every entry, the strings of an array or dictionary
+    // value included, because the string walk below leaves the Info
+    // dictionary's own object to this surface.
     for (const auto& [key, value] : info->entries()) {
-      const Object resolved = document->resolve(value);
-      if (const Object::String* string = resolved.string()) {
-        search.text(text::TextString::to_utf8(string->bytes), std::nullopt, "info", info_number);
+      std::vector<std::string> strings;
+      strings_of(document->resolve(value), 0, strings);
+      for (const std::string& string : strings) {
+        search.text(string, std::nullopt, "info", info_number);
       }
     }
   }

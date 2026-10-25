@@ -245,9 +245,12 @@ TEST_CASE("the XMP packet loses its media-management properties and keeps the re
       pdfkit::test::identity_write(PdfBuilderChannels::planted("ch_xmp_history", marker));
   const std::string all = pdfkit::test::everything(output);
   CHECK(all.find("xmpMM:History") == std::string::npos);
-  CHECK(all.find("xmpMM:DocumentID") == std::string::npos);
-  CHECK(all.find("xmpMM:InstanceID") == std::string::npos);
+  // The identifiers stay, regenerated from the output's own hash.
   CHECK(all.find("uuid:1234") == std::string::npos);
+  CHECK(all.find("uuid:5678") == std::string::npos);
+  CHECK(all.find("xmpMM:DocumentID='xmp.did:") != std::string::npos);
+  CHECK(all.find("xmpMM:InstanceID=\"xmp.iid:") != std::string::npos);
+  CHECK(all.find("00000000000000000000000000000000") == std::string::npos);
   CHECK(all.find("An ordinary title") != std::string::npos);
   CHECK(all.find("<?xpacket end='w'?>") != std::string::npos);
   // The packet is written uncompressed, so a tool scanning the raw bytes

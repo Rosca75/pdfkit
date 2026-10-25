@@ -8,6 +8,10 @@
 
 #include "support/pdf_builder.hpp"
 
+#include <doctest.h>
+
+#include <cstdint>
+
 namespace pdfkit::test {
 
 std::string MetadataFixture::xmp(const std::string& body, const std::string& attributes) {
@@ -40,6 +44,46 @@ std::string MetadataFixture::build() const {
     builder.encrypt(*encryption);
   }
   return builder.build();
+}
+
+MetadataFixture::Write MetadataFixture::write(const std::string& file, const std::string& fields,
+                                              const std::string& matches) {
+  const auto take = [](pdfkit_buffer& buffer) {
+    std::string text(reinterpret_cast<const char*>(buffer.data), buffer.size);
+    pdfkit_buffer_free(&buffer);
+    return text;
+  };
+  Write result;
+  pdfkit_buffer out{nullptr, 0, nullptr};
+  pdfkit_document* doc = nullptr;
+  pdfkit_status status = pdfkit_open(reinterpret_cast<const std::uint8_t*>(file.data()),
+                                     file.size(), nullptr, &doc, &out);
+  const std::string opened = take(out);
+  INFO(opened);
+  REQUIRE(status == PDFKIT_OK);
+  pdfkit_edit* edit = nullptr;
+  status = pdfkit_edit_new(doc, &edit, &out);
+  (void)take(out);
+  REQUIRE(status == PDFKIT_OK);
+  if (!matches.empty()) {
+    status = pdfkit_redact_text(edit, matches.c_str(), &out);
+    const std::string answer = take(out);
+    INFO(answer);
+    REQUIRE(status == PDFKIT_OK);
+  }
+  if (!fields.empty()) {
+    result.set_status = pdfkit_set_metadata(edit, fields.c_str(), &out);
+    result.set_answer = take(out);
+  }
+  if (result.set_status == PDFKIT_OK) {
+    pdfkit_buffer pdf{nullptr, 0, nullptr};
+    result.write_status = pdfkit_write(edit, nullptr, &pdf, &out);
+    result.report = take(out);
+    result.pdf = take(pdf);
+  }
+  pdfkit_edit_free(edit);
+  pdfkit_close(doc);
+  return result;
 }
 
 }  // namespace pdfkit::test

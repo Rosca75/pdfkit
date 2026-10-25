@@ -9,6 +9,8 @@
 #ifndef PDFKIT_TESTS_METADATA_SUPPORT_METADATA_FIXTURE_HPP
 #define PDFKIT_TESTS_METADATA_SUPPORT_METADATA_FIXTURE_HPP
 
+#include "pdfkit/pdfkit.h"
+
 #include "support/pdf_encryptor.hpp"
 
 #include <optional>
@@ -28,6 +30,19 @@ struct MetadataFixture {
   std::string content = "BT /F1 12 Tf 72 700 Td (Body text) Tj ET";
 
   [[nodiscard]] std::string build() const;
+
+  // A write through the C ABI: the statuses and answers of
+  // pdfkit_set_metadata (when fields is not empty), pdfkit_redact_text (when
+  // matches is not empty) and pdfkit_write, and the output.
+  struct Write {
+    pdfkit_status set_status = PDFKIT_OK;
+    std::string set_answer;
+    pdfkit_status write_status = PDFKIT_OK;
+    std::string report;
+    std::string pdf;
+  };
+  [[nodiscard]] static Write write(const std::string& file, const std::string& fields,
+                                   const std::string& matches = "");
 
   // A packet: the xpacket wrapper, x:xmpmeta, rdf:RDF and one
   // rdf:Description with the dc, xmp, pdf and xmpMM namespaces declared,

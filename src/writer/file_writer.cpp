@@ -9,6 +9,7 @@
 #include "writer/file_writer.hpp"
 
 #include "platform/error.hpp"
+#include "syntax/dictionary.hpp"
 #include "syntax/object.hpp"
 #include "syntax/stream.hpp"
 #include "writer/document_id.hpp"
@@ -69,6 +70,17 @@ FileWriter::Result FileWriter::write(ObjectGraph& graph) {
   out += header_version(graph.document().version());
   out += "\n%\xE2\xE3\xCF\xD3\n";
 
+  // The catalog's XMP packet, whose identifier placeholders are patched
+  // with the /ID.
+  std::uint32_t packet = 0;
+  if (const syntax::Dictionary* catalog = graph.get(root).dictionary()) {
+    if (const auto reference = catalog->get("Metadata").reference()) {
+      packet = reference->number;
+    }
+  }
+  std::size_t packet_begin = 0;
+  std::size_t packet_end = 0;
+
   std::vector<std::uint64_t> offsets;
   offsets.reserve(reachable.order().size());
   for (const std::uint32_t number : reachable.order()) {
@@ -80,6 +92,10 @@ FileWriter::Result FileWriter::write(ObjectGraph& graph) {
       const StreamCopier::Copy copy = StreamCopier::copy(graph.document(), *stream);
       Serialiser::write(out, Object::make_dictionary(copy.dictionary), numbering);
       out += "\nstream\n";
+      if (number == packet) {
+        packet_begin = out.size();
+        packet_end = out.size() + copy.data.size();
+      }
       out.append(reinterpret_cast<const char*>(copy.data.data()), copy.data.size());
       out += "\nendstream";
     } else {
@@ -94,7 +110,7 @@ FileWriter::Result FileWriter::write(ObjectGraph& graph) {
   }
   // The catalog is reached first, so it is object 1.
   const XrefStreamWriter::Placed placed = XrefStreamWriter::write(out, offsets, 1, info);
-  result.id = DocumentId::patch(out, placed.id_first, placed.id_second);
+  result.id = DocumentId::patch(out, placed.id_first, placed.id_second, packet_begin, packet_end);
   result.objects = offsets.size();
   result.missing_references = reachable.missing();
   return result;

@@ -61,6 +61,8 @@ class MetadataReader {
     // "dc:title" and so on, whatever prefix the packet writes.
     std::string property;
     std::string value;
+    // An array's items, each as written.
+    std::vector<std::string> items;
   };
 
   struct Row {

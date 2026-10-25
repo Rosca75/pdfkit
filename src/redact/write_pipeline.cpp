@@ -13,6 +13,7 @@
 #include "redact/text_redactor.hpp"
 #include "writer/channel_table.hpp"
 #include "writer/file_writer.hpp"
+#include "writer/metadata_writer.hpp"
 #include "writer/page_selector.hpp"
 
 #include <optional>
@@ -63,10 +64,11 @@ void WritePipeline::image_treatments(EditPlan& /*plan*/, writer::ObjectGraph& /*
   // The plan holds no image treatment: every image is kept.
 }
 
-void WritePipeline::metadata(EditPlan& /*plan*/, writer::ObjectGraph& /*graph*/,
-                             writer::WriteReport& /*report*/) {
-  // The plan holds no metadata value: the Info dictionary and the XMP packet
-  // keep their values (the channel table still strips the XMP history).
+void WritePipeline::metadata(EditPlan& plan, writer::ObjectGraph& graph,
+                             writer::WriteReport& report) {
+  // Runs on every write: a plan without metadata values still has the
+  // packet's identifiers replaced and its media-management history removed.
+  writer::MetadataWriter::apply(graph, plan.metadata(), report.warnings);
 }
 
 void WritePipeline::strip_channels(writer::ObjectGraph& graph, writer::WriteReport& report) {
@@ -99,7 +101,7 @@ std::string WritePipeline::serialise(writer::ObjectGraph& graph, writer::WriteRe
 void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
                                writer::WriteReport& report) {
   const TextPlan& text = plan.text();
-  if (text.matches.empty()) {
+  if (text.matches.empty() && plan.metadata_originals().empty()) {
     report.self_check_status = "not_run";
     report.self_check_reason = "no text redaction in the edit plan";
     return;
@@ -109,13 +111,23 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
     unique.insert(match.placeholder);
   }
   const std::vector<std::string> placeholders(unique.begin(), unique.end());
+  // Every original value of a rewritten field is a redacted string under the
+  // default folding (docs/DESIGN.md section 18).
+  std::vector<MatchFinder::Match> needles = text.needles;
+  for (const std::string& original : plan.metadata_originals()) {
+    MatchFinder::Match needle;
+    needle.kind = MatchFinder::Match::Kind::search;
+    needle.search = original;
+    needles.push_back(std::move(needle));
+  }
   // With search strings alone, every source page was searched with every
   // string when the matches were added, so a page the redaction left as it
   // was (no edit, no edited form drawn) reads as it did then and holds no
   // occurrence; its text is not read again. The page text of every changed
-  // page and every other surface of every page is.
+  // page and every other surface of every page is. A metadata value was
+  // searched on no page, so with one every page's text is read.
   std::optional<std::set<std::uint32_t>> changed;
-  if (!text.glyph_ranges) {
+  if (!text.glyph_ranges && plan.metadata_originals().empty()) {
     std::set<std::uint32_t> forms;
     for (const auto& [number, work] : text.pages) {
       for (const auto& [form, target] : work.forms) {
@@ -141,7 +153,7 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
     }
   }
   const SelfCheck::Result result =
-      SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(), text.needles, placeholders,
+      SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(), needles, placeholders,
                      changed ? &*changed : nullptr);
   report.self_check_strings = result.strings;
   if (!result.survivors.empty()) {
