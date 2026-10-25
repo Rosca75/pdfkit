@@ -10,6 +10,10 @@ add_executable(pdfkit_tests
   platform/budget_test.cpp
   platform/buffer_test.cpp
   platform/checked_test.cpp
+  platform/crypto/aes_test.cpp
+  platform/crypto/md5_test.cpp
+  platform/crypto/rc4_test.cpp
+  platform/crypto/sha2_test.cpp
   platform/error_test.cpp
   platform/json_reader_test.cpp
   platform/json_writer_test.cpp
