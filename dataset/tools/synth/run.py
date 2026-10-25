@@ -2,7 +2,7 @@
 # Copyright 2026 The pdfkit authors
 #
 # Writes every synthesised pattern and registers the files. Each pattern module
-# under synth/patterns/ holds PATTERNS, a table from pattern name to a function
+# under synth/patterns/ and synth/channels/ holds PATTERNS, a table from pattern name to a function
 # returning specimens: the bytes, the tags the pattern stands for, the text the
 # page draws and the text pdfkit's decoding ladder will report (they differ only
 # where the file lies, as a wrong ToUnicode does). The expected text agreement
@@ -43,16 +43,19 @@ class Specimen:
 
 
 def pattern_table() -> dict:
-    import synth.patterns as package
+    """Every pattern of synth.patterns and of synth.channels (the planted-marker patterns)."""
+    import synth.channels
+    import synth.patterns
 
     table = {}
-    for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda i: i.name):
-        module = importlib.import_module(f"synth.patterns.{info.name}")
-        for name, fn in getattr(module, "PATTERNS", {}).items():
-            if name in table:
-                raise common.ToolError(f"pattern {name} is defined twice", "unique pattern names",
-                                       f"rename one in synth/patterns/{info.name}.py")
-            table[name] = fn
+    for package in (synth.patterns, synth.channels):
+        for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda i: i.name):
+            module = importlib.import_module(f"{package.__name__}.{info.name}")
+            for name, fn in getattr(module, "PATTERNS", {}).items():
+                if name in table:
+                    raise common.ToolError(f"pattern {name} is defined twice", "unique pattern names",
+                                           f"rename one in {package.__name__.replace('.', '/')}/{info.name}.py")
+                table[name] = fn
     return table
 
 

@@ -38,6 +38,27 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual(len(problems), 2)
 
 
+class PagesMultiTest(unittest.TestCase):
+    taxonomy = [{"tag": "pages_multi", "group": "layout", "minimum": "2", "detector": "manual"}]
+
+    def test_counted_from_the_pages_column_not_the_tags(self):
+        rows = [dict(row("a", ""), pages="3"), dict(row("b", ""), pages="2"),
+                dict(row("c", ""), pages="1"), dict(row("d", ""), pages=""),
+                dict(row("e", "pages_multi"), pages="1")]
+        cov = report.coverage(rows, self.taxonomy)[0]
+        self.assertEqual(cov["count"], 3)
+        self.assertTrue(cov["ok"])
+
+    def test_a_row_without_a_page_count_is_not_multi_page(self):
+        self.assertFalse(report.has_many_pages({"pages": ""}))
+        self.assertFalse(report.has_many_pages({"pages": "1"}))
+        self.assertTrue(report.has_many_pages({"pages": "12"}))
+
+    def test_the_committed_taxonomy_asks_for_fifty(self):
+        minimum = {t["tag"]: t["minimum"] for t in common.read_taxonomy()}
+        self.assertEqual(minimum["pages_multi"], "50")
+
+
 class CommittedTablesTest(unittest.TestCase):
     def test_taxonomy_holds_every_group(self):
         groups = {t["group"] for t in common.read_taxonomy()}

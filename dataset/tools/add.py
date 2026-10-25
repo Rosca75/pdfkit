@@ -7,8 +7,10 @@
 # with its expectations. The expectations default to opens, agree, decoded, n/a,
 # n/a, and follow from what the scan and PDFium found otherwise: a password is
 # refused, a damaged structure is repaired, a file without text or images
-# expects n/a. A hash already in the manifest is refused, naming the existing id,
-# because one file under two ids would count twice in every gate.
+# expects n/a. The write expectation is identical for a file pdfkit reads, and
+# the select expectation is ok for such a file of two or more pages. A hash
+# already in the manifest is refused, naming the existing id, because one file
+# under two ids would count twice in every gate.
 
 from __future__ import annotations
 
@@ -158,6 +160,10 @@ def register(paths: list[Path], set_name: str, licence: str, source_for, pool,
         expect.update(extra.get("overrides", {}))
         row_id = common.next_id(rows, set_name)
         probe = entry.get("pdfium", {})
+        # The writer's expectations follow from the open expectation and the page count.
+        expect.setdefault("expect_write", common.default_expect_write(expect["expect_open"]))
+        expect.setdefault("expect_select", common.default_expect_select(
+            expect["expect_open"], str(probe["pages"]) if probe.get("ok") else ""))
         row = {
             "id": row_id, "set": set_name,
             "source": extra.get("source") or source_for(path),

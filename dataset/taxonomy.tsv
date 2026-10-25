@@ -50,6 +50,7 @@ right_to_left	layout	1	right-to-left script text	synth
 table	layout	3	text set in a ruled table	synth
 header_footer	layout	3	repeated running headers and footers	synth
 actual_text	layout	3	marked content with /ActualText	autotag
+pages_multi	layout	50	a file of two or more pages (counted from the pages column)	manual
 render_invisible	hidden	3	text in render mode 3 or 7	autotag
 white_fill	hidden	3	white text with nothing drawn under it	synth
 clipped	hidden	3	text outside its clipping path	synth
@@ -102,6 +103,14 @@ ch_object_metadata	channels	3	an object-level /Metadata stream on a page, image,
 ch_unreferenced	channels	3	objects no reference reaches	autotag
 ch_threads	channels	3	article threads /Threads	autotag
 ch_portfolio	channels	3	a portfolio /Collection	autotag
+ch_revisions	channels	1	an earlier revision of a page's content that stays in the file after an incremental update	synth
+ch_last_modified	channels	1	a /LastModified timestamp on a page or the catalog	synth
+ch_web_capture	channels	1	a /SpiderInfo web-capture dictionary or a page /ID	synth
+ch_perms_legal	channels	1	/Perms or /Legal dictionaries on the catalog	synth
+ch_encrypt	channels	1	an /Encrypt dictionary carrying a vendor key whose string is not encrypted	synth
+ch_uri_base	channels	1	a catalog /URI dictionary with a /Base URL	synth
+ch_search_index	channels	1	a private search-index key on the catalog and a non-standard /PageMode	synth
+ch_page_owned	channels	1	the page-selection leak fixture of DESIGN.md 16: a marker in every channel a page owns or names	synth
 gen_word	generators	3	produced by Microsoft Word (Save as PDF)	autotag
 gen_word_pdfa	generators	1	produced by Microsoft Word as PDF/A	office
 gen_print_to_pdf	generators	3	produced by Microsoft Print to PDF	autotag

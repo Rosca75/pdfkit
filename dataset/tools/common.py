@@ -22,7 +22,7 @@ from pathlib import Path
 MANIFEST_COLUMNS = (
     "id", "set", "source", "licence", "sha256", "bytes", "pages", "producer",
     "tags", "expect_open", "expect_text", "expect_images", "expect_redact",
-    "expect_metadata", "expect_fonts", "notes",
+    "expect_metadata", "expect_fonts", "expect_write", "expect_select", "notes",
 )
 TAXONOMY_COLUMNS = ("tag", "group", "minimum", "description", "detector")
 SOURCES_COLUMNS = (
@@ -40,6 +40,8 @@ EXPECTATIONS = {
     "expect_metadata": ("metadata", ("agree", "n/a")),
     # Not a catalogue function: the fonts layer's census (tests/dataset/font_census.py).
     "expect_fonts": ("fonts", ("loads", "unreadable:", "n/a")),
+    "expect_write": ("write", ("identical", "known_gap:", "n/a")),
+    "expect_select": ("select", ("ok", "known_gap:", "n/a")),
 }
 
 # The refusal codes of docs/DESIGN.md chapter 19 an `expect_open` may name.
@@ -240,6 +242,17 @@ def next_id(rows: list[dict], set_name: str) -> str:
     used = [int(r["id"][len(prefix):]) for r in rows
             if r["id"].startswith(prefix) and r["id"][len(prefix):].isdigit()]
     return f"{set_name}-{(max(used) + 1 if used else 1):04d}"
+
+
+def default_expect_write(expect_open: str) -> str:
+    """`identical` for a file the open expectation lets pdfkit read, else `n/a`."""
+    return "identical" if expect_open in ("opens", "repaired") else "n/a"
+
+
+def default_expect_select(expect_open: str, pages: str) -> str:
+    """`ok` for a readable file of two or more pages (PDFium's count), else `n/a`."""
+    count = int(pages) if pages.isdigit() else 0
+    return "ok" if expect_open in ("opens", "repaired") and count >= 2 else "n/a"
 
 
 def check_expectation(column: str, value: str) -> bool:

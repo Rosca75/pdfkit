@@ -55,6 +55,8 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_redact` | `stable` (a redaction leaves the page pixel-stable outside the changed rectangles) or `n/a` |
 | `expect_metadata` | `agree` (the Info and XMP values agree with the extraction) or `n/a` |
 | `expect_fonts` | the fonts layer's census (`tests/dataset/font_census.py`, not a catalogue function): `loads` (every font loads and every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
+| `expect_write` | `identical` (the identity write re-opens in pdfkit without repair with the same page count, and PDFium renders every page as the input renders), `known_gap:<reason>` (a difference known in advance, with its reason) or `n/a` (a file pdfkit refuses) |
+| `expect_select` | `ok` (a seeded random proper subset of the pages, written in a shuffled order, re-opens without repair with that many pages, and each output page renders as its source page), `known_gap:<reason>` or `n/a` (one page, or a file pdfkit refuses) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |
 
 A new catalogue function adds its expectation column here and in
@@ -81,6 +83,13 @@ overrides them from provenance:
   image, `n/a` otherwise.
 - `expect_redact` and `expect_metadata`: `n/a` until the phases that deliver
   redaction and metadata set them.
+- `expect_write`: `identical` when `expect_open` is `opens` or `repaired`, `n/a`
+  otherwise (`common.default_expect_write`); a difference found by a run is
+  recorded as `known_gap:<reason>` by hand.
+- `expect_select`: `ok` when `expect_open` is `opens` or `repaired` and the
+  `pages` column holds two or more, `n/a` otherwise
+  (`common.default_expect_select`); `add.py`, the synthesiser and the mutator
+  fill both columns for every new row the same way.
 
 ## 4. The licence rule
 
@@ -126,7 +135,7 @@ The admitted sets and the files taken:
 | `pdfbox` | PDFBox test resources | Apache-2.0 | 15 |
 | `pdf20ex` | PDF Association PDF 2.0 examples | CC-BY-SA-4.0 | 7 |
 | `nicar25` | public-records PDFs collected as hard extraction cases | MIT | 7 |
-| `synth` | `dataset/tools/synth/` | Apache-2.0 | 193 |
+| `synth` | `dataset/tools/synth/` | Apache-2.0 | 220 |
 | `mutate` | `dataset/tools/mutate.py` over admitted files | the source's | 75 |
 | `office` | `dataset/tools/generate_office.ps1` | Apache-2.0 | 4 |
 
@@ -146,6 +155,11 @@ damages and the font decoding paths, 1 for the rare cases (`vertical`,
 `right_to_left`, `aesv3_r5`, `img_jbig2`, `img_jbig2_globals`, `img_jpx`,
 `type3`, `deniable_removal`, and the generators only the owner's laptop can
 produce), and 3 otherwise. A tag is added when a gap appears and never removed.
+
+The tag `pages_multi` (two or more pages, minimum 50) is never written into a
+row: `dataset/tools/report.py` counts it from the `pages` column. The tag
+`ch_page_owned` marks the page-selection leak fixture of `docs/DESIGN.md`
+chapter 16, whose rows also carry the tags of the channels they plant.
 
 A tag means what the scan or the provenance can show: `tounicode_correct` means
 a `/ToUnicode` map is present (only a synthesised file can say it lies,
@@ -179,7 +193,11 @@ how to fix it.
   and `status` `admitted`, then `python dataset/tools/fetch.py --set <set>` and
   `python dataset/tools/choose.py --set <set>`.
 - **A synthesised pattern**: a function in a module of `dataset/tools/synth/patterns/`, listed
-  in its `PATTERNS`, then `python dataset/tools/synth/run.py --pattern <name>`.
+  in its `PATTERNS`, then `python dataset/tools/synth/run.py --pattern <name>`. The
+  planted-marker patterns of `dataset/tools/synth/channels/` (one per row of the
+  channel table, plus the leak fixture) are registered the same way; each plants
+  `PDFKITMARK<RR>X<NN>` markers in its channel only (RR the channel row, 90 to 93
+  drawn content of the leak fixture, NN a counter or the page number).
 - **A mutation**: an entry of `MUTATIONS` in `dataset/tools/mutate.py` with its tags and its
   `expect_open`, then `python dataset/tools/mutate.py --mutation <name>`.
 
@@ -198,7 +216,9 @@ python dataset/tools/synth/run.py --check         # the synthesised rows are rep
 python dataset/tools/mutate.py --restore          # absent mutated files rewritten from source and seed
 python tests/pdfium/fetch.py                      # PDFium into build/cache/pdfium/
 python tests/pdfium/compare.py --self-test        # the PDFium tier proves itself
-python tests/dataset/run.py                       # the dataset tier over the manifest
+python tests/dataset/run.py                       # the dataset tier over the manifest (--checks, --runs 1|2)
+python tests/pdfium/compare.py --run <run-id> --check write,select,text   # the writer against PDFium
+python tests/dataset/gates/phase7.py --run <run-id>   # the writer gate: markers, pixels, selection
 python tests/pdfium/compare.py --run <run-id>     # text agreement of a run with PDFium
 python -m unittest discover dataset/tools/tests
 python -m unittest discover tests/pdfium
