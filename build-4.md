@@ -337,8 +337,12 @@ that no longer ships, nor lose one while it does.
    expectation is `opens` or `repaired` (736 of them scored, PDFium
    extracting text from them): fonts loaded without an exception 100% (0
    failures, 0 hangs, 0 crashes); median character F1 1.0; unreadable codes
-   0.54% (88,584 of 16,535,111). The details are in the census report
-   (`summary.md`) and in the final commit message.
+   0.54% (88,584 of 16,535,353); `expect_fonts` matched on every row. The
+   report folder is the main checkout's `dataset/reports/phase4-20261025/`
+   (ignored); its summary is in the final commit message. Run under
+   llvm-mingw ASan and UBSan over all 910 files, the census found no error
+   (37 files exceeded 30 s in that debug build only; the slowest release
+   run takes 3.3 s).
 
 ### Deviations of earlier phases that affect this one
 
