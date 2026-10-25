@@ -8,7 +8,9 @@
 // made by the file (a width times a height), so a bitmap is created through an
 // Allowance that checks the claim against the decoding budget and keeps the
 // running total of one decode, because a symbol dictionary of many large
-// symbols is as hostile as one large page.
+// symbols is as hostile as one large page. Drawing one bitmap on another is
+// counted in the same Allowance, because a count of instances times the area of
+// a large symbol is as much work as the file can ask for without a large file.
 
 #ifndef PDFKIT_IMAGES_JBIG2_BITMAP_HPP
 #define PDFKIT_IMAGES_JBIG2_BITMAP_HPP
@@ -33,6 +35,12 @@ class Jbig2Bitmap {
     // Names the stream in a refusal, such as "object 12".
     std::string object;
     std::uint64_t reserved = 0;
+    // The pixels drawn so far.
+    std::uint64_t drawn = 0;
+
+    // Counts pixels drawn; throws platform::Error (limit_exceeded) when the
+    // total passes eight times the per-stream byte limit.
+    void spend(std::uint64_t pixels);
   };
 
   // The combination operators of the standard (T.88 7.4.1.5): OR, AND, XOR,
@@ -72,8 +80,10 @@ class Jbig2Bitmap {
   }
 
   // Combines source into this bitmap with its top left pixel at (x, y), under
-  // op; pixels falling outside this bitmap are dropped.
-  void combine(const Jbig2Bitmap& source, std::int64_t x, std::int64_t y, Operator op);
+  // op; pixels falling outside this bitmap are dropped. The pixels drawn are
+  // spent from allowance.
+  void combine(const Jbig2Bitmap& source, std::int64_t x, std::int64_t y, Operator op,
+               Allowance& allowance);
 
   // The sub-rectangle from column first, count columns wide, over the full
   // height: how a collective bitmap is cut into symbols and patterns.

@@ -46,9 +46,14 @@ using Table = Jbig2Huffman::Table;
 using TableList = Jbig2Regions::TableList;
 using IntegerContexts = std::array<std::uint8_t, 512>;
 
-// The bytes of memory one symbol or instance is charged, so a count claimed by
-// the file is bounded by the budget before a loop over it starts.
+// The bytes a counted item is charged, so a count claimed by the file is bounded
+// by the budget before anything is reserved or a loop over it starts: a symbol
+// stands for a shared bitmap and its list entry, an instance, pattern or grid
+// cell for the time it takes, and a symbol of a Huffman table for its codes in
+// the decoding tree.
+constexpr std::uint64_t k_bytes_per_symbol = 128;
 constexpr std::uint64_t k_bytes_per_item = 16;
+constexpr std::uint64_t k_bytes_per_coded_symbol = 512;
 
 [[nodiscard]] unsigned ceil_log2(std::uint64_t value) {
   return value <= 1 ? 0U : static_cast<unsigned>(std::bit_width(value - 1));
@@ -62,8 +67,9 @@ constexpr std::uint64_t k_bytes_per_item = 16;
   return value >= 0 ? value / 256 : -((-value + 255) / 256);
 }
 
-void claim_items(const Allowance& allowance, std::uint64_t count, const char* what) {
-  allowance.budget->check_claim(platform::checked_mul<std::uint64_t>(count, k_bytes_per_item, what),
+void claim_items(const Allowance& allowance, std::uint64_t count, const char* what,
+                 std::uint64_t bytes_each = k_bytes_per_item) {
+  allowance.budget->check_claim(platform::checked_mul<std::uint64_t>(count, bytes_each, what),
                                 std::string(what) + " of " + allowance.object);
 }
 
@@ -569,10 +575,22 @@ std::int64_t require(const std::optional<std::int64_t>& value) {
   return value.value_or(0);
 }
 
+// Two runs of symbols seen as one list: the symbols a dictionary was given and
+// those it has decoded so far.
+struct SymbolView {
+  const BitmapList* first;
+  const BitmapList* second;
+
+  [[nodiscard]] std::size_t size() const noexcept { return first->size() + second->size(); }
+  [[nodiscard]] const std::shared_ptr<const Bitmap>& at(std::size_t index) const {
+    return index < first->size() ? (*first)[index] : (*second)[index - first->size()];
+  }
+};
+
 // Decodes one text region into a new bitmap. coder carries the arithmetic
 // decoder and contexts (unused for symbol IDs when huffman is set); reader the
 // Huffman-coded bits.
-Bitmap decode_text_region(const TextParameters& p, const BitmapList& symbols,
+Bitmap decode_text_region(const TextParameters& p, const SymbolView& symbols,
                           const TextTables& tables, Coder* coder, Jbig2Huffman::Reader* reader,
                           Allowance& allowance) {
   Bitmap bitmap =
@@ -614,7 +632,7 @@ Bitmap decode_text_region(const TextParameters& p, const BitmapList& symbols,
         throw DecodeFault("a JBIG2 text region names the symbol " + std::to_string(symbol_id) +
                           " of only " + std::to_string(symbols.size()));
       }
-      std::shared_ptr<const Bitmap> symbol = symbols[static_cast<std::size_t>(symbol_id)];
+      std::shared_ptr<const Bitmap> symbol = symbols.at(static_cast<std::size_t>(symbol_id));
       std::int64_t symbol_width = symbol->width();
       std::int64_t symbol_height = symbol->height();
       bool apply_refinement = false;
@@ -692,7 +710,7 @@ Bitmap decode_text_region(const TextParameters& p, const BitmapList& symbols,
       const std::int64_t corner_y = p.transposed ? current_s : t;
       const std::int64_t left = corner_x - (right_corner ? symbol_width - 1 : 0);
       const std::int64_t top = corner_y - (bottom_corner ? symbol_height - 1 : 0);
-      bitmap.combine(*symbol, left, top, to_operator(p.combination_operator));
+      bitmap.combine(*symbol, left, top, to_operator(p.combination_operator), allowance);
       ++decoded;
       const auto delta_s = decode_delta(tables.delta_s, contexts ? &contexts->delta_s : nullptr);
       if (!delta_s || decoded >= p.instances) {
@@ -758,8 +776,9 @@ Jbig2Regions::Dictionary Jbig2Regions::symbol_dictionary(
   const bool huffman = dictionary.huffman;
   const bool refinement = dictionary.refinement;
   const std::uint64_t new_total = dictionary.new_symbols;
-  claim_items(allowance, new_total, "the new symbols of a symbol dictionary");
-  claim_items(allowance, input_symbols.size() + new_total, "the symbols of a symbol dictionary");
+  claim_items(allowance, new_total, "the new symbols of a symbol dictionary", k_bytes_per_symbol);
+  claim_items(allowance, input_symbols.size() + new_total, "the symbols of a symbol dictionary",
+              k_bytes_per_symbol);
 
   BitmapList new_symbols;
   unsigned symbol_code_length = ceil_log2(input_symbols.size() + new_total);
@@ -807,11 +826,7 @@ Jbig2Regions::Dictionary Jbig2Regions::symbol_dictionary(
     aggregate_tables.refinement_size = &Jbig2Huffman::standard_table(1);
   }
 
-  const auto all_symbols = [&] {
-    BitmapList all = input_symbols;
-    all.insert(all.end(), new_symbols.begin(), new_symbols.end());
-    return all;
-  };
+  const SymbolView known{&input_symbols, &new_symbols};
 
   std::int64_t current_height = 0;
   std::uint64_t height_classes = 0;
@@ -856,9 +871,8 @@ Jbig2Regions::Dictionary Jbig2Regions::symbol_dictionary(
           text.reference_corner = 1;
           text.refinement_template = dictionary.refinement_template;
           text.refinement_at = dictionary.refinement_at;
-          new_symbols.push_back(std::make_shared<const Bitmap>(
-              decode_text_region(text, all_symbols(), aggregate_tables, &coder,
-                                 huffman ? &*reader : nullptr, allowance)));
+          new_symbols.push_back(std::make_shared<const Bitmap>(decode_text_region(
+              text, known, aggregate_tables, &coder, huffman ? &*reader : nullptr, allowance)));
         } else {
           std::uint64_t symbol_id = 0;
           std::int64_t rdx = 0;
@@ -872,7 +886,6 @@ Jbig2Regions::Dictionary Jbig2Regions::symbol_dictionary(
             rdx = require(decode_integer(coder.decoder, contexts.refinement_dx));
             rdy = require(decode_integer(coder.decoder, contexts.refinement_dy));
           }
-          const BitmapList known = all_symbols();
           if (symbol_id >= known.size()) {
             throw DecodeFault("a JBIG2 symbol refines the symbol " + std::to_string(symbol_id) +
                               " of only " + std::to_string(known.size()));
@@ -889,12 +902,12 @@ Jbig2Regions::Dictionary Jbig2Regions::symbol_dictionary(
             }
             ArithmeticDecoder decoder(data.subspan(start, static_cast<std::size_t>(size)));
             decode_refinement(refined, dictionary.refinement_template,
-                              *known[static_cast<std::size_t>(symbol_id)], rdx, rdy, false,
+                              *known.at(static_cast<std::size_t>(symbol_id)), rdx, rdy, false,
                               dictionary.refinement_at, decoder, contexts.refinement);
             reader->set_position(start + static_cast<std::size_t>(size));
           } else {
             decode_refinement(refined, dictionary.refinement_template,
-                              *known[static_cast<std::size_t>(symbol_id)], rdx, rdy, false,
+                              *known.at(static_cast<std::size_t>(symbol_id)), rdx, rdy, false,
                               dictionary.refinement_at, coder.decoder, contexts.refinement);
           }
           new_symbols.push_back(std::make_shared<const Bitmap>(std::move(refined)));
@@ -1015,6 +1028,8 @@ Bitmap Jbig2Regions::text_region(const Jbig2Segments::TextRegion& region, const 
   std::optional<Table> symbol_id_table;
   if (region.huffman) {
     reader.emplace(region.coded);
+    claim_items(allowance, symbols.size(), "the symbol ID table of a text region",
+                k_bytes_per_coded_symbol);
     symbol_id_table = Jbig2Huffman::read_symbol_id_table(*reader, symbols.size());
     tables.symbol_ids = &*symbol_id_table;
     std::size_t custom_index = 0;
@@ -1046,7 +1061,8 @@ Bitmap Jbig2Regions::text_region(const Jbig2Segments::TextRegion& region, const 
     coder.emplace(region.huffman ? platform::ByteSpan() : region.coded, allowance,
                   region.huffman ? 0U : text.symbol_code_length);
   }
-  return decode_text_region(text, symbols, tables, coder ? &*coder : nullptr,
+  static const BitmapList none;
+  return decode_text_region(text, SymbolView{&symbols, &none}, tables, coder ? &*coder : nullptr,
                             reader ? &*reader : nullptr, allowance);
 }
 
@@ -1174,7 +1190,7 @@ Bitmap Jbig2Regions::halftone_region(const Jbig2Segments::HalftoneRegion& region
       }
       pattern_index = std::min<std::uint64_t>(pattern_index, patterns.size() - 1);
       bitmap.combine(*patterns[static_cast<std::size_t>(pattern_index)], cell_x(mg, ng),
-                     cell_y(mg, ng), op);
+                     cell_y(mg, ng), op, allowance);
     }
   }
   return bitmap;

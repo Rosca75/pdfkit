@@ -31,13 +31,23 @@ Jbig2Bitmap Jbig2Bitmap::create(Allowance& allowance, std::uint32_t width, std::
   return bitmap;
 }
 
-void Jbig2Bitmap::combine(const Jbig2Bitmap& source, std::int64_t x, std::int64_t y, Operator op) {
+void Jbig2Bitmap::Allowance::spend(std::uint64_t pixels) {
+  drawn = platform::checked_add<std::uint64_t>(drawn, pixels, "the pixels drawn for " + object);
+  budget->check_claim(drawn / 8U, "the pixels drawn for " + object);
+}
+
+void Jbig2Bitmap::combine(const Jbig2Bitmap& source, std::int64_t x, std::int64_t y, Operator op,
+                          Allowance& allowance) {
   const std::int64_t first_row = std::max<std::int64_t>(0, -y);
   const std::int64_t last_row =
       std::min<std::int64_t>(source.height_, static_cast<std::int64_t>(height_) - y);
   const std::int64_t first_column = std::max<std::int64_t>(0, -x);
   const std::int64_t last_column =
       std::min<std::int64_t>(source.width_, static_cast<std::int64_t>(width_) - x);
+  if (first_row < last_row && first_column < last_column) {
+    allowance.spend(static_cast<std::uint64_t>(last_row - first_row) *
+                    static_cast<std::uint64_t>(last_column - first_column));
+  }
   for (std::int64_t sy = first_row; sy < last_row; ++sy) {
     const auto source_row = source.row(static_cast<std::uint32_t>(sy));
     auto target_row = row(static_cast<std::uint32_t>(y + sy));

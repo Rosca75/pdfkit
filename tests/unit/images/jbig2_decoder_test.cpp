@@ -1032,6 +1032,25 @@ TEST_CASE("a region size past the budget is refused") {
                   Error);
 }
 
+TEST_CASE("drawing the same large symbol over and over is refused by the budget") {
+  // 600 instances of a 40 by 40 symbol are 960,000 pixels drawn, past eight
+  // times the 65,536-byte stream limit, though no bitmap is larger than 4,096.
+  const std::vector<BitonalRows> symbols = {pattern(40, 40, 61, 50)};
+  const std::vector<Instance> instances(600, Instance{0, 0, 0});
+  Bytes regions = segment(1, 0, {}, symbol_dictionary_data(symbols, 0));
+  append(regions, segment(2, 6, {1}, text_region_data(64, 64, symbols, instances)));
+  const auto data = page_with(regions, 64, 64);
+  Budget::Limits limits;
+  limits.stream_bytes = 65536;
+  Budget budget(limits);
+  try {
+    const auto result = Jbig2Decoder::decode(data, {}, budget, "object 9 0");
+    FAIL("the work was accepted");
+  } catch (const Error& error) {
+    CHECK(error.code() == ErrorCode::limit_exceeded);
+  }
+}
+
 TEST_CASE("a segment of an unassigned type is a fault that names the type") {
   Bytes data = segment(0, 48, {}, page_information(8, 8));
   append(data, segment(1, 3, {}, Bytes()));

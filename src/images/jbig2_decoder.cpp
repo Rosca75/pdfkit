@@ -64,7 +64,7 @@ class Page {
     Jbig2Bitmap grown =
         Jbig2Bitmap::create(*allowance_, info_.width, static_cast<std::uint32_t>(height),
                             static_cast<std::uint8_t>(info_.default_pixel), "the page bitmap");
-    grown.combine(bitmap_, 0, 0, Jbig2Bitmap::Operator::replace);
+    grown.combine(bitmap_, 0, 0, Jbig2Bitmap::Operator::replace, *allowance_);
     bitmap_ = std::move(grown);
     height_ = static_cast<std::uint32_t>(height);
   }
@@ -73,7 +73,7 @@ class Page {
     ensure_height(static_cast<std::uint64_t>(region.y) + bitmap.height());
     const unsigned code = info_.combination_operator_override ? region.combination_operator
                                                               : info_.combination_operator;
-    bitmap_.combine(bitmap, region.x, region.y, to_operator(code));
+    bitmap_.combine(bitmap, region.x, region.y, to_operator(code), *allowance_);
   }
 
   // The part of the page a refinement region covers.
