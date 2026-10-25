@@ -368,7 +368,8 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
       continue;
     }
     for (const std::string_view key :
-         {"FontFile", "FontFile2", "FontFile3", "ToUnicode", "CIDSet", "CIDToGIDMap"}) {
+         {"FontFile", "FontFile2", "FontFile3", "ToUnicode", "CIDSet", "CIDToGIDMap",
+          "DestOutputProfile"}) {
       skip(dictionary->get(key));
     }
     if (dictionary->get("Type").is_name("Font") || dictionary->get("Subtype").is_name("Type0")) {

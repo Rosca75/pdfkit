@@ -41,7 +41,7 @@ import pdfium  # noqa: E402
 PLACEHOLDER = "[REDACTED]"
 NAME_CHARS = re.compile(rb"[^\s/\[\]<>(){}%]")
 FONT_PROGRAM = re.compile(rb"/FontFile[23]?\s+(\d+)\s+\d+\s+R")
-ICC = re.compile(rb"/ICCBased\s+(\d+)\s+\d+\s+R")
+ICC = re.compile(rb"/(?:ICCBased|DestOutputProfile)\s+(\d+)\s+\d+\s+R")
 
 
 def fold(text: str) -> str:
