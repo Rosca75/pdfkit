@@ -13,6 +13,7 @@
 #include "pdfkit/pdfkit.h"
 
 #include "images/image_catalogue.hpp"
+#include "images/image_listing.hpp"
 #include "redact/edit_plan.hpp"
 #include "syntax/document.hpp"
 
@@ -24,6 +25,9 @@ struct pdfkit_document {
   // The document's images by identity, built by the first image call and
   // kept, so later calls neither walk nor hash again.
   std::unique_ptr<pdfkit::images::ImageCatalogue> images;
+  // The document's image draws grouped by identity, read page by page by the
+  // image calls and kept with the decodability of each image.
+  std::unique_ptr<pdfkit::images::ImageListing> listing;
 };
 
 struct pdfkit_edit {

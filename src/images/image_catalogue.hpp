@@ -47,6 +47,11 @@ class ImageCatalogue {
   // deep, and a form or pattern is entered once per page and context.
   explicit ImageCatalogue(syntax::Document& document);
 
+  // Walks only resources (a resource dictionary or a reference to one), as
+  // reached on page: every image it holds is marked in_pattern, for the
+  // resources of a pattern or soft-mask group the interpreter does not walk.
+  ImageCatalogue(syntax::Document& document, const syntax::Object& resources, std::uint32_t page);
+
   [[nodiscard]] const std::vector<Entry>& entries() const noexcept { return entries_; }
   // The entry of an identity, or nullptr.
   [[nodiscard]] const Entry* find(std::string_view identity) const;

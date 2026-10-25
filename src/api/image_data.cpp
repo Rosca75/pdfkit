@@ -5,6 +5,8 @@
 // bytes by its identity (CLAUDE.md section 2, docs/ABI.md section 4.8): a PNG
 // of a lossless source, the original JPEG bytes of a DCT source, or the mask
 // as its own PNG. The options are {"mask": bool, "decode_jpeg": bool}. An
+// identity is looked up among the image XObjects the pages' resources reach,
+// then among the inline images the pages' content draws. An
 // identity that names no image of the document is invalid_argument; an image
 // whose encoding does not decode is refused with undecodable_image, naming
 // the identity, the encoding and the fault.
@@ -17,12 +19,15 @@
 #include "images/image_catalogue.hpp"
 #include "images/image_decoder.hpp"
 #include "images/image_extractor.hpp"
+#include "images/image_listing.hpp"
 #include "platform/error.hpp"
 #include "platform/export.hpp"
 #include "platform/json_value.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -71,18 +76,40 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_image_data(pdfkit_document* doc, cons
     if (!handle.images) {
       handle.images = std::make_unique<pdfkit::images::ImageCatalogue>(document);
     }
-    const pdfkit::images::ImageCatalogue::Entry* entry = handle.images->find(wanted);
-    if (entry == nullptr) {
-      throw Error(ErrorCode::invalid_argument,
-                  "pdfkit_image_data identity \"" + wanted + "\" names no image of the document",
-                  "an identity pdfkit_images listed for this document, such as "
-                  "\"img:0123456789abcdef\"",
-                  "list the document's images with pdfkit_images and pass one of their "
-                  "identities");
+    pdfkit::images::ImageExtractor::Output output;
+    std::string encoding;
+    std::string where;
+    if (const pdfkit::images::ImageCatalogue::Entry* entry = handle.images->find(wanted)) {
+      const pdfkit::syntax::Stream& stream = *entry->stream.stream();
+      output = pdfkit::images::ImageExtractor::extract(document, stream, request);
+      encoding = pdfkit::images::ImageDecoder::encoding(document, stream.dictionary());
+      where = "object " + std::to_string(entry->object_number);
+    } else {
+      // An inline image is reached only through the content: read every page.
+      if (!handle.listing) {
+        handle.listing = std::make_unique<pdfkit::images::ImageListing>(document);
+      }
+      std::vector<std::uint32_t> pages;
+      for (const pdfkit::syntax::Page& page : document.pages()) {
+        pages.push_back(page.number);
+      }
+      handle.listing->read(pages);
+      const pdfkit::images::ImageListing::Entry* drawn = handle.listing->find(wanted);
+      if (drawn == nullptr) {
+        throw Error(ErrorCode::invalid_argument,
+                    "pdfkit_image_data identity \"" + wanted + "\" names no image of the document",
+                    "an identity pdfkit_images listed for this document, such as "
+                    "\"img:0123456789abcdef\"",
+                    "list the document's images with pdfkit_images and pass one of their "
+                    "identities");
+      }
+      const pdfkit::syntax::Dictionary& dictionary = *drawn->dictionary.dictionary();
+      output = pdfkit::images::ImageExtractor::extract_inline(
+          document, dictionary, pdfkit::platform::ByteSpan(*drawn->data), drawn->colour_spaces,
+          request);
+      encoding = pdfkit::images::ImageDecoder::encoding(document, dictionary);
+      where = "an inline image on page " + std::to_string(drawn->occurrences.front().page);
     }
-    const pdfkit::syntax::Stream& stream = *entry->stream.stream();
-    const pdfkit::images::ImageExtractor::Output output =
-        pdfkit::images::ImageExtractor::extract(document, stream, request);
     if (output.no_mask) {
       throw Error(ErrorCode::invalid_argument,
                   "pdfkit_image_data asked for the mask of " + wanted + ", which has none",
@@ -90,11 +117,9 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_image_data(pdfkit_document* doc, cons
                   "ask for the base image (\"mask\": false)");
     }
     if (!output.fault.empty()) {
-      const std::string encoding =
-          pdfkit::images::ImageDecoder::encoding(document, stream.dictionary());
       throw Error(ErrorCode::undecodable_image,
-                  "the image " + wanted + " (" + encoding + ", object " +
-                      std::to_string(entry->object_number) + ") does not decode: " + output.fault,
+                  "the image " + wanted + " (" + encoding + ", " + where +
+                      ") does not decode: " + output.fault,
                   "an image whose " + encoding + " data decodes",
                   "the image can be kept or removed but not read; re-save the file with its "
                   "producing application if another reader shows the image");

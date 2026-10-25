@@ -229,13 +229,13 @@ to their phase-1 stubs. Nothing persisted changes shape.
 
 ## 9. Deviations recorded by this phase
 
-1. **Stopped at split point 3.** Phase 5 (the content interpreter) had not
-   merged when the decoders were green, so the listing step is left for the
-   session that resumes this branch: `image_listing`, `src/api/images.cpp`
-   (still the not-implemented stub), `cli/verbs/images.cpp` (unchanged; it
-   stops at catalogue 3.1), the `pdfkit_images` section of `docs/ABI.md`,
-   `image_listing_test.cpp` and the occurrence half of gate 1. Catalogue row
-   3.2 is implemented; row 3.1 is not.
+1. **Two sessions, split at point 3.** Phase 5 had not merged when the
+   decoders were green, so the decoders merged first (`Build-Phase: 6
+   incomplete`) and the listing step was done after phase 5 merged, on a
+   branch rebased onto it: `image_listing`, `image_info`, `pdfkit_images`,
+   the images verb's `--out`, the dataset verb's `images` section, the
+   `pdfkit_images` section of `docs/ABI.md` (§4.10) and the listing half of
+   the gate (item 17).
 2. **`images::ImageCatalogue`** (`src/images/image_catalogue.{hpp,cpp}`,
    beyond §2) lists every image XObject the pages reach through their
    resources, their forms' resources and the resources of tiling patterns and
@@ -342,8 +342,47 @@ to their phase-1 stubs. Nothing persisted changes shape.
     resource-reached images: six files become `partial:<encoding>` (the six
     undecoded images of item 4) and `qpdf-0029`, refused at open, `n/a`; a
     file whose resources reach no image keeps phase 2's value, because inline
-    images are not reached that way. The listing step re-derives the column
-    from occurrences.
+    images are not reached that way. The listing step kept the column and
+    changed one row: `opf-0024` becomes `partial:none`, because its content
+    draws five inline images whose dictionaries are broken (no `/Width`, no
+    `/ColorSpace`), which the resource walk could not see.
+16. **The listing** (`src/images/image_listing.{hpp,cpp}`) reads each asked
+    page once through `text::TextReader::interpret` and keeps it on the
+    document handle (`pdfkit_document::listing`): occurrences grouped by
+    identity (an inline image hashed from its dictionary and data per draw),
+    sorted by page and ordinal once per call; the images a page reaches only
+    inside the patterns and soft-mask groups it sets
+    (`PageContent::unwalked`) are found by walking those resources
+    (`ImageCatalogue`'s second constructor) and listed with `pattern_pages`
+    and `image_in_pattern`, never numbered; an inline image inside a
+    pattern's content is not reached. A page whose resources name no
+    XObject, pattern or graphics state and whose content holds no `BI` is
+    not interpreted (a text-only document lists in under a second). Each
+    listed image is decoded once to fill `decodable`; a budget limit met
+    there is the image's fault, a limit met reading content stays the
+    document's refusal. `images::ImageInfo` (§2's `image_info`) describes
+    the dictionary without decoding. `pdfkit_image_data` finds an inline
+    image by reading every page when no XObject has the identity
+    (`ImageExtractor::extract_inline`). The JSON gains `source`,
+    `filters`, `components`, `interpolate`, `pattern_pages` and a per-image
+    `warnings` list beyond §0. The images verb prints that JSON and, with
+    `--out`, writes `<digits>.jpg|.png` and `<digits>.mask.png` and adds
+    `files`; the dataset verb's `images` section is
+    `cli/verbs/dataset_images.cpp` (one line in `cli/verbs/dataset.cpp`).
+17. **The listing gate**, `python tests/pdfium/image_agreement.py
+    --listing` (the C ABI through `pdfkit images`, 888 files): 36,456 of
+    36,467 occurrences decode (99.97%; per encoding in its report), every
+    undecodable image carries `undecodable_image` (0 without it), 83 images
+    are reached inside patterns or soft masks; each page's occurrence count
+    equals the image objects of PDFium's page (forms descended) on 1,991 of
+    1,999 pages (99.60%). The 8 pages that differ: `opf-0019` and
+    `mutate-0046` page 13 (400 against 402), `opf-0024` pages 2, 8 and 14
+    (the broken inline images, one more or one fewer each),
+    `pikepdf-0005` page 3 and `safedocs-0005` page 1 (one draw PDFium does
+    not count), and `pdfpig-0015` page 1, where PDFium reports one image 30
+    times and the content draws it once (not investigated further; the
+    interpreter is phase 5's). The dataset tier (`--checks open,images`)
+    passes every `expect_images` row and has no hang.
 
 ### Deviations of earlier phases that affect this one
 

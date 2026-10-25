@@ -17,6 +17,8 @@ target_sources(pdfkit_core PRIVATE
   image_decoder.cpp
   image_extractor.cpp
   image_identity.cpp
+  image_info.cpp
+  image_listing.cpp
   jbig2_bitmap.cpp
   jbig2_decoder.cpp
   jbig2_huffman.cpp

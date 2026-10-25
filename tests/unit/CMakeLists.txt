@@ -18,6 +18,7 @@ add_executable(pdfkit_tests
   images/image_data_test.cpp
   images/image_fixture.cpp
   images/image_identity_test.cpp
+  images/image_listing_test.cpp
   images/jbig2_conformance_vectors.cpp
   images/jbig2_decoder_test.cpp
   images/jpx_decoder_test.cpp
