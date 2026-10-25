@@ -119,8 +119,9 @@ to find it.
 
 | Fact | Source | Status |
 |---|---|---|
-| pdf.js's JBIG2 decoder (Apache 2.0, 2,584 lines), ported | https://github.com/mozilla/pdf.js/blob/master/src/core/jbig2.js | read (size), recalled (structure) |
-| pdf.js's CCITT decoder (Apache 2.0, 1,059 lines), ported | https://github.com/mozilla/pdf.js/blob/master/src/core/ccitt.js | read (size), recalled (structure) |
+| pdf.js's JBIG2 decoder (Apache 2.0, 2,436 lines at the commit read), ported | https://github.com/mozilla/pdf.js/blob/fe48736846e2043696738bd54435ebb5ab24ecff/src/core/jbig2.js | read at commit fe48736846e2043696738bd54435ebb5ab24ecff, the last commit before pdf.js replaced its JavaScript decoders with a build of PDFium's (commit a6988582d22488021734027cd05358e04a3cda05) |
+| pdf.js's CCITT decoder (Apache 2.0, 1,024 lines at the commit read), ported; the filter parameters it is fed come from `ccitt_stream.js` at the same commit | https://github.com/mozilla/pdf.js/blob/fe48736846e2043696738bd54435ebb5ab24ecff/src/core/ccitt.js | read at commit fe48736846e2043696738bd54435ebb5ab24ecff |
+| pdf.js's MQ arithmetic decoder (Apache 2.0, 170 lines at the commit read), ported; `jbig2_stream.js` at the same commit parses the globals stream's bytes ahead of the image's and inverts the decoded bits | https://github.com/mozilla/pdf.js/blob/fe48736846e2043696738bd54435ebb5ab24ecff/src/core/arithmetic_decoder.js | read at commit fe48736846e2043696738bd54435ebb5ab24ecff |
 | PDFBox's CCITT decoder (BSD-3, TwelveMonkeys), alternative reference | https://raw.githubusercontent.com/apache/pdfbox/trunk/pdfbox/src/main/java/org/apache/pdfbox/filter/CCITTFaxDecoderStream.java | read |
 | JBIG2 standard (ITU-T T.88) and CCITT (T.4, T.6) | https://www.itu.int/rec/T-REC-T.88; https://www.itu.int/rec/T-REC-T.4; https://www.itu.int/rec/T-REC-T.6 | recalled |
 | The Adobe APP14 marker and inverted CMYK JPEGs | pdf.js `jpg.js`, https://github.com/mozilla/pdf.js/blob/master/src/core/jpg.js | recalled |
