@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-FUNCTIONS = ("open", "inspect", "text", "images", "metadata", "channels", "redact")
+FUNCTIONS = ("open", "inspect", "text", "images", "metadata", "channels", "redact", "write", "select")
 
 
 def main() -> int:

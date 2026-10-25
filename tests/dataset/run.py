@@ -2,9 +2,11 @@
 # Copyright 2026 The pdfkit authors
 #
 # The dataset tier: runs `pdfkit dataset` over every manifest file, each file in
-# its own child process with a 30 s limit, twice, and checks every expectation
-# column whose catalogue function is implemented, against the outcome contract
-# of tests/dataset/outcome.md. A hang, a crash or two runs that differ are
+# its own child process with a 30 s limit, twice (--runs 1 makes it once), and
+# checks every expectation column whose catalogue function is implemented (all of
+# them, or the subset --checks names), against the outcome contract of
+# tests/dataset/outcome.md. The verb writes the identity-write and page-selection
+# outputs under <run>/outputs/, which this tier creates before the run. A hang, a crash or two runs that differ are
 # failures of their own, because a reader that hangs or answers differently on
 # the same bytes cannot be trusted with a redaction. A function that answers
 # PDFKIT_E_NOT_IMPLEMENTED is counted as skipped, never as a pass. When no pdfkit
@@ -30,7 +32,10 @@ import common  # noqa: E402
 
 TIMEOUT = 30.0
 COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "images",
-           "expect_redact": "redact", "expect_metadata": "metadata"}
+           "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
+           "expect_select": "select"}
+# The names --checks accepts are the outcome keys the columns read.
+CHECKS = tuple(COLUMNS.values())
 
 
 def find_pdfkit(explicit: str | None) -> list[str] | None:
@@ -114,11 +119,36 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return "fail", "metadata disagrees"
     if column == "expect_text" and expected.startswith("known_gap:"):
         return "pass", "known_gap"
+    if column == "expect_write":
+        return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
+    if column == "expect_select":
+        return judge_output(part, len(part.get("pages") or []), None, expected)
     return "pass", ""
 
 
-def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, seconds: float) -> dict:
-    columns = {c: collections.Counter() for c in COLUMNS}
+def judge_output(part: dict, pages, source_pages, expected: str) -> tuple[str, str]:
+    """The write and select rule: the output opens again without repairs with `pages` pages.
+
+    An identity write also keeps the input's page count (`source_pages`); a known
+    gap passes apart, as the other columns' known gaps do."""
+    if expected.startswith("known_gap:"):
+        return "pass", "known_gap"
+    reopen = part.get("reopen") or {}
+    if reopen.get("status") != "ok":
+        return "fail", f"the output does not open again: {reopen.get('status')} {reopen.get('code')}"
+    if reopen.get("repairs"):
+        return "fail", "the output opened with repairs: " + "; ".join(reopen["repairs"])[:120]
+    if reopen.get("pages") != pages:
+        return "fail", f"the output has {reopen.get('pages')} pages, expected {pages}"
+    if source_pages is not None and pages != source_pages:
+        return "fail", f"the identity write has {pages} pages, the input {source_pages}"
+    return "pass", ""
+
+
+def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, seconds: float,
+              checks: tuple[str, ...] = CHECKS) -> dict:
+    judged = {column: key for column, key in COLUMNS.items() if key in checks}
+    columns = {c: collections.Counter() for c in judged}
     per_set: dict = collections.defaultdict(lambda: collections.Counter())
     failures, crashes, hangs, nondeterministic, verb_skipped = [], [], [], [], []
     for row in rows:
@@ -129,12 +159,12 @@ def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, second
             crashes.append({"id": row["id"], "exit": a.get("exit"), "message": a.get("message", "")[:160]})
         if a["result"] == "verb_not_implemented":
             verb_skipped.append(row["id"])
-            for column in COLUMNS:
+            for column in judged:
                 columns[column]["skipped"] += 1
             per_set[row["set"]]["skipped"] += 1
             continue
         if a["result"] != "written":
-            for column in COLUMNS:
+            for column in judged:
                 columns[column]["fail"] += 1
             per_set[row["set"]]["fail"] += 1
             failures.append({"id": row["id"], "column": "*", "reason": a["result"]})
@@ -144,7 +174,7 @@ def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, second
         outcome = json.loads(a["bytes"])
         if outcome.get("sha256") != row["sha256"]:
             failures.append({"id": row["id"], "column": "sha256", "reason": "the outcome names other bytes"})
-        for column in COLUMNS:
+        for column in judged:
             result, reason = check(column, row[column], outcome)
             columns[column][result] += 1
             per_set[row["set"]][result] += 1
@@ -152,6 +182,7 @@ def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, second
                 failures.append({"id": row["id"], "column": column, "reason": reason})
     return {
         "run": run_dir.name, "files": len(rows), "seconds": round(seconds, 1),
+        "runs": 2 if second else 1, "checks": sorted(set(judged.values())),
         "columns": {c: dict(v) for c, v in columns.items()},
         "per_set": {s: dict(v) for s, v in sorted(per_set.items())},
         "failures": failures, "crashes": crashes, "hangs": hangs,
@@ -184,10 +215,21 @@ def main() -> int:
     parser.add_argument("--set", action="append", help="only these sets")
     parser.add_argument("--id", action="append", help="only these ids")
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 4)
-    parser.add_argument("--once", action="store_true", help="skip the second, determinism run")
+    parser.add_argument("--checks", default=",".join(CHECKS),
+                        help="comma-separated expectation columns to judge, from " + ", ".join(CHECKS)
+                        + " (default: all)")
+    parser.add_argument("--runs", type=int, choices=(1, 2), default=2,
+                        help="2 (default) adds the second, determinism run; 1 runs once")
+    parser.add_argument("--once", action="store_true", help="an alias of --runs 1")
     parser.add_argument("--run-id", help="the report folder name (default: a fresh run id)")
     args = parser.parse_args()
 
+    checks = tuple(c.strip() for c in args.checks.split(",") if c.strip())
+    unknown = [c for c in checks if c not in CHECKS]
+    if unknown or not checks:
+        raise common.ToolError(f"--checks names {unknown or 'nothing'}", "a subset of " + ", ".join(CHECKS),
+                               "pass --checks open,write,select or leave it out")
+    runs = 1 if args.once else args.runs
     command = find_pdfkit(args.pdfkit)
     if command is None:
         print("SKIPPED dataset tier: no pdfkit executable found. Build it with "
@@ -206,25 +248,27 @@ def main() -> int:
         rows = [r for r in rows if r["id"] not in set(missing)]
     run_dir = common.reports_dir() / (args.run_id or common.run_id())
     first_dir, second_dir = run_dir, run_dir / "repeat"
-    for folder in (first_dir / "outcomes", second_dir / "outcomes"):
-        folder.mkdir(parents=True, exist_ok=True)
+    # The verb writes the write and select outputs beside the outcomes.
+    for folder in (first_dir, second_dir)[:runs]:
+        for part in ("outcomes", "outputs"):
+            (folder / part).mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     first, second = {}, {}
     with concurrent.futures.ThreadPoolExecutor(args.workers) as pool:
         jobs = {pool.submit(run_one, command, r, first_dir): r["id"] for r in rows}
         for job in concurrent.futures.as_completed(jobs):
             first[jobs[job]] = job.result()
-        if not args.once:
+        if runs == 2:
             jobs = {pool.submit(run_one, command, r, second_dir): r["id"] for r in rows}
             for job in concurrent.futures.as_completed(jobs):
                 second[jobs[job]] = job.result()
     seconds = time.monotonic() - started
-    summary = summarise(rows, first, second, run_dir, seconds)
+    summary = summarise(rows, first, second, run_dir, seconds, checks)
     summary["missing_files"] = missing
-    if not args.once:
-        shutil.rmtree(second_dir, ignore_errors=True)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     write_markdown(summary, run_dir / "summary.md")
+    # The repeat run's outcomes and outputs are only needed for the comparison above.
+    shutil.rmtree(second_dir, ignore_errors=True)
     print(json.dumps({k: summary[k] for k in ("run", "files", "seconds", "columns", "verb_not_implemented")}
                      | {"hangs": len(summary["hangs"]), "crashes": len(summary["crashes"]),
                         "nondeterministic": len(summary["nondeterministic"]),
