@@ -408,6 +408,18 @@ inventory rows and their notices.
     synth-0097 to synth-0099 (a line drawn twice, a placeholder drawn for each
     copy) and the right-to-left synth-0214; they were not classified one by
     one.
+    The checks before the last commit: `python build/check.py` (15 of 15
+    groups, clang-tidy included), `ctest --preset unit`, `ctest --preset
+    sanitize`, `ctest --preset clang-sanitize`, and the clang-sanitize
+    `pdfkit dataset` verb on each of the 950 manifest files, four at a time
+    with no time limit: no AddressSanitizer report and no undefined behaviour
+    in pdfkit's code; `redact_text` ok on 816 files, the 85 known gaps
+    refused, 49 skipped. Sixteen files that hold JPEG 2000 images report
+    UBSan's function-type check inside the vendored OpenJPEG (`openjpeg.c`
+    calls `opj_jp2_destroy`, `opj_j2k_end_decompress` and their kin through
+    pointers of type `void *` arguments), reached by the images listing of
+    phase 6, not by this phase's code; this phase leaves the vendored library
+    and its build flags to their owner.
 
 ### Deviations of earlier phases that affect this one
 
