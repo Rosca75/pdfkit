@@ -317,7 +317,7 @@ rollback after they land reverts them too.
     additively); `run.py`'s `expect_write` also requires the written page count
     to equal the opened one; the select subset is SplitMix64 over the SHA-256
     of `7:<id>`, fixed in `tests/dataset/outcome.md`.
-14. **The gate run** (`p7-gate1`, release build, 937 manifest rows, two runs):
+14. **The gate run** (`p7-gate1`, repeated as `p7-gate2` on the tip rebased onto phase 4 with the same numbers; release build, 937 manifest rows, two runs):
     888 of 888 identity writes re-open in pdfkit without a repair; PDFium opens
     875 of the 875 it opens as input; 8,022 of 8,027 pages pixel-identical at
     100 dpi (99.94%); PDFium's text F1 = 1.0 on 875 of 875; 0 planted markers
