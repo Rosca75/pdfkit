@@ -110,8 +110,11 @@ const MatchFinder::Haystack& MatchFinder::haystack(const Folding& folding) {
   return folded_.emplace(index, std::move(built)).first->second;
 }
 
-std::vector<MatchFinder::Occurrence> MatchFinder::find(const Match& match, std::size_t index) {
-  std::vector<Occurrence> found;
+namespace {
+
+// The folded needle of a search, its white space trimmed when white space
+// folds.
+[[nodiscard]] std::u32string folded_needle(const MatchFinder::Match& match) {
   std::u32string needle =
       TextFolding::fold(TextFolding::decode(match.search), match.folding.text).text;
   if (match.folding.text.whitespace) {
@@ -122,6 +125,35 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find(const Match& match, std::
       needle.pop_back();
     }
   }
+  return needle;
+}
+
+}  // namespace
+
+std::vector<std::pair<std::size_t, std::size_t>> MatchFinder::ranges_in(std::u32string_view text,
+                                                                         const Match& match) {
+  std::vector<std::pair<std::size_t, std::size_t>> out;
+  const std::u32string needle = folded_needle(match);
+  if (needle.empty() || text.empty()) {
+    return out;
+  }
+  const TextFolding::Mapped folded = TextFolding::fold(text, match.folding.text);
+  std::size_t from = 0;
+  while (from < folded.text.size()) {
+    const std::size_t at = folded.text.find(needle, from);
+    if (at == std::u32string::npos) {
+      break;
+    }
+    const std::size_t end = at + needle.size();
+    out.emplace_back(folded.source[at], folded.source[end - 1] + 1);
+    from = end;
+  }
+  return out;
+}
+
+std::vector<MatchFinder::Occurrence> MatchFinder::find(const Match& match, std::size_t index) {
+  std::vector<Occurrence> found;
+  const std::u32string needle = folded_needle(match);
   if (needle.empty()) {
     return found;
   }

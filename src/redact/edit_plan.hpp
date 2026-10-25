@@ -15,10 +15,12 @@
 #ifndef PDFKIT_REDACT_EDIT_PLAN_HPP
 #define PDFKIT_REDACT_EDIT_PLAN_HPP
 
+#include "redact/text_plan.hpp"
 #include "syntax/document.hpp"
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace pdfkit::redact {
@@ -40,9 +42,20 @@ class EditPlan {
     return pages_;
   }
 
+  // The text matches and the work they give each page, which
+  // pdfkit_redact_text fills (redact::TextRedactor).
+  [[nodiscard]] TextPlan& text() noexcept { return text_; }
+  [[nodiscard]] const TextPlan& text() const noexcept { return text_; }
+
+  // The document fingerprint a glyph range names: the SHA-256 of the input
+  // bytes in lower-case hexadecimal, computed on first use.
+  [[nodiscard]] const std::string& fingerprint();
+
  private:
   syntax::Document* document_;
   std::optional<std::vector<std::uint32_t>> pages_;
+  TextPlan text_;
+  std::string fingerprint_;
 };
 
 }  // namespace pdfkit::redact

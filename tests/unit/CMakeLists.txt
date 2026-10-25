@@ -38,7 +38,15 @@ add_executable(pdfkit_tests
   platform/json_reader_test.cpp
   platform/json_writer_test.cpp
   unicode/folding_test.cpp
+  redact/determinism_test.cpp
+  redact/form_rewriter_test.cpp
+  redact/marked_content_rewriter_test.cpp
   redact/match_finder_test.cpp
+  redact/placeholder_fitting_test.cpp
+  redact/placeholder_font_test.cpp
+  redact/redact_text_test.cpp
+  redact/self_check_test.cpp
+  redact/support/redaction.cpp
   redact/text_surgery_test.cpp
   support/content_builder.cpp
   support/document_summary.cpp

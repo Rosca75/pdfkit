@@ -9,10 +9,13 @@
 
 #include "platform/byte_span.hpp"
 #include "platform/crypto/sha2.hpp"
+#include "redact/self_check.hpp"
+#include "redact/text_redactor.hpp"
 #include "writer/channel_table.hpp"
 #include "writer/file_writer.hpp"
 #include "writer/page_selector.hpp"
 
+#include <set>
 #include <utility>
 
 namespace pdfkit::redact {
@@ -48,9 +51,10 @@ void WritePipeline::select_pages(EditPlan& plan, writer::ObjectGraph& graph,
   report.unpruned_resources = selected.unpruned;
 }
 
-void WritePipeline::text_surgery(EditPlan& /*plan*/, writer::ObjectGraph& /*graph*/,
-                                 writer::WriteReport& /*report*/) {
-  // The plan holds no text match: no content stream is edited.
+void WritePipeline::text_surgery(EditPlan& plan, writer::ObjectGraph& graph,
+                                 writer::WriteReport& report) {
+  // A plan without text matches edits no content stream.
+  TextRedactor::apply(plan, graph, report);
 }
 
 void WritePipeline::image_treatments(EditPlan& /*plan*/, writer::ObjectGraph& /*graph*/,
@@ -91,10 +95,27 @@ std::string WritePipeline::serialise(writer::ObjectGraph& graph, writer::WriteRe
   return std::move(written.bytes);
 }
 
-void WritePipeline::self_check(EditPlan& /*plan*/, const std::string& /*pdf*/,
+void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
                                writer::WriteReport& report) {
-  report.self_check_status = "not_run";
-  report.self_check_reason = "no text redaction in the edit plan";
+  const TextPlan& text = plan.text();
+  if (text.matches.empty()) {
+    report.self_check_status = "not_run";
+    report.self_check_reason = "no text redaction in the edit plan";
+    return;
+  }
+  std::set<std::string> unique;
+  for (const MatchFinder::Match& match : text.matches) {
+    unique.insert(match.placeholder);
+  }
+  const std::vector<std::string> placeholders(unique.begin(), unique.end());
+  const SelfCheck::Result result = SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(),
+                                                  text.needles, placeholders);
+  report.self_check_strings = result.strings;
+  if (!result.survivors.empty()) {
+    throw SelfCheck::refusal(result);
+  }
+  report.self_check_status = "passed";
+  report.self_check_reason.clear();
 }
 
 }  // namespace pdfkit::redact

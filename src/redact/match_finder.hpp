@@ -28,6 +28,8 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace pdfkit::redact {
@@ -51,6 +53,8 @@ class MatchFinder {
     std::uint32_t page = 0;
     std::size_t first = 0;
     std::size_t last = 0;
+    // The document fingerprint the extraction reported with the range.
+    std::string fingerprint;
     std::string placeholder;
   };
 
@@ -74,6 +78,13 @@ class MatchFinder {
   // The page's text over [first, last), as pdfkit_text writes it: the string
   // a glyph-range match redacts.
   [[nodiscard]] std::string text(std::size_t first, std::size_t last) const;
+
+  // The ranges [first, last) of code points of text where a search match
+  // occurs under its text folding, in order and not overlapping: the search
+  // over a string that is not a page's text (a property value, a string
+  // object, a metadata value).
+  [[nodiscard]] static std::vector<std::pair<std::size_t, std::size_t>> ranges_in(
+      std::u32string_view text, const Match& match);
 
   // The occurrences of one page with the overlap rule applied, sorted by
   // first position.

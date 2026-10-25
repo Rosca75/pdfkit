@@ -7,6 +7,8 @@
 
 #include "platform/json_writer.hpp"
 
+#include <cmath>
+
 namespace pdfkit::writer {
 
 std::string WriteReport::json() const {
@@ -32,11 +34,31 @@ std::string WriteReport::json() const {
   writer.key("pending_redactions").unsigned_integer(pending_redactions);
   writer.key("missing_references").unsigned_integer(missing_references);
   writer.key("unpruned_resources").unsigned_integer(unpruned_resources);
-  writer.key("rectangles").begin_array().end_array();
+  writer.key("rectangles").begin_array();
+  for (const Rectangles& changed : rectangles) {
+    writer.begin_object();
+    writer.key("page").unsigned_integer(changed.page);
+    writer.key("source_page").unsigned_integer(changed.source_page);
+    writer.key("placeholders").unsigned_integer(changed.placeholders);
+    writer.key("boxes").begin_array();
+    for (const std::array<double, 4>& box : changed.boxes) {
+      writer.begin_array();
+      for (const double value : box) {
+        writer.number(std::round(value * 100.0) / 100.0);
+      }
+      writer.end_array();
+    }
+    writer.end_array();
+    writer.end_object();
+  }
+  writer.end_array();
   writer.key("self_check").begin_object();
   writer.key("status").string(self_check_status);
   if (!self_check_reason.empty()) {
     writer.key("reason").string(self_check_reason);
+  }
+  if (self_check_status != "not_run") {
+    writer.key("strings").unsigned_integer(self_check_strings);
   }
   writer.end_object();
   writer.key("warnings").begin_array();
