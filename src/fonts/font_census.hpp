@@ -4,7 +4,8 @@
 // FontCensus measures the fonts layer over one document before the content
 // interpreter exists: every font reachable from every page's resources and
 // its forms' resources is loaded, and every string operand of Tj, TJ, ' and "
-// is decoded in the font the preceding Tf named, in the lexical order of the
+// is decoded in the font the preceding Tf (or gs with a /Font entry) named,
+// in the lexical order of the
 // content lexer. That order is an approximation of the interpreter, not the
 // interpreter: a form drawn twice is walked once, a font set inside a form is
 // carried out of it only as q and Q allow, and nothing is positioned. The

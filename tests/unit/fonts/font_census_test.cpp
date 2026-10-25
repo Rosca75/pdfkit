@@ -75,4 +75,21 @@ TEST_CASE("the census decodes every shown string in the font Tf named") {
   CHECK(report.missing_fonts == 1U);
 }
 
+TEST_CASE("an ExtGState's /Font sets the font as Tf does") {
+  PdfBuilder builder;
+  builder.begin_document();
+  const auto times = builder.add("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>");
+  ContentBuilder content;
+  content.raw("/GS1 gs").begin_text().show("via gs").end_text();
+  builder.add_page(content.text(), "/Resources << /ExtGState << /GS1 << /Font [" +
+                                       std::to_string(times) + " 0 R 12] >> >> >>");
+  const auto document = pdfkit::test::open_document(builder.build());
+  const FontCensus::Report report = FontCensus::run(*document);
+  REQUIRE(report.pages.size() == 1U);
+  CHECK(report.pages[0] == "via gs");
+  REQUIRE(report.fonts.size() == 1U);
+  CHECK(report.fonts[0].name == "Times-Roman");
+  CHECK(report.missing_fonts == 0U);
+}
+
 }  // namespace

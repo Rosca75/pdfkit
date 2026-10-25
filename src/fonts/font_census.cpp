@@ -127,6 +127,19 @@ class Walk {
         } else {
           font = loader_.load(value).get();
         }
+      } else if (op == "gs" && !operands.empty()) {
+        // An ExtGState's /Font entry, [font size], sets the font as Tf does
+        // (ISO 32000-1 section 8.4.5, table 58, read).
+        const std::string* name = operands.front().name();
+        const syntax::Object state = document_.resolve(
+            name != nullptr ? entry(resource_dictionary, "ExtGState", *name) : syntax::Object());
+        if (const syntax::Dictionary* entries = state.dictionary()) {
+          const syntax::Object pair = document_.resolve_entry(*entries, "Font");
+          if (const syntax::Object::Array* items = pair.array();
+              items != nullptr && !items->empty()) {
+            font = loader_.load(items->front()).get();
+          }
+        }
       } else if ((op == "Tj" || op == "'" || op == "\"") && !operands.empty()) {
         show(font, operands.back());
       } else if (op == "TJ" && !operands.empty()) {
