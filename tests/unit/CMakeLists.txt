@@ -33,6 +33,11 @@ add_executable(pdfkit_tests
   syntax/repair_test.cpp
   syntax/security_handler_test.cpp
   syntax/stream_test.cpp
+  writer/output_scan.cpp
+  writer/reachability_test.cpp
+  writer/serialiser_test.cpp
+  writer/stream_copier_test.cpp
+  writer/xref_stream_writer_test.cpp
   api/abi_test.cpp
   api/open_inspect_test.cpp
   fonts/support/font_builder.cpp
