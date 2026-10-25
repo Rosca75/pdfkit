@@ -39,6 +39,7 @@ add_executable(pdfkit_tests
   platform/json_writer_test.cpp
   unicode/folding_test.cpp
   redact/match_finder_test.cpp
+  redact/text_surgery_test.cpp
   support/content_builder.cpp
   support/document_summary.cpp
   support/pdf_builder.cpp

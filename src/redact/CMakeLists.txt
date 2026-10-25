@@ -5,6 +5,8 @@
 # layer is one line in this list and touches no other layer's list.
 
 target_sources(pdfkit_core PRIVATE
+  content_syntax.cpp
   edit_plan.cpp
   match_finder.cpp
+  text_surgery.cpp
   write_pipeline.cpp)
