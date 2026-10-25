@@ -669,27 +669,30 @@ Bitmap decode_text_region(const TextParameters& p, const BitmapList& symbols,
         symbol = std::make_shared<const Bitmap>(std::move(refined));
       }
 
+      // 6.4.5 step 3c: CURS moves to the symbol's far edge first when the
+      // reference corner is on it, the symbol is placed with its reference
+      // corner at (S, T) (at (T, S) when transposed), and CURS moves past the
+      // symbol afterwards otherwise. The reference corner is 0 bottom left, 1
+      // top left, 2 bottom right, 3 top right.
+      const bool right_corner = p.reference_corner >= 2;
+      const bool bottom_corner = (p.reference_corner & 1U) == 0;
       std::int64_t increment = 0;
       if (!p.transposed) {
-        if (p.reference_corner > 1) {
+        if (right_corner) {
           current_s += symbol_width - 1;
         } else {
           increment = symbol_width - 1;
         }
-      } else if ((p.reference_corner & 1U) == 0) {
+      } else if (bottom_corner) {
         current_s += symbol_height - 1;
       } else {
         increment = symbol_height - 1;
       }
-      const std::int64_t offset_t = t - ((p.reference_corner & 1U) != 0 ? 0 : symbol_height - 1);
-      const std::int64_t offset_s =
-          current_s - ((p.reference_corner & 2U) != 0 ? symbol_width - 1 : 0);
-      const Bitmap::Operator op = to_operator(p.combination_operator);
-      if (p.transposed) {
-        bitmap.combine(*symbol, offset_t, offset_s, op);
-      } else {
-        bitmap.combine(*symbol, offset_s, offset_t, op);
-      }
+      const std::int64_t corner_x = p.transposed ? t : current_s;
+      const std::int64_t corner_y = p.transposed ? current_s : t;
+      const std::int64_t left = corner_x - (right_corner ? symbol_width - 1 : 0);
+      const std::int64_t top = corner_y - (bottom_corner ? symbol_height - 1 : 0);
+      bitmap.combine(*symbol, left, top, to_operator(p.combination_operator));
       ++decoded;
       const auto delta_s = decode_delta(tables.delta_s, contexts ? &contexts->delta_s : nullptr);
       if (!delta_s || decoded >= p.instances) {
@@ -748,9 +751,10 @@ Bitmap Jbig2Regions::refinement_region(const Jbig2Segments::RefinementRegion& re
   return bitmap;
 }
 
-BitmapList Jbig2Regions::symbol_dictionary(const Jbig2Segments::SymbolDictionary& dictionary,
-                                           const BitmapList& input_symbols,
-                                           const TableList& custom_tables, Allowance& allowance) {
+Jbig2Regions::Dictionary Jbig2Regions::symbol_dictionary(
+    const Jbig2Segments::SymbolDictionary& dictionary, const BitmapList& input_symbols,
+    const TableList& custom_tables, const std::shared_ptr<const RetainedContexts>& inherited,
+    Allowance& allowance) {
   const bool huffman = dictionary.huffman;
   const bool refinement = dictionary.refinement;
   const std::uint64_t new_total = dictionary.new_symbols;
@@ -784,6 +788,10 @@ BitmapList Jbig2Regions::symbol_dictionary(const Jbig2Segments::SymbolDictionary
   Coder coder(huffman && !refinement ? platform::ByteSpan() : dictionary.coded, allowance,
               refinement && !huffman ? symbol_code_length : 0);
   Contexts& contexts = coder.contexts;
+  if (dictionary.context_used && !huffman && inherited) {
+    contexts.generic = inherited->generic;
+    contexts.refinement = inherited->refinement;
+  }
 
   // The tables a text region nested in an aggregate symbol reads from (6.5.8.2,
   // table 17): the standard tables B.6, B.8, B.11, B.15 and B.1.
@@ -974,7 +982,13 @@ BitmapList Jbig2Regions::symbol_dictionary(const Jbig2Segments::SymbolDictionary
       exported.push_back(new_symbols[j]);
     }
   }
-  return exported;
+  Dictionary result;
+  result.symbols = std::move(exported);
+  if (dictionary.context_retained && !huffman) {
+    result.retained = std::make_shared<const RetainedContexts>(
+        RetainedContexts{contexts.generic, contexts.refinement});
+  }
+  return result;
 }
 
 Bitmap Jbig2Regions::text_region(const Jbig2Segments::TextRegion& region, const BitmapList& symbols,

@@ -14,6 +14,7 @@
 #include "images/jbig2_decoder.hpp"
 
 #include "images/ccitt_test_encoder.hpp"
+#include "images/jbig2_conformance_vectors.hpp"
 #include "images/mq_test_encoder.hpp"
 #include "platform/budget.hpp"
 #include "platform/byte_span.hpp"
@@ -62,8 +63,8 @@ void append(Bytes& out, const Bytes& more) {
   out.insert(out.end(), more.begin(), more.end());
 }
 
-Bytes segment(std::uint32_t number, unsigned type, const std::vector<std::uint32_t>& referred,
-              const Bytes& data) {
+Bytes segment_header(std::uint32_t number, unsigned type,
+                     const std::vector<std::uint32_t>& referred, std::size_t length) {
   Bytes out;
   put32(out, number);
   put8(out, type);
@@ -72,7 +73,37 @@ Bytes segment(std::uint32_t number, unsigned type, const std::vector<std::uint32
     put8(out, value);
   }
   put8(out, 1);  // page association
-  put32(out, static_cast<std::uint32_t>(data.size()));
+  put32(out, static_cast<std::uint32_t>(length));
+  return out;
+}
+
+Bytes segment(std::uint32_t number, unsigned type, const std::vector<std::uint32_t>& referred,
+              const Bytes& data) {
+  Bytes out = segment_header(number, type, referred, data.size());
+  append(out, data);
+  return out;
+}
+
+// The file header of T.88 annex D.4 with one page: flags 1 is the sequential
+// organisation, 0 the random-access one.
+Bytes file_header(unsigned flags) {
+  Bytes out;
+  for (const unsigned value : {0x97U, 0x4AU, 0x42U, 0x32U, 0x0DU, 0x0AU, 0x1AU, 0x0AU}) {
+    put8(out, value);
+  }
+  put8(out, flags);
+  put32(out, 1);
+  return out;
+}
+
+// A segment whose length field reads 0xFFFFFFFF; data carries its own end.
+Bytes segment_of_unknown_length(std::uint32_t number, unsigned type, const Bytes& data) {
+  Bytes out;
+  put32(out, number);
+  put8(out, type);
+  put8(out, 0);
+  put8(out, 1);
+  put32(out, 0xFFFFFFFFU);
   append(out, data);
   return out;
 }
@@ -308,6 +339,30 @@ TEST_CASE("a generic region lands at its position on a page whose default pixel 
   check_page(decode(white_page), expected);
 }
 
+TEST_CASE("a stream with the JBIG2 file header is read in either organisation") {
+  const BitonalRows image = pattern(29, 17, 16, 35);
+  const Bytes region = generic_region_data(image, 0, false, default_adaptive(0));
+  const Bytes page = page_information(29, 17);
+  SUBCASE("sequential: each header is followed by its data") {
+    Bytes data = file_header(1);
+    append(data, segment(0, 48, {}, page));
+    append(data, segment(1, 38, {}, region));
+    append(data, segment(2, 49, {}, Bytes()));
+    append(data, segment(3, 51, {}, Bytes()));
+    check_page(decode(data), image);
+  }
+  SUBCASE("random access: the headers come first, then the data") {
+    Bytes data = file_header(0);
+    append(data, segment_header(0, 48, {}, page.size()));
+    append(data, segment_header(1, 38, {}, region.size()));
+    append(data, segment_header(2, 49, {}, 0));
+    append(data, segment_header(3, 51, {}, 0));
+    append(data, page);
+    append(data, region);
+    check_page(decode(data), image);
+  }
+}
+
 TEST_CASE("an MMR generic region decodes through the CCITT Group 4 decoder") {
   const BitonalRows image = pattern(45, 21, 12, 25);
   Bytes data = region_information(45, 21, 0, 0);
@@ -361,6 +416,33 @@ TEST_CASE("a striped page of unknown height grows with its regions and stripes")
   BitonalRows expected = top;
   expected.insert(expected.end(), bottom.begin(), bottom.end());
   check_page(decode(out), expected);
+}
+
+TEST_CASE("a generic region of unknown length ends at its marker and holds the rows it states") {
+  const BitonalRows image = pattern(33, 20, 15, 35);
+  // The region information gives 30 rows, the trailer 20, and the page 30.
+  for (const bool mmr : {false, true}) {
+    Bytes region;
+    if (mmr) {
+      region = region_information(33, 30, 0, 0);
+      put8(region, 1);
+      CcittTestEncoder::Options options;
+      options.k = -1;
+      append(region, CcittTestEncoder::encode(image, options));
+      put16(region, 0);
+    } else {
+      region = generic_region_data(image, 0, false, default_adaptive(0));
+      region[7] = static_cast<std::byte>(30);
+    }
+    put32(region, 20);
+    Bytes data = segment(0, 48, {}, page_information(33, 30));
+    append(data, segment_of_unknown_length(1, 38, region));
+    append(data, segment(2, 49, {}, Bytes()));
+    BitonalRows expected = image;
+    expected.resize(30, std::vector<bool>(33, false));
+    INFO("mmr " << mmr);
+    check_page(decode(data), expected);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -478,18 +560,27 @@ struct ArithmeticContexts {
   std::vector<std::uint8_t> symbol_id;
 };
 
-// A symbol dictionary of symbols grouped by height (ascending), template 0.
-Bytes symbol_dictionary_data(const std::vector<BitonalRows>& symbols, unsigned exported_from) {
+// A symbol dictionary of new symbols grouped by height (ascending), template 0.
+// The first exported_from of the input_count + symbols.size() symbols are not
+// exported; flags adds the retain (512) and use (256) bits of the bitmap coding
+// contexts, which generic_contexts carries from one dictionary to the next.
+Bytes symbol_dictionary_data(const std::vector<BitonalRows>& symbols, std::size_t exported_from,
+                             unsigned flags = 0, std::size_t input_count = 0,
+                             std::vector<std::uint8_t>* generic_contexts = nullptr) {
   Bytes data;
-  put16(data, 0);  // arithmetic, no refinement, template 0
+  put16(data, flags);  // arithmetic, no refinement, template 0
   for (const Pt& p : default_adaptive(0)) {
     put8(data, static_cast<unsigned>(p.dx) & 0xffU);
     put8(data, static_cast<unsigned>(p.dy) & 0xffU);
   }
-  put32(data, static_cast<std::uint32_t>(symbols.size() - exported_from));
+  const std::size_t total = input_count + symbols.size();
+  put32(data, static_cast<std::uint32_t>(total - exported_from));
   put32(data, static_cast<std::uint32_t>(symbols.size()));
   MqTestEncoder encoder;
   ArithmeticContexts contexts;
+  if (generic_contexts != nullptr) {
+    contexts.generic = *generic_contexts;
+  }
   std::size_t height = 0;
   std::size_t i = 0;
   while (i < symbols.size()) {
@@ -510,8 +601,10 @@ Bytes symbol_dictionary_data(const std::vector<BitonalRows>& symbols, unsigned e
   }
   // Export flags: the first exported_from symbols are not exported.
   encoder.encode_integer(contexts.export_run, static_cast<std::int64_t>(exported_from));
-  encoder.encode_integer(contexts.export_run,
-                         static_cast<std::int64_t>(symbols.size() - exported_from));
+  encoder.encode_integer(contexts.export_run, static_cast<std::int64_t>(total - exported_from));
+  if (generic_contexts != nullptr) {
+    *generic_contexts = contexts.generic;
+  }
   append(data, encoder.finish());
   return data;
 }
@@ -522,12 +615,21 @@ struct Instance {
   long t;
 };
 
-// A text region of instances in strips of height 1, reference corner top left.
+// The size of a symbol along the S axis: its width, or its height when the
+// region is transposed.
+long extent_s(const BitonalRows& symbol, bool transposed) {
+  return static_cast<long>(transposed ? symbol.size() : symbol[0].size());
+}
+
+// A text region of instances in strips of height 1. Each instance gives the
+// value CURS holds before it and the strip's T. The reference corner is 0
+// bottom left, 1 top left, 2 bottom right, 3 top right.
 Bytes text_region_data(std::uint32_t width, std::uint32_t height,
                        const std::vector<BitonalRows>& symbols,
-                       const std::vector<Instance>& instances) {
+                       const std::vector<Instance>& instances, unsigned corner = 1,
+                       bool transposed = false) {
   Bytes data = region_information(width, height, 0, 0);
-  put16(data, 1U << 4U);  // arithmetic, reference corner top left
+  put16(data, (corner << 4U) | (transposed ? 64U : 0U));  // arithmetic
   put32(data, static_cast<std::uint32_t>(instances.size()));
   MqTestEncoder encoder;
   ArithmeticContexts contexts;
@@ -549,7 +651,7 @@ Bytes text_region_data(std::uint32_t width, std::uint32_t height,
       const Instance& instance = instances[i];
       encoder.encode_iaid(contexts.symbol_id, code_length,
                           static_cast<std::uint32_t>(instance.symbol));
-      current_s += static_cast<long>(symbols[instance.symbol][0].size()) - 1;
+      current_s += extent_s(symbols[instance.symbol], transposed) - 1;
       ++i;
       if (i < instances.size() && instances[i].t == t) {
         encoder.encode_integer(contexts.delta_s, instances[i].s - current_s);
@@ -572,16 +674,35 @@ std::vector<BitonalRows> sample_symbols() {
   return symbols;
 }
 
+// Where the standard (T.88 6.4.5 step 3c) puts each symbol: with its reference
+// corner at (S, T), or at (T, S) when transposed, where S is CURS after the
+// update that moves it to the symbol's far edge for a corner on that edge.
 BitonalRows draw(std::size_t width, std::size_t height, const std::vector<BitonalRows>& symbols,
-                 const std::vector<Instance>& instances) {
+                 const std::vector<Instance>& instances, unsigned corner = 1,
+                 bool transposed = false) {
   BitonalRows page(height, std::vector<bool>(width, false));
+  const bool right = corner >= 2;
+  const bool bottom = corner % 2 == 0;
   for (const Instance& instance : instances) {
     const BitonalRows& symbol = symbols[instance.symbol];
-    for (std::size_t y = 0; y < symbol.size(); ++y) {
-      for (std::size_t x = 0; x < symbol[y].size(); ++x) {
-        if (symbol[y][x]) {
-          page[static_cast<std::size_t>(instance.t) + y][static_cast<std::size_t>(instance.s) + x] =
-              true;
+    const long symbol_width = static_cast<long>(symbol[0].size());
+    const long symbol_height = static_cast<long>(symbol.size());
+    long s = instance.s;
+    if (!transposed && right) {
+      s += symbol_width - 1;
+    } else if (transposed && bottom) {
+      s += symbol_height - 1;
+    }
+    const long x = transposed ? instance.t : s;
+    const long y = transposed ? s : instance.t;
+    const long left = right ? x - (symbol_width - 1) : x;
+    const long top = bottom ? y - (symbol_height - 1) : y;
+    for (long row = 0; row < symbol_height; ++row) {
+      const long page_row = top + row;
+      for (long column = 0; column < symbol_width; ++column) {
+        const long page_column = left + column;
+        if (symbol[static_cast<std::size_t>(row)][static_cast<std::size_t>(column)]) {
+          page[static_cast<std::size_t>(page_row)][static_cast<std::size_t>(page_column)] = true;
         }
       }
     }
@@ -615,6 +736,36 @@ TEST_CASE("the symbols of /JBIG2Globals are available to the image's segments") 
   Bytes image = segment(0, 48, {}, page_information(26, 14));
   append(image, segment(2, 6, {1}, text_region_data(26, 14, symbols, instances)));
   check_page(decode(image, globals), draw(26, 14, symbols, instances));
+}
+
+TEST_CASE("a text region places symbols by each reference corner, transposed or not") {
+  const auto symbols = sample_symbols();
+  // The strips are far enough from the edges for every corner.
+  const std::vector<Instance> instances = {{0, 12, 14}, {2, 24, 14}, {1, 14, 26}, {2, 26, 26}};
+  for (unsigned corner = 0; corner < 4; ++corner) {
+    for (const bool transposed : {false, true}) {
+      Bytes regions = segment(1, 0, {}, symbol_dictionary_data(symbols, 0));
+      append(regions,
+             segment(2, 6, {1}, text_region_data(44, 40, symbols, instances, corner, transposed)));
+      INFO("corner " << corner << " transposed " << transposed);
+      check_page(decode(page_with(regions, 44, 40)),
+                 draw(44, 40, symbols, instances, corner, transposed));
+    }
+  }
+}
+
+TEST_CASE("a symbol dictionary starts from the contexts the dictionary it refers to retained") {
+  const std::vector<BitonalRows> first = {pattern(5, 5, 51, 50), pattern(4, 5, 52, 50)};
+  const std::vector<BitonalRows> second = {pattern(6, 8, 53, 50), pattern(3, 8, 54, 50)};
+  std::vector<std::uint8_t> generic_contexts(std::size_t{1} << 16U, 0);
+  Bytes regions = segment(1, 0, {}, symbol_dictionary_data(first, 0, 512, 0, &generic_contexts));
+  append(regions, segment(2, 0, {1},
+                          symbol_dictionary_data(second, 0, 256, first.size(), &generic_contexts)));
+  std::vector<BitonalRows> all = first;
+  all.insert(all.end(), second.begin(), second.end());
+  const std::vector<Instance> instances = {{0, 2, 2}, {3, 10, 2}, {2, 4, 12}, {1, 14, 12}};
+  append(regions, segment(3, 6, {2}, text_region_data(24, 22, all, instances)));
+  check_page(decode(page_with(regions, 24, 22)), draw(24, 22, all, instances));
 }
 
 // ---------------------------------------------------------------------------
@@ -830,6 +981,32 @@ TEST_CASE("a halftone region draws the patterns of a pattern dictionary on its g
 }
 
 // ---------------------------------------------------------------------------
+// pdf.js's JBIG2 test files (see jbig2_conformance_vectors.hpp).
+
+std::uint64_t fnv1a(const Bytes& data) {
+  std::uint64_t hash = 0xCBF29CE484222325ULL;
+  for (const std::byte value : data) {
+    hash = (hash ^ std::to_integer<std::uint64_t>(value)) * 0x100000001B3ULL;
+  }
+  return hash;
+}
+
+TEST_CASE("each pdf.js conformance vector decodes to the bitmap it stands for") {
+  for (const pdfkit::test::Jbig2Vector& vector : pdfkit::test::jbig2_conformance_vectors()) {
+    const auto raw = std::as_bytes(vector.bytes);
+    const Bytes data(raw.begin(), raw.end());
+    const auto result = decode(data);
+    INFO("vector " << vector.name);
+    CHECK(result.fault.empty());
+    CHECK(result.width == 399);
+    CHECK(result.height == 400);
+    const bool and_xnor = std::string(vector.name) == "composite-and-xnor";
+    CHECK(fnv1a(result.data) ==
+          (and_xnor ? pdfkit::test::k_jbig2_and_xnor_hash : pdfkit::test::k_jbig2_reference_hash));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Refusals.
 
 TEST_CASE("a page size past the budget is refused before the bitmap is reserved") {
@@ -877,6 +1054,30 @@ bool survives(const Bytes& data) {
     return result.fault.empty() || result.data.empty();
   } catch (const Error& error) {
     return error.code() == ErrorCode::limit_exceeded;
+  }
+}
+
+TEST_CASE("mutated conformance vectors give a fault or a page, never a crash") {
+  constexpr unsigned rounds = 6;
+  std::uint32_t state = 4242;
+  const auto next = [&state] {
+    state = state * 1664525U + 1013904223U;
+    return state >> 8U;
+  };
+  for (const pdfkit::test::Jbig2Vector& vector : pdfkit::test::jbig2_conformance_vectors()) {
+    const auto raw = std::as_bytes(vector.bytes);
+    for (unsigned round = 0; round < rounds; ++round) {
+      Bytes data(raw.begin(), raw.end());
+      if (round % 4 == 3) {
+        data.resize(next() % data.size());
+      } else {
+        for (unsigned flips = 1 + round % 3; flips > 0; --flips) {
+          data[next() % data.size()] = static_cast<std::byte>(next());
+        }
+      }
+      INFO("vector " << vector.name << " round " << round);
+      CHECK(survives(data));
+    }
   }
 }
 

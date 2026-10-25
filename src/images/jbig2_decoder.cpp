@@ -228,8 +228,21 @@ class Session {
         break;
       case Jbig2Segments::symbol_dictionary: {
         const auto dictionary = Jbig2Segments::read_symbol_dictionary(segment);
-        symbols_[segment.number] = Jbig2Regions::symbol_dictionary(
-            dictionary, referred_symbols(segment), referred_tables(segment), allowance_);
+        // The contexts a dictionary asks to start from are those of the last
+        // symbol dictionary it refers to (7.4.2.2).
+        std::shared_ptr<const Jbig2Regions::RetainedContexts> inherited;
+        for (const std::uint32_t number : segment.referred_to) {
+          if (symbols_.contains(number)) {
+            const auto found = retained_.find(number);
+            inherited = found != retained_.end() ? found->second : nullptr;
+          }
+        }
+        auto result = Jbig2Regions::symbol_dictionary(
+            dictionary, referred_symbols(segment), referred_tables(segment), inherited, allowance_);
+        symbols_[segment.number] = std::move(result.symbols);
+        if (result.retained) {
+          retained_[segment.number] = std::move(result.retained);
+        }
         break;
       }
       case Jbig2Segments::pattern_dictionary: {
@@ -258,15 +271,16 @@ class Session {
       case Jbig2Segments::immediate_lossless_halftone_region:
       case Jbig2Segments::intermediate_halftone_region: {
         const auto region = Jbig2Segments::read_halftone_region(segment);
-        Jbig2Regions::BitmapList patterns;
+        static const Jbig2Regions::BitmapList no_patterns;
+        const Jbig2Regions::BitmapList* patterns = &no_patterns;
         if (!segment.referred_to.empty()) {
           const auto found = patterns_.find(segment.referred_to.front());
           if (found != patterns_.end()) {
-            patterns = found->second;
+            patterns = &found->second;
           }
         }
         deliver(segment, segment.type != Jbig2Segments::intermediate_halftone_region, region.info,
-                Jbig2Regions::halftone_region(region, patterns, allowance_));
+                Jbig2Regions::halftone_region(region, *patterns, allowance_));
         break;
       }
       case Jbig2Segments::immediate_refinement_region:
@@ -301,6 +315,7 @@ class Session {
   Jbig2Bitmap::Allowance allowance_;
   std::optional<Page> page_;
   std::map<std::uint32_t, Jbig2Regions::BitmapList> symbols_;
+  std::map<std::uint32_t, std::shared_ptr<const Jbig2Regions::RetainedContexts>> retained_;
   std::map<std::uint32_t, Jbig2Regions::BitmapList> patterns_;
   std::map<std::uint32_t, Jbig2Huffman::Table> tables_;
   std::map<std::uint32_t, std::shared_ptr<const Jbig2Bitmap>> regions_;

@@ -37,6 +37,19 @@ class Jbig2Regions {
   // The custom tables a segment refers to, in the order it refers to them.
   using TableList = std::vector<const Jbig2Huffman::Table*>;
 
+  // The context statistics a symbol dictionary leaves for the dictionaries that
+  // refer to it (the retained bitmap coding contexts of T.88 7.4.2.1.1).
+  struct RetainedContexts {
+    std::vector<std::uint8_t> generic;
+    std::vector<std::uint8_t> refinement;
+  };
+
+  struct Dictionary {
+    BitmapList symbols;
+    // Set when the dictionary asks for its contexts to be retained.
+    std::shared_ptr<const RetainedContexts> retained;
+  };
+
   [[nodiscard]] static Jbig2Bitmap generic_region(const Jbig2Segments::GenericRegion& region,
                                                   Allowance& allowance);
 
@@ -47,10 +60,12 @@ class Jbig2Regions {
                                                      Allowance& allowance);
 
   // The exported symbols of a symbol dictionary, given the symbols of the
-  // dictionaries it refers to and its custom tables.
-  [[nodiscard]] static BitmapList symbol_dictionary(
+  // dictionaries it refers to, its custom tables and, when it asks for them,
+  // the contexts retained by the last dictionary it refers to.
+  [[nodiscard]] static Dictionary symbol_dictionary(
       const Jbig2Segments::SymbolDictionary& dictionary, const BitmapList& input_symbols,
-      const TableList& custom_tables, Allowance& allowance);
+      const TableList& custom_tables, const std::shared_ptr<const RetainedContexts>& inherited,
+      Allowance& allowance);
 
   [[nodiscard]] static Jbig2Bitmap text_region(const Jbig2Segments::TextRegion& region,
                                                const BitmapList& symbols,

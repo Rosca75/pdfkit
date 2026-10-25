@@ -30,6 +30,7 @@ namespace {
 constexpr std::array<std::uint8_t, 8> k_file_header_id = {0x97, 0x4a, 0x42, 0x32,
                                                           0x0d, 0x0a, 0x1a, 0x0a};
 constexpr std::uint32_t k_unknown_length = 0xFFFFFFFFU;
+constexpr std::size_t k_region_info_size = 17;
 
 // Reads fields in order, throwing DecodeFault when the data ends first.
 class Cursor {
@@ -162,24 +163,24 @@ ParsedHeader parse_header(platform::ByteSpan data, std::size_t position) {
         header.type != Jbig2Segments::immediate_lossless_generic_region) {
       throw DecodeFault(describe_segment + " has an unknown length but is no generic region");
     }
-    Cursor info_cursor(data, describe_segment, parsed.end);
-    const Jbig2Segments::RegionInfo info = read_region_info(info_cursor);
-    const std::uint32_t region_flags = info_cursor.u8();
+    // The marker is searched for after the fixed fields, since the adaptive
+    // template pixels could hold its bytes; the coded data never does, because
+    // the coder stuffs a bit after every 0xFF byte and MMR holds no run of 16
+    // zero bits.
+    Cursor fixed(data, describe_segment, parsed.end + k_region_info_size);
+    const std::uint32_t region_flags = fixed.u8();
     const bool mmr = (region_flags & 1U) != 0;
-    std::array<std::uint8_t, 6> pattern = {mmr ? std::uint8_t{0} : std::uint8_t{0xff},
-                                           mmr ? std::uint8_t{0} : std::uint8_t{0xac},
-                                           static_cast<std::uint8_t>(info.height >> 24U),
-                                           static_cast<std::uint8_t>(info.height >> 16U),
-                                           static_cast<std::uint8_t>(info.height >> 8U),
-                                           static_cast<std::uint8_t>(info.height)};
+    const unsigned template_index = (region_flags >> 1U) & 3U;
+    const std::size_t adaptive_bytes = mmr ? 0 : (template_index == 0 ? 8 : 2);
+    const std::uint8_t first = mmr ? 0x00 : 0xff;
+    const std::uint8_t second = mmr ? 0x00 : 0xac;
     bool found = false;
-    for (std::size_t i = parsed.end; i + pattern.size() <= data.size(); ++i) {
-      std::size_t j = 0;
-      while (j < pattern.size() && std::to_integer<std::uint8_t>(data[i + j]) == pattern[j]) {
-        ++j;
-      }
-      if (j == pattern.size()) {
-        parsed.length = (i - parsed.end) + pattern.size();
+    for (std::size_t i = fixed.position() + adaptive_bytes; i + 6 <= data.size(); ++i) {
+      if (std::to_integer<std::uint8_t>(data[i]) == first &&
+          std::to_integer<std::uint8_t>(data[i + 1]) == second) {
+        header.unknown_length = true;
+        header.row_count = platform::read_be<std::uint32_t>(data, i + 2).value_or(0);
+        parsed.length = (i - parsed.end) + 6;
         found = true;
         break;
       }
@@ -316,6 +317,9 @@ Jbig2Segments::GenericRegion Jbig2Segments::read_generic_region(const Header& he
     region.at = read_adaptive_pixels(cursor, region.template_index == 0 ? 4U : 1U);
   }
   region.coded = rest(header, cursor);
+  if (header.unknown_length) {
+    region.info.height = std::min(region.info.height, header.row_count);
+  }
   return region;
 }
 

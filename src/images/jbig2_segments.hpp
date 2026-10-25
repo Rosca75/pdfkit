@@ -55,6 +55,10 @@ class Jbig2Segments {
     std::uint32_t page_association = 0;
     // The segment's data part, after the header.
     platform::ByteSpan data;
+    // A generic region of unknown length (7.2.7) ends with the number of rows
+    // it holds, which can be fewer than its region information states.
+    bool unknown_length = false;
+    std::uint32_t row_count = 0;
   };
 
   // A pixel of a context template at an offset from the pixel being decoded.

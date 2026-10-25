@@ -486,6 +486,13 @@ constexpr std::array<Entry, 64> k_black_table_3 = {{
 // more run boundaries than columns plus the sentinels the arrays reserve.
 constexpr std::size_t k_line_slack = 5;
 
+// The entries of a coding or reference line for a width: one per column, and the
+// sentinels. The width is clamped so the size is provably not zero.
+[[nodiscard]] std::size_t line_size(std::int64_t columns) {
+  constexpr std::int64_t widest = std::numeric_limits<std::uint32_t>::max();
+  return static_cast<std::size_t>(std::clamp<std::int64_t>(columns, 1, widest)) + k_line_slack;
+}
+
 class FaxReader {
  public:
   // Why a row stopped before its last pixel.
@@ -508,8 +515,8 @@ class FaxReader {
         eoblock_(parameters.end_of_block),
         rows_(parameters.rows),
         columns_(parameters.columns),
-        coding_line_(static_cast<std::size_t>(parameters.columns) + k_line_slack, 0),
-        ref_line_(static_cast<std::size_t>(parameters.columns) + k_line_slack, 0),
+        coding_line_(line_size(parameters.columns), 0),
+        ref_line_(line_size(parameters.columns), 0),
         next_line_2d_(parameters.k < 0) {
     coding_line_[0] = static_cast<std::uint32_t>(columns_);
     std::uint32_t code1 = 0;

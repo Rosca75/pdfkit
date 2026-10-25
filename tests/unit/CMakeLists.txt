@@ -12,6 +12,7 @@ add_executable(pdfkit_tests
   images/arithmetic_decoder_test.cpp
   images/ccitt_decoder_test.cpp
   images/ccitt_test_encoder.cpp
+  images/jbig2_conformance_vectors.cpp
   images/jbig2_decoder_test.cpp
   images/mq_test_encoder.cpp
   platform/budget_test.cpp
