@@ -2,8 +2,5 @@ path	phase	note
 docs/archive/	1	created by the merge that archives the first done build file
 docs/archive/build/	1	created by the merge that archives the first done build file
 syntax/cross_reference.hpp	3	the charter's example of a file named after its class
-tests/unit/support/	3	the fixture writer
-tests/unit/support/pdf_builder	3	the fixture writer
-tests/unit/support/pdf_builder.hpp	3	the fixture writer
 build/fonts/	4	the font tools
 src/writer/channel_table.cpp	7	the channel table

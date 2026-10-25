@@ -5,4 +5,8 @@
 # layer is one line in this list and touches no other layer's list.
 
 target_sources(pdfkit_core PRIVATE
-  syntax_placeholder.cpp)
+  dictionary.cpp
+  lexer.cpp
+  object.cpp
+  parser.cpp
+  stream.cpp)
