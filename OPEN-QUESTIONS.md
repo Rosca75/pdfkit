@@ -151,3 +151,22 @@ unreadable). Do you want such names read as text?
   read as PDFium reads them; a producer that numbers glyphs by any other
   scheme would read wrong text in silence. About 1 to 2 hours and $15 to $30
   (the rule, two unit cases, `docs/DESIGN.md` §5.2 and a census run).
+
+### 2.6 Every write prunes the resources nothing draws (raised by phase 7)
+
+`docs/DESIGN.md` §16 asked for resource pruning when pages are selected. The
+writer prunes on every write, a write that keeps every page included: each
+page's resource dictionary, and each form's, keeps only the names its content
+stream uses (plus `/DefaultGray`, `/DefaultRGB`, `/DefaultCMYK` and
+`/ProcSet`), so a font, image or form that a shared `/Resources` lists but no
+page draws is not written. An undrawn form can hold text an extractor reads,
+so it is a channel; the price is fidelity risk where a content stream uses a
+name the usage reader misses, which the gate measured at 0 pages of 8,027
+(every differing page has another cause, `build-7.md` §9 item 14). §16 now
+says so. Do you want to keep it?
+
+- **(a) Keep pruning on every write — recommended, and taken while this
+  question stands.** No cost.
+- **(b) Prune only when pages are selected.** About 0.5 hour and $5 to $10
+  of session time (one condition in `src/writer/page_selector.cpp`, its test,
+  §16 and a gate run); undrawn resources then reach every identity write.

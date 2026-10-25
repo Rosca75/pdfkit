@@ -285,7 +285,7 @@ rollback after they land reverts them too.
    `/DefaultCMYK` are always kept (the first gate run showed three pages
    rendering in the device spaces without them), `/ProcSet` is kept, keys
    outside the seven categories are dropped, a Type 3 font's own resources
-   are kept whole.
+   are kept whole. The owner may flip it (`OPEN-QUESTIONS.md` §2.6).
 6. **The Info dictionary is copied as it is** on every write until the
    metadata stage rewrites it; DESIGN.md §17's "/Info when metadata is
    written" is read as "/Info when the source has one".
