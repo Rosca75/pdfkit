@@ -283,3 +283,56 @@ file in twenty below 0.90", whatever the cause).
   gate as written only if it fixes at least 13 of the 21 pdfkit-caused files.
 - **(c) Stop and re-plan.** The cost of re-planning; nothing in the numbers
   points to a reader that does not work.
+
+### 2.11 Text redaction: what the search folds and where the self-check looks (raised by phase 8)
+
+Phase 8 took these five decisions unattended, each the recommended answer
+and each taken while this question stands; `build-8.md` §9 records them and
+`docs/DESIGN.md` §11, §12, §15 and §18 say so. Do you confirm them?
+
+1. **No compatibility folding.** The default folding is the one §11 names
+   (simple case folding, canonical decomposition with the marks stripped,
+   white space collapsed), so a search for "HDCP" leaves a full-width
+   "ＨＤＣＰ" and a search for "essbar" leaves "meßbar". The first gate run's
+   three PDFium "leaks" were exactly these (dccc-0025, dccc-0072, dccc-0004),
+   and the leak check now folds as pdfkit does.
+   - **(a) Keep it, and add an opt-in `compatibility` folding flag later —
+     recommended.** About 2 to 3 hours and $40 to $60 when wanted (NFKC data
+     vendored beside `third_party/unicode/`, the full case folding of
+     `CaseFolding.txt` status F, one flag in `docs/ABI.md` §4.11).
+   - (b) Make compatibility folding the default. About 3 to 4 hours and $60
+     to $80; more text goes than the caller named (a superscript digit, a
+     ligature, ß in every German word holding "ss").
+   - (c) Keep it with no flag. No cost.
+2. **A search matches inside words** ("Smith" in "Smithson"), because a
+   redaction that misses a string inside a longer word leaks it.
+   - **(a) Keep it — recommended.** No cost.
+   - (b) Add an opt-in whole-word flag. About 2 hours and $30.
+3. **The private keys of form and image XObjects are a channel** (the new
+   row `ch_xobject_private`, an allow-list of ISO 32000-1 tables 5, 89, 95
+   and 146). The self-check found a pdfTeX `/PTEX.FileName` and PDFpen's
+   private copy of an annotation's text on forms that every write kept.
+   - **(a) Keep the allow-list — recommended.** No cost.
+   - (b) Strip only the keys a test names (a deny-list). About 1 hour and
+     $20, and the next unknown key leaks.
+4. **The self-check's raw scan of a content stream reads its string
+   operands, comments, the bytes a lexer recovery skipped and unknown
+   operators**, not operator and resource names, so a tagged page's `/Table`
+   or `/Figure` does not refuse a redaction of "Table" or "Figure". **For a
+   plan of search strings alone it reads the text of the pages the redaction
+   changed** again, not every page: every other page was searched with every
+   string by the same reader. This keeps the 910-page dccc-0135 inside the
+   30 s dataset limit (22 s alone before, 11 to 12 s now).
+   - **(a) Keep both — recommended.** No cost.
+   - (b) Read every page again. No development cost; about 40 % more write
+     time on large files, and dccc-0135 past 30 s under load.
+   - (c) Scan whole content streams. No development cost; refusals on
+     common words in tagged files.
+5. **A redacted word that is also in the Info dictionary or the XMP packet
+   refuses the output**, as the self-check must, so 85 dataset rows are
+   `known_gap:metadata_holds_word` until the dataset job can rewrite
+   metadata.
+   - **(a) Let phase 10's dataset job rewrite the fields that hold a redacted
+     word and turn those rows `clean` — recommended.** About 1 hour inside
+     phase 10, $15.
+   - (b) Keep them as gaps. No cost.

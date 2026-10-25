@@ -284,7 +284,7 @@ From `build-7.md` §9:
 
 From `build-8.md` §9:
 
-- The self-check already searches the Info dictionary's strings (`info`) and the XMP packet's text (`xmp`, entities read) for every redacted string, and refuses the output on a survivor; 81 manifest rows are `known_gap:metadata_holds_word` because the seeded job's words are also in their metadata. When `pdfkit_set_metadata` lands, either make the dataset job rewrite the fields that hold a redacted word and re-derive those rows to `clean`, or keep them as gaps; `tests/dataset/outcome.md` describes the job (items 8, 10).
+- The self-check already searches the Info dictionary's strings (`info`) and the XMP packet's text (`xmp`, entities read) for every redacted string, and refuses the output on a survivor; 85 manifest rows are `known_gap:metadata_holds_word` because the seeded job's words are also in their metadata. When `pdfkit_set_metadata` lands, either make the dataset job rewrite the fields that hold a redacted word and re-derive those rows to `clean`, or keep them as gaps (`OPEN-QUESTIONS.md` §2.11 item 5); `tests/dataset/outcome.md` describes the job (items 8, 10).
 - Search folding is `platform::unicode::Folding` (`src/platform/unicode/folding.hpp`, Unicode 18.0.0 tables); `redact::MatchFinder::ranges_in` finds a search string in any UTF-8 value and `MatchFinder::byte_forms` gives its byte forms, for a metadata surface of your own (items 5, 11).
 - An indirect string referenced from the Info dictionary is reported as a `string` surface, not `info` (pdfminer-0038); the metadata surface of the self-check is yours to refine.
 - `tests/pdfium/leak.py`'s `--metadata` flag is yours to add; it reads `redact_text.strings` today.

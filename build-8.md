@@ -292,9 +292,11 @@ inventory rows and their notices.
    touches; a search also removes the glyphs whose code bytes spell the
    string inside one operand where the text does not read it (found by the
    gate: a font whose codes read as other text, letters spread out of reading
-   order); a text-showing operator that shows no glyph (no font is current)
-   and an operator Annex A does not know (a damaged stream lexes into them)
-   go when a string operand spells the string; the fingerprint of a glyph range is the SHA-256 of the file from
+   order); a text-showing operator that shows no glyph (no font is current),
+   an operator Annex A does not know (a damaged stream lexes into them), a
+   content stream's comment and the bytes a lexer recovery skipped go when
+   they spell the string (the gate found a producer's `% ... "Hello World"`
+   comment, an `/Artifact` note, garbage of a damaged stream); the fingerprint of a glyph range is the SHA-256 of the file from
    its `%PDF-` header (`syntax::Document::bytes()`), reported by `pdfkit_text`
    (a new `fingerprint` key, which `docs/ABI.md` §4.9 lists) and
    `pdfkit_redact_text`; each page is searched alone, so a hyphenation across
@@ -312,14 +314,23 @@ inventory rows and their notices.
    is not a space; the face is named `/PdfkitPH` plus eight hexadecimal digits
    of its hash in the resources the stream reads, and a form without
    resources of its own has the face named in every kept page that draws it.
-   A rectangle is a removed run's box per reading line, or the placeholder's,
-   widened by a sixth of the glyph size, because ink leaves the box the font
-   metrics give. Known limit: a glyph range inside a form drawn on several
+   A rectangle is a removed run's box per reading line, extended over the
+   glyphs the same stream draws after the hole on that line, or the
+   placeholder's, widened by a sixth of the glyph size, because ink leaves
+   the box the font metrics give and because the glyphs after a hole are
+   placed from another sequence of advances, which PDFium sums in its own
+   floating point and can round to a neighbouring sub-pixel (the first gate
+   runs showed such lines re-rasterised with no glyph moved by pdfkit's
+   reckoning). The dataset outcome records each rectangle page's crop box
+   and rotation, which `compare.py --check redact` applies before comparing
+   (the first runs compared rotated and cropped pages in the wrong space). Known limit: a glyph range inside a form drawn on several
    pages changes all of them, and the rectangles name only the page of the
    range.
 8. **The self-check's surfaces as built** (`docs/DESIGN.md` §18 updated): a
-   content stream's raw scan reads its string operands only, because operator
-   names, resource names and marked-content tags are the producer's
+   content stream's raw scan reads its string operands, its comments, the
+   bytes a lexer recovery skipped and the operators Annex A does not know,
+   not the names of operators and resources nor marked-content tags,
+   because those are the producer's
    vocabulary (a tagged page's `/Table` and `/Figure` would otherwise refuse
    any redaction of those words); font programs and CMaps, image samples, ICC
    profiles (of a colour space or an output intent), functions and the XMP
@@ -331,10 +342,24 @@ inventory rows and their notices.
    edited form drawn), because every other page was searched with every
    string by the same reader and reads as it did; every other surface of
    every page is searched as before, and a plan with a glyph range reads every
-   page. The 910-page dccc-0135 went from 22 s to 14 s in the dataset verb,
-   under the 30 s limit with four workers. `tests/pdfium/leak.py` leaves out
-   the same binary streams and any occurrence inside a name token, and cuts
-   `[REDACTED]` out of PDFium's text.
+   page. The 910-page dccc-0135 went from 22 s to 14 s in the dataset verb
+   alone, and to 11 to 12 s once the code search built each operand's bytes
+   once per page instead of once per string (the fifth gate run still timed
+   it out once under four workers and other sessions' load). The XMP packet is read with its
+   element and attribute names left out rather than by tracking quotes (a
+   packet whose byte-order-mark attribute lost its closing quote hid every
+   value from the first scanner). `tests/pdfium/leak.py` applies the same
+   rules: it folds PDFium's text with the default folding of `docs/DESIGN.md`
+   §11 (canonical decomposition, marks stripped, lower case), not a
+   compatibility folding, so a full-width "ＨＤＣＰ" or a "meßbar" is not an
+   occurrence of "HDCP" or "essbar" (three PDFium "leaks" of the first run
+   were these, `OPEN-QUESTIONS.md` §2.11 asks); it leaves out font streams
+   (programs, `/ToUnicode`, CMaps), image samples and inline image data, ICC
+   profiles and name tokens, and reads XMP without its markup's names; the
+   removed codes pdfkit reports are listed as `codes` and not counted, because
+   a code draws a glyph only in its own font and the same code sequence in
+   another subset font is other text; and it cuts `[REDACTED]` out of
+   PDFium's text before searching it.
 9. **A new channel row, `ch_xobject_private`** (24th, in `channel_table.cpp`,
    with its unit test, the taxonomy tag of minimum 1 and the planted-marker
    specimen `synth-0262`): form and image XObjects keep only the keys of ISO
@@ -350,7 +375,7 @@ inventory rows and their notices.
     constant `Zebulon Quarterfield`, added to every file's job (it matches
     nothing outside the twelve traps). The traps' tags are `redact_<case>`
     in the group `traps`, rows `synth-0250` to `synth-0261`; the manifest
-    holds 950 rows. 81 rows are `known_gap:metadata_holds_word`: a word the
+    holds 950 rows. 85 rows are `known_gap:metadata_holds_word`: a word the
     seeded job draws from the page text is also in the Info dictionary or the
     XMP packet (a title, a producer, a keyword), the self-check refuses the
     output there as it must, and the job writes no metadata until phase 10.
@@ -362,6 +387,27 @@ inventory rows and their notices.
 12. **The redact verb** refuses an `images` or `metadata` section as a usage
     error naming the section while this build lacks the function
     (`is_implemented` in `cli/support.cpp`), before reading the input.
+13. **The gate as run** (run `p8-gate6`, release build of commit `2c90b4d`):
+    `python tests/dataset/run.py --checks open,redact_text --runs 2
+    --workers 4 --run-id p8-gate6`, `python tests/pdfium/leak.py --run
+    p8-gate6 --workers 4`, `python tests/pdfium/compare.py --run p8-gate6
+    --check redact --workers 4`, `python tests/dataset/gates/phase8.py --run
+    p8-gate6`. Over 901 files that open and expect a redaction (85 known
+    gaps): self-check 816 / 816; PDFium's text 0 redacted words; decoded
+    bytes outside font programs 0 (16 removed-code sequences found in other
+    fonts' strings, informational); pages stable outside the rectangles
+    7,710 / 7,748 = 99.51 %; placeholders read back 8,152 / 8,187 = 99.57 %;
+    determinism 901 / 901; no crash, no hang. The 38 unstable pages are in
+    16 files: dccc-0046 is the non-embedded CJK font whose widths pdfkit and
+    PDFium disagree on (`build-5.md` §9), so its kept glyphs move in PDFium's
+    rendering; on the other pages examined, glyphs after a hole that PDFium
+    re-rasterises
+    a sub-pixel apart outside the line's rectangle (a neighbouring line's
+    descender or a glyph of another stream). The 35 placeholders PDFium does
+    not read back are on 14 pages of 13 files, among them the fake-bold traps
+    synth-0097 to synth-0099 (a line drawn twice, a placeholder drawn for each
+    copy) and the right-to-left synth-0214; they were not classified one by
+    one.
 
 ### Deviations of earlier phases that affect this one
 
