@@ -14,6 +14,7 @@
 #include "platform/error.hpp"
 #include "platform/json_reader.hpp"
 #include "platform/json_value.hpp"
+#include "support/pdf_builder.hpp"
 
 #include <doctest.h>
 
@@ -59,9 +60,24 @@ void check_error_object(std::string_view text, std::string_view code) {
   CHECK_FALSE(error.find("fix")->as_string().empty());
 }
 
+// A one-page document opened through the C ABI, an edit over it, and four
+// bytes that are not a PDF.
 struct Fixture {
-  std::unique_ptr<pdfkit_document> document = pdfkit::api::new_document(JsonValue::make_object({}));
-  std::unique_ptr<pdfkit_edit> edit = pdfkit::api::new_edit(*document);
+  Fixture() {
+    pdfkit::test::PdfBuilder builder;
+    builder.begin_document();
+    builder.add_page("BT ET");
+    const std::string file = builder.build();
+    pdfkit_buffer out{nullptr, 0, nullptr};
+    pdfkit_document* opened = nullptr;
+    REQUIRE(pdfkit_open(reinterpret_cast<const std::uint8_t*>(file.data()), file.size(), nullptr,
+                        &opened, &out) == PDFKIT_OK);
+    pdfkit_buffer_free(&out);
+    document.reset(opened);
+    edit = pdfkit::api::new_edit(*document);
+  }
+  std::unique_ptr<pdfkit_document> document;
+  std::unique_ptr<pdfkit_edit> edit;
   std::vector<std::uint8_t> bytes{'%', 'P', 'D', 'F'};
 };
 

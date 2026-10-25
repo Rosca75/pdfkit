@@ -7,6 +7,8 @@
 
 add_executable(pdfkit_tests
   main.cpp
+  ../../cli/sha256.cpp
+  cli/sha256_test.cpp
   platform/budget_test.cpp
   platform/buffer_test.cpp
   platform/checked_test.cpp
@@ -30,9 +32,13 @@ add_executable(pdfkit_tests
   syntax/parser_test.cpp
   syntax/repair_test.cpp
   syntax/security_handler_test.cpp
-  api/abi_test.cpp)
+  api/abi_test.cpp
+  api/open_inspect_test.cpp)
 # Fixtures are written by the support library, included as "support/...".
-target_include_directories(pdfkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+# The CLI's own SHA-256 is compiled in too, as "cli/sha256.hpp", to check it
+# against the library's.
+target_include_directories(pdfkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+                                                "${PROJECT_SOURCE_DIR}")
 target_link_libraries(pdfkit_tests PRIVATE pdfkit_core doctest)
 pdfkit_warnings(pdfkit_tests)
 pdfkit_sanitize(pdfkit_tests)

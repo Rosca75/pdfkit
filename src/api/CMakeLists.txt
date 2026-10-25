@@ -8,6 +8,7 @@
 target_sources(pdfkit_core PRIVATE
   arguments.cpp
   catalogue.cpp
+  document_report.cpp
   guarded.cpp
   handles.cpp
   lifecycle.cpp
