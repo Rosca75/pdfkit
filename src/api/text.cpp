@@ -3,7 +3,7 @@
 //
 // Catalogue function 2, Extract text: pdfkit_text returns each page's blocks,
 // lines and words in reading order and, on request, the glyph records behind
-// them (CLAUDE.md section 2, docs/ABI.md section 4.5). Pages are read one at a
+// them (CLAUDE.md section 2, the pdfkit_text section of docs/ABI.md). Pages are read one at a
 // time and written as they are read, holding only the page before, whose last
 // line a hyphen may join to the next page's first line (docs/DESIGN.md
 // chapter 7: across a page break only when both pages are extracted

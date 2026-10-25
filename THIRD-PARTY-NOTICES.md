@@ -297,7 +297,7 @@ header names its source.
 | The 258 standard Macintosh glyph names (`src/fonts/true_type_tables.cpp`) | pdf.js `src/core/fonts_utils.js` | Apache-2.0 |
 | CCITT decoder | pdf.js `src/core/ccitt.js` at commit fe48736846e2043696738bd54435ebb5ab24ecff (Copyright 2012 Mozilla Foundation), itself a JavaScript port of xpdf's CCITTFaxStream (Copyright 1996-2003 Glyph & Cog, LLC, made available under the Apache 2.0 licence) | Apache-2.0 |
 | The Adobe CMYK to sRGB table and its interpolation (`src/images/adobe_cmyk.cpp`) | PDFium `core/fxge/dib/cfx_cmyk_to_srgb.cpp` at commit 7b3f6f93625e6df97a7d9e677137a558df8648c4 (Copyright 2014 The PDFium Authors; original code copyright 2014 Foxit Software Inc.) | BSD-3-Clause |
-| Page segmentation (recursive XY-cut, Docstrum) | PdfPig's page segmenters | Apache-2.0 |
+| Page segmentation (recursive XY-cut, Docstrum: `src/text/xy_cut.cpp`, `src/text/docstrum.cpp`) | PdfPig's page segmenters `RecursiveXYCut.cs` and `DocstrumBoundingBoxes.cs` at commit e17fc2d577a24db986d8642ec7190188d0f6a0a9 (the algorithm ported, no code copied) | Apache-2.0 |
 
 PDFium's licence, which covers the Adobe CMYK table ported above (the
 BSD-3-Clause part of PDFium's `LICENSE` file):

@@ -410,8 +410,10 @@ page's concatenated content and, recursively, every form XObject it draws.
 
 ### 6.1 The state machine
 
-- Graphics state: `q` and `Q` (a stack with a depth limit of 256; an unmatched
-  `Q` is ignored, an unclosed `q` is closed at the end), `cm`, `w`, `J`, `j`,
+- Graphics state: `q` and `Q` (a stack with a depth limit of 256: a `q` past
+  it is counted and saves nothing and the `Q` that closes it restores nothing,
+  an author decision; an unmatched `Q` is ignored, an unclosed `q` is closed at
+  the end), `cm`, `w`, `J`, `j`,
   `M`, `d`, `ri`, `i`, `gs` (with `/Font`, `/SMask` and `/CA`/`/ca` noted).
 - Colour: `CS`, `cs`, `SC`, `SCN`, `sc`, `scn`, `G`, `g`, `RG`, `rg`, `K`, `k`,
   recorded as the colour-space name and its components.
@@ -471,44 +473,64 @@ Glyph records become words, lines and blocks in reading order, per page, the
 visible set first and the hidden set after (§8).
 
 - **Words**: two consecutive glyphs on one line are one word when the gap
-  between the first's advance end and the second's origin is under 0.3 of the
-  font size; two words up to 2.0 of the font size; beyond that, a block
-  boundary candidate. A decoded space or a `TJ` adjustment wider than the word
-  gap both end a word, because a space glyph is routinely absent and kerning
-  numbers routinely split words. These thresholds lie inside the range PDFBox
-  and pdfminer use.
-- **Lines**: glyphs whose baselines agree within a fifth of the font size, in
-  the baseline's own direction, so rotated text forms its own lines along its
-  rotation; vertical text (`Identity-V` or a text matrix rotated by 90°) forms
-  vertical lines read top to bottom.
-- **Direction**: a line whose strong characters are right-to-left (Hebrew,
-  Arabic) is ordered by logical order as the content drew the codes when the
-  producer drew them in logical order, and reversed from visual order otherwise
-  (author decision: the drawing order wins when no strong-character analysis
-  says otherwise); the line carries its direction.
-- **Blocks and order**: a recursive XY-cut over the lines' boxes, with the
-  Docstrum nearest-neighbour refinement for columns of uneven spacing, both
-  ported from PdfPig's page segmenters (Apache 2.0, the port's header names the
-  source). A tagged PDF's structure order is used instead when `/StructTreeRoot`
+  between the first's advance end and the second's origin is under 0.1 of the
+  font size on a line that draws no space glyph (pdfminer's `word_margin`),
+  under 0.3 on a line that draws space glyphs (its other gaps are letter
+  spacing and kerning), and under 1.0 between two ideographic, kana, hangul or
+  full-width glyphs (scripts written without spaces); beyond 2.0 of the font
+  size the line ends there, a block boundary. A decoded space or a `TJ`
+  adjustment wider than the word gap both end a word, because a space glyph is
+  routinely absent and kerning numbers routinely split words. The dataset
+  measured the gaps: inside words they lie within 0.07 of the size, between
+  positioned words from 0.15 up.
+- **Lines**: glyphs whose baselines (the text line, the rise left out) agree
+  within a fifth of the font size, in the direction their advance runs (a
+  negative font size or scaling runs it backwards), so rotated text forms its
+  own lines along its rotation; vertical text (`Identity-V` or a text matrix
+  rotated by 90°) forms vertical lines read top to bottom. Along one baseline
+  the content's runs (glyphs drawn one after another, each at or after the one
+  before) are kept whole and ordered by where they start, so a string drawn
+  over another reads as two strings rather than as their letters interleaved;
+  a run of one or two glyphs takes its place by position.
+- **Direction**: a line whose strong characters are mostly right-to-left
+  (Hebrew, Arabic) reads from its far end, its left-to-right runs (Latin words,
+  numbers) kept left to right; a left-to-right line reads its right-to-left
+  runs from their far ends. This is the logical order the producer's drawing
+  order gives when it drew logically, found from the positions so a producer
+  drawing in visual order reads the same (author decision); the line carries
+  its direction.
+- **Blocks and order**: lines grouped into blocks by Docstrum (lines of one
+  direction that overlap along it and lie within 1.3 times the page's
+  between-line distance of each other, a ruling drawn between them keeping
+  them apart), the blocks ordered by a recursive XY-cut over their boxes in the
+  page's dominant text direction, columns before rows, both ported from
+  PdfPig's page segmenters (Apache 2.0, the port's header names the source). A tagged PDF's structure order is used instead when `/StructTreeRoot`
   is present and every marked-content item it orders resolves to glyphs of the
   page, because it is the producer's own statement of reading order.
 - **Hyphenation**: a line ending in a hyphen (U+002D or U+00AD) followed by a
   line starting with a lower-case letter is one word across the two lines, the
   hyphen attached to the first half, so a match finds the word and a redaction
   removes the hyphen; a hyphen followed by a capital is kept, because
-  "Jean-"/"Pierre" is a name. The same rule joins across a page break only when
-  both pages are extracted together.
-- **Duplicates**: a glyph with the same code and font as an earlier glyph whose
-  box lies within a tenth of the font size of it (a fake bold or a shadow) is
-  folded into the earlier record, which keeps both operators, so text is not
-  doubled and a redaction removes both.
+  "Jean-"/"Pierre" is a name. The two halves stay words of their own lines and
+  the first is marked `hyphenated`, so every range stays inside its line. The
+  same rule joins across a page break only when both pages are extracted
+  together.
+- **Duplicates**: a glyph with the same code and font (by name, so one face
+  stated as two font objects is one font) as an earlier glyph whose origin lies
+  within a tenth of the font size of it (a fake bold or a shadow) is folded into
+  the earlier record: the earlier record lists it among its duplicates, so a
+  redaction removes both, and the copy is a record of its own in the hidden
+  set with the class `duplicate` and its partner named, so the text is read
+  once. A glyph of no size is never a duplicate.
 - **Determinism**: every sort is stable and every geometric key is rounded to
   0.01 pt (CLAUDE.md §9); the PdfPig nearest-neighbour word extractor's
   documented tie-order defect is not carried over.
 - **Output shape**: per page, blocks in reading order, each with lines, each
   with words; every word, line and block carries its box and the half-open range
-  of glyph indices (in the page's record order) it covers, so a match found in
-  text maps back to records without a second reader.
+  of glyph indices it covers in the page's glyph list, which is in reading order
+  (the visible blocks' glyphs, then the hidden blocks'; each record names its
+  draw order), so a match found in text maps back to records without a second
+  reader.
 
 ## 8. Hidden text
 
@@ -525,7 +547,7 @@ belongs to, and redactable, because an extractor's copy reaches it (CLAUDE.md
 | `off_crop` | the box lies inside the media box and wholly outside the crop box |
 | `optional_content_off` | the glyph is inside an optional-content group (or membership dictionary) that the default configuration sets OFF |
 | `duplicate` | the glyph was folded into an earlier record (§7) |
-| `covered` | an image or an opaque filled figure drawn later wholly covers the glyph's box |
+| `covered` | an image without a mask, or an opaque filled rectangle (one `re` under an axis-aligned CTM, so its bound is what it paints), drawn later wholly covers the glyph's box |
 
 A page's visible blocks come first in reading order, then its hidden blocks laid
 out by the same rules, and the page reports a `hidden_text` warning with the

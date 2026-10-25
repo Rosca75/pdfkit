@@ -74,6 +74,12 @@ to find it.
 | pdf.js glyph-name guessing (`uniXXXX`, `uXXXX`, `gNN`, `glyphNN`, `cidNN`, `Cdd`, `Cxx`) and private-use remapping | https://github.com/mozilla/pdf.js/blob/master/src/core/fonts.js; https://github.com/mozilla/pdf.js/pull/9062 | read |
 | Symbolic TrueType `cmap` order (3,0), (3,0)+0xF000, (1,0), (3,1) | pdf.js `fonts.js`; PDFBox `PDTrueTypeFont.java` | read (pdf.js), recalled (PDFBox) |
 | Wrong ToUnicode and ignored ActualText cost | https://github.com/mozilla/pdf.js/issues/12237 | read |
+| The graphics and text state machine: the operators of Annex A, the rendering matrix `[Tfs*Th 0 0 Tfs 0 Trise] x Tm x CTM`, the advance `tx = ((w0 - Tj/1000) * Tfs + Tc + Tw) * Th`, word spacing on the single-byte code 32, vertical writing by `w1` and the position vector, the initial colours of each colour space, the text matrices outside the graphics state | ISO 32000-1 §8.4, §8.6.8 table 74, §9.3, §9.4.2, §9.4.4, §9.7.4.3 | read |
+| Literal and hexadecimal string escapes, the CR LF rule and line continuations, an odd final hexadecimal digit | ISO 32000-1 §7.3.4.2 and §7.3.4.3 | read |
+| Text strings: UTF-16BE after FE FF, PDFDocEncoding otherwise; UTF-8 after EF BB BF | ISO 32000-1 §7.9.2.2; ISO 32000-2 §7.9.2.2 | read (32000-1), recalled (32000-2) |
+| A UTF-16LE byte-order mark read as little-endian | pdf.js `stringToPDFString`, https://github.com/mozilla/pdf.js/blob/master/src/shared/util.js | recalled |
+| Optional content: `/OCProperties /D` with `/BaseState`, `/ON`, `/OFF`; membership dictionaries with `/OCGs`, `/P` and `/VE` | ISO 32000-1 §8.11.2 and §8.11.4.3 | read |
+| The structure tree's marked-content references: `/K` as an MCID, an `/MCR` with `/Pg` and `/Stm`, an `/OBJR` | ISO 32000-1 §14.7.2 to §14.7.4 | read |
 | PdfPig's `UseActualText` option | https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/ParsingOptions.cs | read |
 | Microsoft Print to PDF ligatures that trip extractors | https://github.com/py-pdf/pypdf/issues/2491 | read |
 | Type 3 extraction | https://issues.apache.org/jira/browse/PDFBOX-3054 | read |
@@ -101,6 +107,10 @@ to find it.
 | Fact | Source | Status |
 |---|---|---|
 | PdfPig's recursive XY-cut and Docstrum (Apache 2.0), ported | https://github.com/UglyToad/PdfPig/wiki/Document-Layout-Analysis; https://github.com/UglyToad/PdfPig | read |
+| The two segmenters as ported: PdfPig's PageSegmenter RecursiveXYCut.cs (vertical cut before horizontal, projection gaps) and DocstrumBoundingBoxes.cs (the between-line distance as the mean of the fullest 10 pt histogram bin, the 1.3 multiplier, the ±30° angular bound, the overlap test of `PerpendicularOverlappingDistance`) | https://github.com/UglyToad/PdfPig/tree/e17fc2d577a24db986d8642ec7190188d0f6a0a9/src/UglyToad.PdfPig.DocumentLayoutAnalysis/PageSegmenter | read (2026-10-25, the algorithm; no code copied) |
+| The word gap measured on the dataset: inside words within 0.07 of the font size, between positioned words from 0.15 up | `dataset/reports/phase5-try2` (pypdf-0004, pdfjs-0013, dccc-0120), the main checkout's report folder | read (2026-10-25) |
+| PDFium folds no duplicated (fake bold) text in some files and interleaves it, and joins words across positional gaps in others | the PDFium text of pdfminer-0007, dccc-0066 in the dataset | read (2026-10-25) |
+| The Unicode blocks of the scripts written without spaces (CJK punctuation, kana, ideographs and extensions, hangul syllables, full-width forms) and of the right-to-left scripts (Hebrew to Arabic Extended-A, the presentation forms) | https://www.unicode.org/charts/ | recalled |
 | Word-gap tolerances: PDFBox | PDFBox `PDFTextStripper.java`, https://github.com/apache/pdfbox | read |
 | Word-gap tolerances: pdfminer `word_margin`, `char_margin` | https://pdfminersix.readthedocs.io/en/latest/topic/converting_pdf_to_text.html | read |
 | PdfPig narrow gaps | https://github.com/UglyToad/PdfPig/issues/319 | read |

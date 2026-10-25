@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// TextJson writes one page of the pdfkit_text result in the shape docs/ABI.md
-// section 4.5 fixes: the page's text, its blocks and hidden blocks (each with
+// TextJson writes one page of the pdfkit_text result in the shape the pdfkit_text
+// section of docs/ABI.md fixes: the page's text, its blocks and hidden blocks (each with
 // lines and words, every one with its box and the half-open range of glyph
 // positions it covers), the unreadable codes per font, the hidden glyphs per
 // class, the codes per decoding rung, the warnings, and on request the glyph

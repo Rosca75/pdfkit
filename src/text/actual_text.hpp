@@ -5,7 +5,7 @@
 // section 5.4: a marked-content span's /ActualText replaces the decoded text
 // of the span's glyphs when the two differ, because LibreOffice and Chrome
 // write it exactly where /ToUnicode cannot express a ligature or a cluster
-// (pdf.js issue 12237, read in the design record). Every glyph of a replaced
+// (the pdf.js report docs/SOURCES.md lists, read in the design record). Every glyph of a replaced
 // span records the rung actual_text; the replacement text goes to the span's
 // first glyph in draw order and the others are marked as covered by the span
 // with no text of their own, so the text is read once and a match over it
