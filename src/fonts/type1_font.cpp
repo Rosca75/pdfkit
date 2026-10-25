@@ -61,7 +61,7 @@ std::vector<std::uint8_t> unwrap(ByteSpan data) {
   }
   std::size_t at = 0;
   while (at + 6 <= data.size() && std::to_integer<std::uint8_t>(data[at]) == 0x80) {
-    const std::uint8_t type = std::to_integer<std::uint8_t>(data[at + 1]);
+    const auto type = std::to_integer<std::uint8_t>(data[at + 1]);
     if (type == 3) {
       break;
     }
@@ -372,10 +372,14 @@ bool Type1Font::has_glyph(std::string_view name) const {
 
 std::optional<double> Type1Font::width(std::string_view name) const {
   const auto found = widths_.find(name);
-  if (found == widths_.end() || !found->second) {
+  if (found == widths_.end()) {
     return std::nullopt;
   }
-  return *found->second * scale_ * 1000.0;
+  const std::optional<double>& wx = found->second;
+  if (!wx) {
+    return std::nullopt;
+  }
+  return *wx * scale_ * 1000.0;
 }
 
 }  // namespace pdfkit::fonts

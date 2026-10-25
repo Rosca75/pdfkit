@@ -92,8 +92,7 @@ std::optional<StandardFonts::Face> StandardFonts::find(std::string_view base_fon
   }
   const std::string_view style =
       split == std::string_view::npos ? std::string_view() : stripped.substr(split + 1);
-  const auto* alias = std::find_if(families.begin(), families.end(),
-                                   [&](const Alias& entry) { return entry.family == family; });
+  const auto* alias = std::ranges::find(families, std::string_view(family), &Alias::family);
   if (alias == families.end()) {
     return std::nullopt;
   }
@@ -124,9 +123,7 @@ std::string_view StandardFonts::name(Face face) noexcept {
 
 std::optional<int> StandardFonts::width(Face face, std::string_view glyph) noexcept {
   const std::span<const Core14Table::Glyph> glyphs = glyphs_of(face);
-  const auto found = std::lower_bound(
-      glyphs.begin(), glyphs.end(), glyph,
-      [](const Core14Table::Glyph& entry, std::string_view key) { return entry.name < key; });
+  const auto found = std::ranges::lower_bound(glyphs, glyph, {}, &Core14Table::Glyph::name);
   if (found == glyphs.end() || found->name != glyph) {
     return std::nullopt;
   }

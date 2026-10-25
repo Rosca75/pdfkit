@@ -47,7 +47,7 @@ PdfFont::VerticalAdvance PdfFont::vertical_advance(std::uint32_t code) const {
 }
 
 void PdfFont::fault(std::string message) {
-  if (std::find(faults_.begin(), faults_.end(), message) == faults_.end()) {
+  if (std::ranges::find(faults_, message) == faults_.end()) {
     faults_.push_back(std::move(message));
   }
 }

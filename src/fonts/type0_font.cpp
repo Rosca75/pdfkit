@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 
 namespace pdfkit::fonts {
 
@@ -122,8 +123,9 @@ Type0Font::Type0Font(syntax::Document& document, const syntax::Dictionary& font,
   for (const std::string& note : faults) {
     fault(note);
   }
-  if (const std::string* text = document.resolve_entry(font, "BaseFont").name();
-      text != nullptr && !text->empty()) {
+  // A name points into its Object, so the Object is held while it is read.
+  const syntax::Object base_font = document.resolve_entry(font, "BaseFont");
+  if (const std::string* text = base_font.name(); text != nullptr && !text->empty()) {
     name_ = *text;
   }
   if (file_) {
@@ -282,9 +284,9 @@ double Type0Font::cid_width(std::uint32_t cid) const {
   if (const auto found = widths_.find(cid); found != widths_.end()) {
     return found->second;
   }
-  for (auto range = width_ranges_.rbegin(); range != width_ranges_.rend(); ++range) {
-    if (cid >= range->first && cid <= range->last) {
-      return range->width;
+  for (const WidthRange& range : std::views::reverse(width_ranges_)) {
+    if (cid >= range.first && cid <= range.last) {
+      return range.width;
     }
   }
   return default_width_;
@@ -305,9 +307,9 @@ PdfFont::VerticalAdvance Type0Font::vertical_advance(std::uint32_t code) const {
   if (const auto found = verticals_.find(cid); found != verticals_.end()) {
     values = found->second;
   } else {
-    for (auto range = vertical_ranges_.rbegin(); range != vertical_ranges_.rend(); ++range) {
-      if (cid >= range->first && cid <= range->last) {
-        values = range->values;
+    for (const VerticalRange& range : std::views::reverse(vertical_ranges_)) {
+      if (cid >= range.first && cid <= range.last) {
+        values = range.values;
         break;
       }
     }

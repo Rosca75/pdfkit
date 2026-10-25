@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <ranges>
 
 namespace pdfkit::fonts {
 
@@ -28,8 +29,8 @@ void Cmap::add_codespace(std::uint32_t low, std::uint32_t high, std::size_t byte
     return;
   }
   codespaces_.push_back({low, high, bytes});
-  std::stable_sort(codespaces_.begin(), codespaces_.end(),
-                   [](const Codespace& a, const Codespace& b) { return a.bytes < b.bytes; });
+  std::ranges::stable_sort(
+      codespaces_, [](const Codespace& a, const Codespace& b) { return a.bytes < b.bytes; });
 }
 
 void Cmap::add_cid_range(std::uint32_t low, std::uint32_t high, std::uint32_t cid) {
@@ -95,9 +96,9 @@ Cmap::Code Cmap::next(platform::ByteSpan bytes, std::size_t at) const noexcept {
 }
 
 std::optional<std::uint32_t> Cmap::cid(std::uint32_t code) const noexcept {
-  for (auto range = cid_ranges_.rbegin(); range != cid_ranges_.rend(); ++range) {
-    if (code >= range->low && code <= range->high) {
-      const std::uint64_t cid = static_cast<std::uint64_t>(range->cid) + (code - range->low);
+  for (const CidRange& range : std::views::reverse(cid_ranges_)) {
+    if (code >= range.low && code <= range.high) {
+      const std::uint64_t cid = static_cast<std::uint64_t>(range.cid) + (code - range.low);
       if (cid > std::numeric_limits<std::uint32_t>::max()) {
         return std::nullopt;
       }
@@ -111,14 +112,14 @@ std::optional<std::string> Cmap::unicode_bytes(std::uint32_t code) const {
   if (const auto found = unicode_codes_.find(code); found != unicode_codes_.end()) {
     return found->second;
   }
-  for (auto range = unicode_ranges_.rbegin(); range != unicode_ranges_.rend(); ++range) {
-    if (code < range->low || code > range->high) {
+  for (const UnicodeRange& range : std::views::reverse(unicode_ranges_)) {
+    if (code < range.low || code > range.high) {
       continue;
     }
     // The start's last byte grows by the offset; a carry moves into the byte
     // before it, as pdf.js mapBfRange carries.
-    std::string out = range->start;
-    std::uint64_t carry = code - range->low;
+    std::string out = range.start;
+    std::uint64_t carry = code - range.low;
     for (std::size_t i = out.size(); i > 0 && carry != 0; --i) {
       const std::uint64_t sum = static_cast<unsigned char>(out[i - 1]) + carry;
       out[i - 1] = static_cast<char>(sum & 0xFFU);

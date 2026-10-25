@@ -96,9 +96,8 @@ TEST_CASE("a program whose eexec section ends early answers what it read") {
     std::optional<Type1Font> font;
     CHECK_NOTHROW(
         font = Type1Font::parse(pdfkit::platform::as_bytes(FontBuilder::type1(spec)), budget));
-    REQUIRE(font.has_value());
     // The clear-text encoding survives any cut of the encrypted part.
-    CHECK(font->encoding_name(0x41) == "A");
+    CHECK(require_value(std::move(font)).encoding_name(0x41) == "A");
   }
   for (std::size_t length = 0; length < full.size(); length += 11) {
     Budget budget;

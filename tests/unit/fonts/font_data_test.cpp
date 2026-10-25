@@ -52,7 +52,7 @@ std::string canonical(std::span<const GlyphListTable::Entry> entries) {
     for (std::size_t i = 0; i < entry.text.size(); ++i) {
       out += (i == 0 ? "" : " ") + code_point(entry.text[i]);
     }
-    out += "\n";
+    out += '\n';
   }
   return out;
 }
@@ -87,7 +87,7 @@ TEST_CASE("the Core 14 table holds fourteen fonts, sorted glyphs and its recorde
              std::to_string(font.descender) + " " + std::to_string(font.bbox[0]) + " " +
              std::to_string(font.bbox[1]) + " " + std::to_string(font.bbox[2]) + " " +
              std::to_string(font.bbox[3]) + " " + std::to_string(font.count) + "\n";
-    for (std::size_t i = font.first; i < font.first + font.count; ++i) {
+    for (std::size_t i = font.first; i < std::size_t{font.first} + font.count; ++i) {
       const Core14Table::Glyph& glyph = Core14Table::glyphs()[i];
       if (i > font.first) {
         REQUIRE(Core14Table::glyphs()[i - 1].name < glyph.name);

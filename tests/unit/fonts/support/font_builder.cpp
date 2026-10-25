@@ -274,7 +274,7 @@ std::string FontBuilder::true_type(const TrueType& spec) {
     tables.emplace_back("CFF ", spec.cff);
   }
 
-  std::sort(tables.begin(), tables.end());
+  std::ranges::sort(tables);
   std::string out;
   u32(out, spec.cff.empty() ? 0x00010000U : 0x4F54544FU);
   u16(out, static_cast<unsigned>(tables.size()));
@@ -307,7 +307,7 @@ std::string FontBuilder::cff(const Cff& spec) {
     if (const auto found = standard.find(name); found != standard.end()) {
       return found->second;
     }
-    const auto found = std::find(strings.begin(), strings.end(), name);
+    const auto found = std::ranges::find(strings, name);
     if (found != strings.end()) {
       return 391U + static_cast<unsigned>(found - strings.begin());
     }
@@ -377,9 +377,11 @@ std::string FontBuilder::cff(const Cff& spec) {
     charstrings.push_back(code);
   }
   std::string subrs_index;
-  if (spec.width_in_subroutine && spec.widths.size() > 1 && spec.widths[1]) {
+  const std::optional<int> subroutine_width =
+      spec.widths.size() > 1 ? spec.widths[1] : std::optional<int>();
+  if (spec.width_in_subroutine && subroutine_width) {
     std::string subr;
-    type2_number(subr, *spec.widths[1]);
+    type2_number(subr, *subroutine_width);
     u8(subr, 11);
     subrs_index = index_of({subr});
   }
@@ -512,7 +514,11 @@ std::string FontBuilder::type1(const Type1& spec) {
     }
     u8(code, 14);
     const std::string encrypted = bytes_of(fonts::Type1Font::encrypt(vector_of(code), 4330));
-    priv += "/" + name + " " + std::to_string(encrypted.size()) + " RD " + encrypted + " ND\n";
+    priv += '/';
+    priv += name;
+    priv += " " + std::to_string(encrypted.size()) + " RD ";
+    priv += encrypted;
+    priv += " ND\n";
   }
   priv +=
       "end\nend\nreadonly put\nnoaccess put\ndup/FontName get exch definefont pop\n"

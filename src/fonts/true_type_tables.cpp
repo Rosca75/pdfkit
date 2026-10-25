@@ -225,7 +225,7 @@ void TrueTypeTables::read_post(ByteSpan table, platform::Budget& budget) {
     std::vector<std::string> custom;
     std::size_t at = 34 + count * 2;
     while (at < table.size()) {
-      const std::size_t length = std::to_integer<std::size_t>(table[at]);
+      const auto length = std::to_integer<std::size_t>(table[at]);
       if (at + 1 + length > table.size()) {
         break;
       }
@@ -326,8 +326,9 @@ void TrueTypeTables::add_unicode(const Subtable& table) {
         if (range_offset == 0) {
           glyph = (code + delta) & 0xFFFFU;
         } else {
-          const std::uint16_t raw = u16(data, range_at + range_offset + (code - start) * 2);
-          glyph = raw == 0 ? 0 : (raw + delta) & 0xFFFFU;
+          const std::uint16_t raw =
+              u16(data, range_at + range_offset + std::size_t{code - start} * 2);
+          glyph = raw == 0 ? 0U : (std::uint32_t{raw} + delta) & 0xFFFFU;
         }
         note(code, glyph);
       }
@@ -370,7 +371,7 @@ std::optional<std::uint16_t> TrueTypeTables::advance(std::uint32_t glyph) const 
 }
 
 bool TrueTypeTables::has_cmap(std::uint16_t platform, std::uint16_t encoding) const noexcept {
-  return std::any_of(subtables_.begin(), subtables_.end(), [&](const Subtable& table) {
+  return std::ranges::any_of(subtables_, [&](const Subtable& table) {
     return table.platform == platform && table.encoding == encoding;
   });
 }
@@ -416,9 +417,9 @@ std::optional<std::uint32_t> TrueTypeTables::map_code(const Subtable& table,
         if (range_offset == 0) {
           glyph = (code + delta) & 0xFFFFU;
         } else {
-          const std::size_t at = range_at + range_offset + (code - start) * 2;
+          const std::size_t at = range_at + range_offset + std::size_t{code - start} * 2;
           const std::uint16_t raw = u16(data, at);
-          glyph = raw == 0 ? 0 : (raw + delta) & 0xFFFFU;
+          glyph = raw == 0 ? 0U : (std::uint32_t{raw} + delta) & 0xFFFFU;
         }
         break;
       }

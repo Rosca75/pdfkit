@@ -26,9 +26,7 @@ using generated::GlyphListTable;
 
 const GlyphListTable::Entry* find(std::span<const GlyphListTable::Entry> table,
                                   std::string_view name) noexcept {
-  const auto found = std::lower_bound(
-      table.begin(), table.end(), name,
-      [](const GlyphListTable::Entry& entry, std::string_view key) { return entry.name < key; });
+  const auto found = std::ranges::lower_bound(table, name, {}, &GlyphListTable::Entry::name);
   if (found != table.end() && found->name == name) {
     return &*found;
   }
@@ -87,7 +85,7 @@ std::optional<std::vector<char32_t>> component(std::string_view name) {
   if (entry != nullptr) {
     return std::vector<char32_t>(entry->text.begin(), entry->text.end());
   }
-  if (name.size() >= 7 && name.substr(0, 3) == "uni" && (name.size() - 3) % 4 == 0) {
+  if (name.size() >= 7 && name.starts_with("uni") && (name.size() - 3) % 4 == 0) {
     std::vector<char32_t> out;
     for (std::size_t at = 3; at < name.size(); at += 4) {
       const std::optional<std::uint32_t> value = hex_value(name.substr(at, 4), false);
@@ -194,10 +192,10 @@ std::optional<GlyphList::Number> GlyphList::number(std::string_view name) noexce
     }
     return Number{kind, *value};
   };
-  if (name.size() > 5 && name.substr(0, 5) == "glyph") {
+  if (name.size() > 5 && name.starts_with("glyph")) {
     return make(Number::Kind::glyph, decimal_value(name.substr(5)));
   }
-  if (name.size() > 3 && name.substr(0, 3) == "cid") {
+  if (name.size() > 3 && name.starts_with("cid")) {
     return make(Number::Kind::cid, decimal_value(name.substr(3)));
   }
   if (name.size() > 1 && (name[0] == 'g' || name[0] == 'G')) {

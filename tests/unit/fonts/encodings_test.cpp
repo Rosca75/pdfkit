@@ -72,7 +72,7 @@ void check_against_afm(std::size_t font, Base base) {
   const Core14Table::Font& entry = Core14Table::fonts()[font];
   CAPTURE(entry.name);
   std::size_t encoded = 0;
-  for (std::size_t i = entry.first; i < entry.first + entry.count; ++i) {
+  for (std::size_t i = entry.first; i < std::size_t{entry.first} + entry.count; ++i) {
     const Core14Table::Glyph& glyph = Core14Table::glyphs()[i];
     if (glyph.code < 0) {
       continue;

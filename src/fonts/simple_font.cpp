@@ -63,8 +63,10 @@ SimpleFont::SimpleFont(syntax::Document& document, const syntax::Dictionary& fon
   if (const std::string* text = base_font.name(); text != nullptr && !text->empty()) {
     name_ = *text;
   } else if (kind == Kind::type3) {
-    if (const std::string* fallback = document.resolve_entry(font, "BaseFont").name()) {
-      name_ = *fallback;
+    // A name points into its Object, so the Object is held while it is read.
+    const syntax::Object fallback = document.resolve_entry(font, "BaseFont");
+    if (const std::string* fallback_name = fallback.name()) {
+      name_ = *fallback_name;
     }
   }
   if (file_) {
@@ -112,7 +114,8 @@ void SimpleFont::read_encoding(syntax::Document& document, const syntax::Diction
   if (const std::string* text = encoding.name()) {
     base = Encodings::by_name(*text);
   } else if (dictionary != nullptr) {
-    if (const std::string* base_name = document.resolve_entry(*dictionary, "BaseEncoding").name()) {
+    const syntax::Object base_encoding = document.resolve_entry(*dictionary, "BaseEncoding");
+    if (const std::string* base_name = base_encoding.name()) {
       base = Encodings::by_name(*base_name);
     }
   }
@@ -309,10 +312,12 @@ std::optional<std::uint32_t> SimpleFont::true_type_glyph(std::uint32_t code) con
 double SimpleFont::code_width(std::uint32_t code) const {
   if (has_widths_) {
     const std::int64_t index = static_cast<std::int64_t>(code) - first_char_;
-    if (index >= 0 && static_cast<std::size_t>(index) < widths_.size() &&
-        widths_[static_cast<std::size_t>(index)]) {
-      const double value = *widths_[static_cast<std::size_t>(index)];
-      return kind_ == Kind::type3 ? value * type3_scale_ : value;
+    const std::optional<double> stated =
+        index >= 0 && static_cast<std::size_t>(index) < widths_.size()
+            ? widths_[static_cast<std::size_t>(index)]
+            : std::nullopt;
+    if (stated) {
+      return kind_ == Kind::type3 ? *stated * type3_scale_ : *stated;
     }
     return kind_ == Kind::type3 ? missing_width_ * type3_scale_ : missing_width_;
   }

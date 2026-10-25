@@ -178,8 +178,8 @@ std::shared_ptr<const FontProgram> FontLoader::program(const syntax::Dictionary&
     syntax::Filters::Result decoded = document_->decode(*stream);
     std::string fault;
     std::string subtype;
-    if (const std::string* name =
-            document_->resolve_entry(stream->dictionary(), "Subtype").name()) {
+    const syntax::Object subtype_object = document_->resolve_entry(stream->dictionary(), "Subtype");
+    if (const std::string* name = subtype_object.name()) {
       subtype = *name;
     }
     if (!decoded.remaining.empty()) {
