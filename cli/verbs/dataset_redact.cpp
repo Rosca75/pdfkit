@@ -238,14 +238,15 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
     pdfkit_buffer inspected{nullptr, 0, nullptr};
     const Call inspect = take(pdfkit_inspect(document, nullptr, &inspected), inspected);
     const std::optional<JsonText> shape = JsonText::parse(inspect.text, offset);
+    const JsonText* pages_of = shape && inspect.status == PDFKIT_OK ? &*shape : nullptr;
     const JsonText::Node* list =
-        shape && inspect.status == PDFKIT_OK ? shape->member(shape->root(), "pages") : nullptr;
+        pages_of != nullptr ? pages_of->member(pages_of->root(), "pages") : nullptr;
     bool first = true;
     for (const std::size_t index : list != nullptr ? list->items : std::vector<std::size_t>{}) {
-      const JsonText::Node& entry = shape->node(index);
-      const JsonText::Node* page = shape->member(entry, "page");
-      const JsonText::Node* crop = shape->member(entry, "crop_box");
-      const JsonText::Node* rotate = shape->member(entry, "rotate");
+      const JsonText::Node& entry = pages_of->node(index);
+      const JsonText::Node* page = pages_of->member(entry, "page");
+      const JsonText::Node* crop = pages_of->member(entry, "crop_box");
+      const JsonText::Node* rotate = pages_of->member(entry, "rotate");
       if (page == nullptr || crop == nullptr || rotate == nullptr ||
           !numbered.contains(std::string(page->raw))) {
         continue;
