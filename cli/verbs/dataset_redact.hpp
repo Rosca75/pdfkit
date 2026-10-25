@@ -15,6 +15,8 @@
 
 #include "pdfkit/pdfkit.h"
 
+#include "verbs/dataset_metadata.hpp"
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,9 +31,13 @@ inline constexpr std::string_view dataset_redaction_marker = "Zebulon Quarterfie
                                                                std::string_view text);
 
 // The one-line JSON value of the outcome's "redact_text" for an open
-// document whose text member is text_member; out_dir is the run folder.
+// document whose text member is text_member; out_dir is the run folder. The
+// metadata fields holding one of the job's strings are rewritten in the same
+// job (dataset_metadata_rewrite), so the self-check does not refuse an output
+// for a word the job never asked to remove from the metadata.
 [[nodiscard]] std::string dataset_redact(pdfkit_document* document, std::string_view id,
                                          const std::string& text_member,
+                                         const DatasetMetadata& metadata,
                                          const std::string& out_dir);
 
 }  // namespace pdfkit::cli::verbs
