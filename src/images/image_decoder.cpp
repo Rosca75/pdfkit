@@ -186,6 +186,40 @@ class Pipeline {
     return result;
   }
 
+  // The samples as the encoding stores them, for a treatment.
+  ImageDecoder::Samples raw() {
+    ImageDecoder::Result result;
+    const Dictionary& dictionary = *source_.dictionary;
+    image_mask_ = role_ == Role::stencil_mask ||
+                  entry(document_, dictionary, "ImageMask").boolean().value_or(false);
+    Samples samples = encoded(result);
+    ImageDecoder::Samples out;
+    out.codec = codec_;
+    out.image_mask = image_mask_;
+    out.damaged = result.damaged || source_.decoded.damaged;
+    out.space = image_mask_ ? nullptr : samples.space;
+    out.decode = numbers(document_, entry(document_, dictionary, "Decode"));
+    // A JPEG 2000 image that is not a stencil reads no /Decode (ISO 32000-1
+    // table 89, recalled).
+    if (out.decode.size() < std::size_t{2} * samples.components ||
+        (codec_ == "JPXDecode" && !image_mask_)) {
+      out.decode =
+          image_mask_ ? std::vector<double>{0.0, 1.0} : samples.space->default_decode(samples.bits);
+    }
+    out.decode.resize(std::size_t{2} * samples.components);
+    if (!image_mask_ && role_ == Role::image) {
+      const Object mask = entry(document_, dictionary, "Mask");
+      if (mask.array() != nullptr) {
+        out.colour_key = Masks::colour_key(document_, mask, samples.components);
+      }
+    }
+    out.alpha = std::move(samples.alpha);
+    out.buffer = treatments::PixelBuffer::unpack(
+        std::as_bytes(std::span(samples.bytes)), samples.stride, samples.width, samples.height,
+        samples.components, samples.bits, document_.budget(), source_.object);
+    return out;
+  }
+
   // The JPEG 2000 alpha found by run, for /SMaskInData.
   std::vector<std::uint8_t>& alpha() { return alpha_; }
   [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
@@ -207,6 +241,7 @@ class Pipeline {
                           " follows the image codec /" + codec);
       }
     }
+    codec_ = codec;
     const Object parameters = decoded.remaining_parameters.empty()
                                   ? Object()
                                   : document_.resolve(decoded.remaining_parameters[0]);
@@ -526,6 +561,7 @@ class Pipeline {
   std::uint32_t width_ = 0;
   std::uint32_t height_ = 0;
   std::shared_ptr<const ColourSpace> space_;
+  std::string codec_;
 };
 
 Source stream_source(Document& document, const syntax::Stream& stream) {
@@ -635,6 +671,40 @@ ImageDecoder::Result ImageDecoder::decode_inline(Document& document, const Dicti
   source.decoded = Filters::decode(data, entry(document, dictionary, "Filter"), parameters,
                                    document.budget(), source.object);
   return dispatch(document, std::move(source), part);
+}
+
+ImageDecoder::SamplesResult ImageDecoder::samples(Document& document, const syntax::Stream& stream,
+                                                  bool soft_mask) {
+  SamplesResult result;
+  try {
+    Pipeline pipeline(document, stream_source(document, stream),
+                      soft_mask ? Role::soft_mask : Role::image);
+    result.samples = pipeline.raw();
+  } catch (const DecodeFault& fault) {
+    result.fault = fault.what();
+  }
+  return result;
+}
+
+ImageDecoder::SamplesResult ImageDecoder::samples_inline(Document& document,
+                                                         const Dictionary& dictionary,
+                                                         platform::ByteSpan data,
+                                                         const Object& colour_spaces) {
+  SamplesResult result;
+  try {
+    Source source;
+    source.dictionary = &dictionary;
+    source.object = "an inline image";
+    source.colour_spaces = colour_spaces;
+    const Object parameters = entry(document, dictionary, "DecodeParms");
+    source.decoded = Filters::decode(data, entry(document, dictionary, "Filter"), parameters,
+                                     document.budget(), source.object);
+    Pipeline pipeline(document, std::move(source), Role::image);
+    result.samples = pipeline.raw();
+  } catch (const DecodeFault& fault) {
+    result.fault = fault.what();
+  }
+  return result;
 }
 
 std::string ImageDecoder::encoding(Document& document, const Dictionary& dictionary) {

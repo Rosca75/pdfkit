@@ -19,6 +19,7 @@
 
 #include "syntax/document.hpp"
 #include "syntax/object.hpp"
+#include "text/matrix.hpp"
 #include "text/rect.hpp"
 #include "text/text_reader.hpp"
 
@@ -42,6 +43,9 @@ class ImageListing {
     text::Rect box;
     std::vector<std::uint32_t> form_path;
     bool optional_content_off = false;
+    // The CTM at the draw: the image is the unit square under it, which is
+    // how a treatment maps a page rectangle onto the image's pixels.
+    text::Matrix ctm;
   };
 
   enum class Source : std::uint8_t { xobject, inline_image };

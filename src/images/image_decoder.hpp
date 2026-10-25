@@ -16,7 +16,9 @@
 #ifndef PDFKIT_IMAGES_IMAGE_DECODER_HPP
 #define PDFKIT_IMAGES_IMAGE_DECODER_HPP
 
+#include "images/colour_space.hpp"
 #include "images/pixel_image.hpp"
+#include "images/treatments/pixel_buffer.hpp"
 #include "platform/byte_span.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
@@ -24,8 +26,10 @@
 #include "syntax/stream.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace pdfkit::images {
 
@@ -43,6 +47,46 @@ class ImageDecoder {
     // Part::mask only: the image has no mask (fault says so too).
     bool no_mask = false;
   };
+
+  // An image's samples as its encoding stores them, before /Decode and the
+  // colour space, which a treatment paints and re-encodes
+  // (docs/DESIGN.md section 14).
+  struct Samples {
+    treatments::PixelBuffer buffer;
+    // The colour space; null for a stencil.
+    std::shared_ptr<const ColourSpace> space;
+    // Two numbers per component: /Decode, the default filled in (and the
+    // default for a JPEG 2000 image that is not a stencil, which reads none).
+    std::vector<double> decode;
+    // The codec the filter chain ends with ("DCTDecode", "JPXDecode",
+    // "JBIG2Decode", "CCITTFaxDecode"), or empty.
+    std::string codec;
+    bool image_mask = false;
+    // A JPEG 2000 codestream's alpha under /SMaskInData, 8-bit, or empty.
+    std::vector<std::uint8_t> alpha;
+    // A colour-key /Mask as raw value ranges, two per component, or empty.
+    std::vector<std::uint32_t> colour_key;
+    // Read with a recovery.
+    bool damaged = false;
+  };
+
+  struct SamplesResult {
+    std::optional<Samples> samples;
+    // Why the samples could not be read, when samples is empty.
+    std::string fault;
+  };
+
+  // An image XObject's samples, or a soft mask's (soft_mask: read as grey
+  // whatever its dictionary states). A budget limit throws, as decode does.
+  [[nodiscard]] static SamplesResult samples(syntax::Document& document,
+                                             const syntax::Stream& stream, bool soft_mask);
+
+  // An inline image's samples: its dictionary as written, its data, and the
+  // /ColorSpace resources of the content that draws it.
+  [[nodiscard]] static SamplesResult samples_inline(syntax::Document& document,
+                                                    const syntax::Dictionary& dictionary,
+                                                    platform::ByteSpan data,
+                                                    const syntax::Object& colour_spaces);
 
   // An image XObject's base or mask.
   [[nodiscard]] static Result decode(syntax::Document& document, const syntax::Stream& stream,

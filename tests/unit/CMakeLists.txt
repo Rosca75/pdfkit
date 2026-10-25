@@ -59,6 +59,12 @@ add_executable(pdfkit_tests
   support/pdf_builder.cpp
   support/pdf_builder_channels.cpp
   support/pdf_encryptor.cpp
+  treatments/box_painter_test.cpp
+  treatments/caption_drawer_test.cpp
+  treatments/mosaic_blur_test.cpp
+  treatments/reencoder_test.cpp
+  treatments/region_mapper_test.cpp
+  treatments/soft_mask_treatment_test.cpp
   syntax/content_lexer_test.cpp
   syntax/cross_reference_test.cpp
   syntax/document_test.cpp

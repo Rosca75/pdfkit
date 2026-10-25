@@ -114,7 +114,7 @@ void ImageListing::read(const std::vector<std::uint32_t>& pages) {
         }
       }
       entry.occurrences.push_back(
-          {draw.page, draw.ordinal, draw.box, draw.form_path, draw.optional_content_off});
+          {draw.page, draw.ordinal, draw.box, draw.form_path, draw.optional_content_off, draw.ctm});
     }
     for (const text::PageContent::Unwalked& unwalked : content.unwalked) {
       if (unwalked.resources.is_null()) {
