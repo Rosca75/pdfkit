@@ -126,7 +126,16 @@ double Docstrum::between_line_distance(const std::vector<Line>& lines) {
   return estimate;
 }
 
-std::vector<std::vector<std::size_t>> Docstrum::blocks(const std::vector<Line>& lines) {
+std::vector<std::vector<std::size_t>> Docstrum::blocks(const std::vector<Line>& lines,
+                                                       const std::vector<Rule>& rules) {
+  const auto separated = [&](const Line& upper, const Line& lower) {
+    return std::ranges::any_of(rules, [&](const Rule& rule) {
+      return rule.direction == upper.direction && rule.across < upper.across_low &&
+             rule.across > lower.across_high &&
+             rule.along_low <= std::max(upper.along_low, lower.along_low) &&
+             rule.along_high >= std::min(upper.along_high, lower.along_high);
+    });
+  };
   const double limit = between_line_multiplier * between_line_distance(lines);
   Groups groups(lines.size());
   for (const auto& [direction, items] : by_direction(lines)) {
@@ -138,7 +147,7 @@ std::vector<std::vector<std::size_t>> Docstrum::blocks(const std::vector<Line>& 
         if (gap > limit) {
           break;
         }
-        if (overlap(upper, lower)) {
+        if (overlap(upper, lower) && !separated(upper, lower)) {
           groups.join(items[k], items[m]);
         }
       }

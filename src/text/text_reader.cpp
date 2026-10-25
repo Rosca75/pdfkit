@@ -87,7 +87,20 @@ PageText TextReader::read(std::uint32_t number) {
     }
   }
 
-  TextLayout::Result shown = TextLayout::run(content.glyphs, visible, 0, rank);
+  std::vector<Rect> rules;
+  for (const FigureRecord& figure : content.figures) {
+    for (const FigureRecord::Paint& paint : figure.paints) {
+      if (!paint.box.is_empty() && std::min(paint.box.width(), paint.box.height()) <= 2.0) {
+        rules.push_back(paint.box);
+      }
+    }
+  }
+  // Pages of very many thin shapes (a drawing) are laid out without them.
+  constexpr std::size_t max_rules = 5000;
+  if (rules.size() > max_rules) {
+    rules.clear();
+  }
+  TextLayout::Result shown = TextLayout::run(content.glyphs, visible, 0, rank, rules);
   TextLayout::Result kept = TextLayout::run(content.glyphs, hidden, visible.size());
   out.order = std::move(shown.order);
   out.visible = out.order.size();

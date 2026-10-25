@@ -40,6 +40,8 @@ constexpr double baseline_tolerance = 0.2;
 constexpr double run_backstep = 0.5;
 // Runs of at most this many glyphs take their place by position.
 constexpr std::size_t short_run = 2;
+// A painted shape this thin (in points) is a ruling.
+constexpr double max_rule_thickness = 2.0;
 
 [[nodiscard]] double key(double value) noexcept {
   return std::round(value * 100.0) / 100.0;
@@ -153,8 +155,19 @@ struct RawLine {
 
 class Builder {
  public:
-  Builder(const std::vector<GlyphRecord>& glyphs, const std::vector<std::size_t>& members)
+  Builder(const std::vector<GlyphRecord>& glyphs, const std::vector<std::size_t>& members,
+          const std::vector<Rect>& rules)
       : glyphs_(glyphs) {
+    // A horizontal or vertical ruling separates lines of the directions it
+    // crosses: a horizontal one the left-to-right lines, a vertical one the
+    // top-to-bottom ones.
+    for (const Rect& rule : rules) {
+      if (rule.height() <= max_rule_thickness && rule.width() > rule.height()) {
+        rules_.push_back({0, rule.left, rule.right, (rule.bottom + rule.top) / 2.0});
+      } else if (rule.width() <= max_rule_thickness && rule.height() > rule.width()) {
+        rules_.push_back({-90, -rule.top, -rule.bottom, (rule.left + rule.right) / 2.0});
+      }
+    }
     items_.reserve(members.size());
     for (const std::size_t draw : members) {
       items_.push_back(item_of(draw));
@@ -173,7 +186,7 @@ class Builder {
       geometry.push_back({line.bucket, key(line.along_low), key(line.along_high),
                           key(line.across_low), key(line.across_high), line.size});
     }
-    const std::vector<std::vector<std::size_t>> groups = Docstrum::blocks(geometry);
+    const std::vector<std::vector<std::size_t>> groups = Docstrum::blocks(geometry, rules_);
     const std::vector<std::size_t> block_order = order_blocks(groups, rank);
     TextLayout::Result result;
     for (const std::size_t group : block_order) {
@@ -542,14 +555,16 @@ class Builder {
   const std::vector<GlyphRecord>& glyphs_;
   std::vector<Item> items_;
   std::vector<RawLine> lines_;
+  std::vector<Docstrum::Rule> rules_;
 };
 
 }  // namespace
 
 TextLayout::Result TextLayout::run(const std::vector<GlyphRecord>& glyphs,
                                    const std::vector<std::size_t>& members, std::size_t offset,
-                                   const std::map<std::int64_t, std::size_t>& rank) {
-  return Builder(glyphs, members).run(offset, rank);
+                                   const std::map<std::int64_t, std::size_t>& rank,
+                                   const std::vector<Rect>& rules) {
+  return Builder(glyphs, members, rules).run(offset, rank);
 }
 
 void TextLayout::join_hyphen(Line& before, const Line& after) {

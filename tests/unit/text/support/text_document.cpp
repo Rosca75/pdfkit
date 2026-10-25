@@ -65,6 +65,15 @@ std::uint32_t TextDocument::page(const std::string& content, const std::string& 
   return builder_.add_page(content, "/Resources << " + font_entries + resources + " >> " + extra);
 }
 
+std::string TextDocument::bytes() {
+  if (!catalog_entries_.empty()) {
+    builder_.set(builder_.catalog(), "<< /Type /Catalog /Pages " +
+                                         std::to_string(builder_.page_tree()) + " 0 R " +
+                                         catalog_entries_ + " >>");
+  }
+  return builder_.build();
+}
+
 void TextDocument::open() {
   if (document_) {
     return;
@@ -99,6 +108,14 @@ text::PageContent TextDocument::interpret(std::uint32_t number) {
     CHECK(written.bytes == *content.streams[i].bytes);
   }
   return content;
+}
+
+text::PageText TextDocument::read(std::uint32_t number) {
+  (void)interpret(number);
+  if (reader_ == nullptr) {
+    reader_ = std::make_unique<text::TextReader>(*document_);
+  }
+  return reader_->read(number);
 }
 
 std::string TextDocument::drawn_text(const text::PageContent& content) {

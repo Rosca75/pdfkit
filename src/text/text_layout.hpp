@@ -89,10 +89,12 @@ class TextLayout {
   // Lays out glyphs[i] for each i of members. offset is added to every range
   // (the hidden set's ranges continue after the visible set's). rank, when
   // not empty, maps a marked-content id to its place in the structure order,
-  // which then orders the blocks.
+  // which then orders the blocks. rules are the boxes of thin painted
+  // shapes (a table's rulings), which keep the lines on either side apart.
   [[nodiscard]] static Result run(const std::vector<GlyphRecord>& glyphs,
                                   const std::vector<std::size_t>& members, std::size_t offset,
-                                  const std::map<std::int64_t, std::size_t>& rank = {});
+                                  const std::map<std::int64_t, std::size_t>& rank = {},
+                                  const std::vector<Rect>& rules = {});
 
   // Marks the last word of line before as hyphenated when its hyphen joins
   // the first word of line after (the rule above).

@@ -276,6 +276,9 @@ TEST_CASE("an unknown operator, a missing font and an unmatched Q change nothing
   const PageContent page = one_page("Q BT /F9 10 Tf (A) Tj /F1 10 Tf foo (A) Tj ET Q Q");
   REQUIRE(page.glyphs.size() == 1U);
   CHECK(page.glyphs[0].text == "A");
+  // The fill is the graphics state's initial black.
+  CHECK(page.glyphs[0].fill.family == "DeviceGray");
+  CHECK(page.glyphs[0].fill.components == std::vector<double>{0.0});
 }
 
 TEST_CASE("unreadable codes are counted per font name") {

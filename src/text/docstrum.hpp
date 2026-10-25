@@ -19,7 +19,9 @@
 // capital) join when their extents overlap, a page with no estimate uses half
 // the median line height, every sort is stable on keys rounded to 0.01 pt,
 // and the groups come back in the order of their first line, so the result
-// is a function of the input alone (CLAUDE.md section 9).
+// is a function of the input alone (CLAUDE.md section 9); a ruled line drawn
+// between two text lines keeps them apart, so a ruled table's rows are
+// separate blocks.
 
 #ifndef PDFKIT_TEXT_DOCSTRUM_HPP
 #define PDFKIT_TEXT_DOCSTRUM_HPP
@@ -43,9 +45,20 @@ class Docstrum {
     double size = 0.0;
   };
 
+  // A drawn rule in the frame of a direction: it runs along
+  // [along_low, along_high] at the height across.
+  struct Rule {
+    int direction = 0;
+    double along_low = 0.0;
+    double along_high = 0.0;
+    double across = 0.0;
+  };
+
   // The blocks: groups of line indices, each ascending, ordered by their
-  // first index.
-  [[nodiscard]] static std::vector<std::vector<std::size_t>> blocks(const std::vector<Line>& lines);
+  // first index. Two lines with a rule of their direction between them that
+  // spans both (a table's row separator) are not joined.
+  [[nodiscard]] static std::vector<std::vector<std::size_t>> blocks(
+      const std::vector<Line>& lines, const std::vector<Rule>& rules = {});
 
   // The between-line distance the grouping used for lines.
   [[nodiscard]] static double between_line_distance(const std::vector<Line>& lines);

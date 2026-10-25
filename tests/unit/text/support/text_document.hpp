@@ -9,7 +9,8 @@
 // interpreter over one page and, before returning, writes every walk of the
 // page back through the serialiser and requires the bytes to be identical
 // with no mismatch, so every fixture page of the text tests is also a case of
-// the re-serialisation identity.
+// the re-serialisation identity. read() runs the whole text layer over a
+// page.
 
 #ifndef PDFKIT_TESTS_UNIT_TEXT_SUPPORT_TEXT_DOCUMENT_HPP
 #define PDFKIT_TESTS_UNIT_TEXT_SUPPORT_TEXT_DOCUMENT_HPP
@@ -19,6 +20,8 @@
 #include "syntax/document.hpp"
 #include "text/optional_content.hpp"
 #include "text/page_content.hpp"
+#include "text/page_text.hpp"
+#include "text/text_reader.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -49,10 +52,15 @@ class TextDocument {
                      const std::string& extra = "", const std::string& fonts = "");
 
   void open();
+  // The file the fixture writes (the catalog entries applied).
+  [[nodiscard]] std::string bytes();
   [[nodiscard]] syntax::Document& document();
   // Interprets page number (1-based), checking the re-serialisation identity
   // of each of its walks.
   [[nodiscard]] text::PageContent interpret(std::uint32_t number = 1);
+  // Reads page number through the whole text layer (interpreter, rungs,
+  // hidden classes, layout), checking the identity of its walks first.
+  [[nodiscard]] text::PageText read(std::uint32_t number = 1);
   // The text of a page's glyphs in draw order.
   [[nodiscard]] static std::string drawn_text(const text::PageContent& content);
 
@@ -65,6 +73,7 @@ class TextDocument {
   std::unique_ptr<syntax::Document> document_;
   std::unique_ptr<fonts::FontLoader> loader_;
   std::unique_ptr<text::OptionalContent> optional_content_;
+  std::unique_ptr<text::TextReader> reader_;
 };
 
 }  // namespace pdfkit::test
