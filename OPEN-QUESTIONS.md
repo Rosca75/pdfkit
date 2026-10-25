@@ -106,3 +106,24 @@ not fetch it; the trap patterns it would have covered are synthesised instead.
 - **(b) Admit it as `terms:none` for local reading only.** About 0.5 hour and
   $5 to $10 of session time to fetch, select and register 15 files; the files
   would then sit in the dataset with no grant of any right.
+
+### 2.4 A revision 6 /Perms that fails its check (raised by phase 3)
+
+`docs/DESIGN.md` chapter 2 says a `/Perms` mismatch is a warning, never a
+refusal. The dataset's `pdfium-0012` (PDFium's `bug_424613308.pdf`) shows the
+two kinds of mismatch differ: its `/UE` is corrupt, so the empty password
+matches `/U` but the file key decrypted from `/UE` is wrong, `/Perms` does not
+decrypt to "adb", and every string and stream would decrypt to noise. PDFium
+refuses it as a password failure. Phase 3 refuses a `/Perms` without "adb" as
+`password_required` (the message names `/Perms`) and keeps the warning for a
+`/Perms` that is missing or names other permissions than `/P`. Do you want that
+rule written into chapter 2?
+
+- **(a) Yes, refuse when "adb" fails — recommended, and taken while this
+  question stands.** A file key that fails its own check would give the caller
+  noise read as text; refusing names the damage. Price: a two-line change to
+  chapter 2, about 10 minutes and $2 to $4.
+- **(b) No, warn and open as chapter 2 says.** The file opens and every page's
+  text is noise with a `repaired` warning. Price: about 20 minutes and $4 to $6
+  to revert the check and its test, and `pdfium-0012`'s `refused:password_required`
+  expectation then fails in every dataset run.

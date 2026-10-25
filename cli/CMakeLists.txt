@@ -10,6 +10,7 @@ add_executable(pdfkit_cli
   arguments.cpp
   json_text.cpp
   output.cpp
+  sha256.cpp
   support.cpp
   verbs/channels.cpp
   verbs/check.cpp

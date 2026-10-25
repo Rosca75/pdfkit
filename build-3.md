@@ -251,7 +251,125 @@ after they merge reverts them too.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **zlib 1.3.2**, the newest release on the day (2026-02-17; the archive's
+   SHA-256 matches the release page), rather than 1.3.1. Vendored: the deflate
+   and inflate sources, `gzguts.h` (which `zutil.c` includes) and the shipped
+   `zconf.h`; `compress.c` and the gz file functions are left out, so the
+   fixture writer deflates through `deflateInit`/`deflate`.
+2. **Files added beyond §2**, each to keep one public class per header or one
+   concern per file: `syntax/dictionary.{hpp,cpp}` (`Dictionary`),
+   `syntax/stream.{hpp,cpp}` (`Stream`), `syntax/page.hpp` (`Page`),
+   `src/api/document_report.{hpp,cpp}` (the encryption, repairs and warnings
+   members open and inspect share), `cli/sha256.{hpp,cpp}` (see item 12),
+   `tests/unit/support/require_value.hpp` (checked access to an optional,
+   which clang-tidy cannot see through doctest's `REQUIRE`),
+   `tests/unit/support/document_summary.{hpp,cpp}` (open a fixture; the
+   summary a reconstruction test compares), `tests/unit/cli/sha256_test.cpp`.
+   The crypto files were written by a helper session on `phase/3-crypto` and
+   cherry-picked; the object model of `object.hpp` is `Object` with nested
+   `Reference`, `Number`, `String` and `Array` (a `std::vector<Object>`), not
+   a `PdfObject` family.
+3. **The object model is immutable and shared**: arrays, dictionaries and
+   streams live behind `std::shared_ptr<const ...>`, so an `Object` copies in
+   constant time; a writer builds new objects through the `make_*` factories.
+   A `Stream` holds its dictionary, the raw data's range in the document's
+   bytes and its owner reference; it holds no data of its own, so a stream the
+   writer creates needs an owned-data form added to `Stream` (phase 7).
+   Lexer tokens carry their decoded text as a `std::string`, not a slice.
+4. **Open parses every object once** (the eager parse): a recovery anywhere in
+   the file (a wrong `/Length`, a missing `endobj` or `endstream`) is a repair
+   reason at open, even for an object no page uses, because the dataset's
+   `length_wrong`, `endobj_missing` and `endstream_missing` mutations damage
+   content and font streams that open would otherwise never read. Repair
+   reasons are deduplicated and capped at 100 lines, the last counting the
+   rest.
+5. **What triggers reconstruction** beyond DESIGN.md §1.6: an offset entry
+   that does not land on its own `n g obj` (checked for every entry at open),
+   a compressed entry whose object stream has no offset entry, a page tree
+   that yields no page, and a linearization `/O` that names another first
+   page while `/L` still equals the file's length (an incremental update makes
+   `/L` stale, and then the hint is not checked). When reconstruction still
+   finds no tree, the `/Type /Page` objects found are read in file order with
+   a repair note, and only then is the file refused `no_page` or `not_pdf`.
+6. **Leniencies recorded as repairs without reconstruction**: the off-by-one
+   first subsection, a subsection shorter than its count, a `/Prev` loop, a
+   page-tree cycle (skipped with a note, as DESIGN.md chapter 4 says, rather
+   than refused as §2.1 said), a `/Kids` entry naming no dictionary, a
+   `stream` keyword followed by a stray byte before its end of line, and a
+   revision 5 or 6 `/Perms` that is missing or names other permissions than
+   `/P` (DESIGN.md chapter 2 calls it a warning, but chapter 19 has no code
+   for it, so it rides under `repaired`). A `/Perms` that does not decrypt to
+   "adb" means the file key is wrong and is refused `password_required`, as
+   PDFium refuses it (`OPEN-QUESTIONS.md` §2.4 asks the owner to confirm).
+7. **Flate verifies a present Adler-32**: a mismatch marks the stream damaged
+   (warning `damaged_stream`) with every byte kept, because a flipped byte
+   inside a literal inflates without any other sign (the `damaged_flate`
+   mutation does exactly that). A missing checksum is not a fault. The plan's
+   "`damaged_flate`" warning is DESIGN.md §19's `damaged_stream`.
+8. **Bounds chosen here**: containers nest at most 64 deep (PDFium's
+   parser recursion limit; 256 overflowed the 1 MiB stack under ASan); object streams
+   open at most 8 deep; a reference chain resolves at most 32 hops; the page
+   walk visits at most 4 × the page ceiling + 100,000 nodes; a content stream
+   keeps at most 65,536 operands before an operator; an inline image wider or
+   taller than 1,048,576 has no computable length. Resolution matches by
+   object number and ignores a generation mismatch, as viewers do.
+9. **Open options are flat keys**: `stream_bytes`, `document_bytes`,
+   `objects`, `page_ceiling`, `operators_per_page`, each a positive integer;
+   an unknown key is `invalid_argument`. The page count is `page_count` in the
+   open report and in inspect (inspect's `pages` is the per-page array); each
+   warning is `{code, message, page}` and the `repaired` warning also carries
+   `reasons`. `docs/ABI.md` §4.3 and §4.4 hold the shapes.
+10. **The inline image** is one `ContentLexer::Operation` named `BI` whose
+    first operand is its dictionary and whose `data_start`/`data_end` delimit
+    its data; the PdfPig check reads up to three tokens after a candidate `EI`
+    and accepts it when each is an operand or an operator of Annex A.
+11. **Decoding is charged on every call**: `Document::decode` charges the
+    budget each time, so a stream decoded twice counts twice against
+    `document_bytes`; a later layer that decodes shared fonts or images per
+    page caches the decoded bytes. An external stream (`/F`) decodes to
+    nothing, silently.
+12. **The dataset verb** follows `tests/dataset/outcome.md`
+    (`--file/--id/--out`, `--manifest/--files/--out`); it does not create
+    `<dir>/outcomes/` (the CLI has neither `std::filesystem`, for its size,
+    nor an OS header, by the layout rule), so the caller does, as
+    `tests/dataset/run.py` does. The outcome's `sha256` comes from the CLI's
+    own SHA-256 (`cli/sha256.cpp`), because the CLI includes only the C header
+    and the ABI has no hash; the unit tier checks it against the library's
+    SHA-2. `text`, `images`, `metadata`, `channels` and `redact` are `null`
+    until their phases add them; `open.warnings` lists the warning codes.
+13. **`pdfkit_document`** holds `std::unique_ptr<syntax::Document>`;
+    `api::new_document` takes it, and `require_document` also refuses a handle
+    without a document. `tests/unit/api/abi_test.cpp`'s fixture opens a
+    one-page built document through `pdfkit_open`.
+14. **The security handler**: when `/StmF` and `/StrF` are both `/Identity`
+    (version 4 or 5), nothing the document draws is encrypted and a user
+    password guards only the embedded files `/EFF` names, so the password is
+    not checked and the document opens, as PDFium opens it (qpdf's
+    `encrypted-attachments` files in the dataset). A `/CF` given by reference,
+    as a whole or per filter, is resolved before the handler reads it.
+15. **Page counts follow the tree, not `/Count`**: PDFium returns the root
+    `/Count` when it is positive, so on `pdfium-0048` (`/Count 3` over one
+    kid) it says 3 where the walk finds 1, and on `pikepdf-0012` (the one page
+    object lies in a corrupt object stream) it says 1 where pdfkit refuses
+    `no_page`. Both stay as they are: a page that has no object cannot be read.
+16. **Manifest corrections, proposed and not applied**: the team lead's rule
+    keeps this branch out of `dataset/`, so the `expect_open` values the run
+    of §4 proves wrong are listed here for phase 2's owner to apply. `opens`
+    (read as written; the `xref_wrong_offsets` tag is a false positive, every
+    offset lands): dccc-0006, dccc-0021, dccc-0134, nicar25-0007, pdfium-0047,
+    pdfjs-0008, pdfjs-0039, pdfminer-0038. `repaired` (PDFium opens them in
+    silence, but each needs a named recovery: a wrong `/Length`, a missing
+    `endobj`, an off-by-one table, offsets or a `/Prev` that do not land, an
+    unknown filter on a cross-reference stream, a malformed object stream):
+    dccc-0019, dccc-0039, pdfdiff-0020, pdfdiff-0021, pdfdiff-0031,
+    pdfdiff-0033, pdfdiff-0034, pdfdiff-0035, pdfium-0013, pdfium-0020,
+    pdfium-0036, pdfium-0037, pdfjs-0029, pdfminer-0046, qpdf-0030,
+    qpdf-0031, qpdf-0032, qpdf-0054, qpdf-0060, safedocs-0002. Refused, as
+    PDFium refuses them: `refused:no_page` for pdfium-0008, pdfium-0010,
+    pdfium-0011, pdfminer-0014, qpdf-0035 and pikepdf-0012 (PDFium's one page
+    there comes from `/Count`, item 15); `refused:not_pdf` for qpdf-0029 and
+    qpdf-0039; `refused:unsupported_security_handler` for qpdf-0002 (a
+    `/CFM /AESV1`, which no revision defines).
 
 ### Deviations of earlier phases that affect this one
 

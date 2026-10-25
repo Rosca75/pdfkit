@@ -242,3 +242,11 @@ From `build-1.md` §9:
 - `build/check_catalogue.py` accepts `cli/verbs/dataset_fonts.cpp` as a helper of the `dataset` verb (files named `<verb>_<part>.cpp`) (item 12).
 - Remove the `build/paths_pending.tsv` row `build/fonts/` in the change that creates it (item 13).
 - The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+
+From `build-3.md` §9:
+
+- The object model is `syntax::Object` (nested `Reference`, `Number`, `String` with its literal-or-hex flag, `Array` = `std::vector<Object>`), `syntax::Dictionary` (insertion-ordered) and `syntax::Stream` (dictionary, raw byte range, owner); all immutable and shared, built through the `make_*` factories (item 3).
+- `syntax::Document::open(bytes, Limits)` returns the document; `object(reference)`, `resolve(object)` and `resolve_entry(dictionary, key)` resolve (strings come back decrypted), `decode(stream, page)` decrypts and runs the filters up to the first image codec (`Filters::Result::remaining` names the codecs left), `content_pieces(contents, page)` decodes a `/Contents` value, `pages()` holds `syntax::Page` (boxes, rotation, resolved resources, contents), `repair(reason)` and `warn(code, message, page)` record (items 3, 4).
+- `syntax::Resources(document, page.resources, page.number)` looks a resource up by category and name, with the form fallback in `for_form`; `syntax::ContentLexer(pieces, document.limits(), "page N")` yields `Operation`s (operator, operands, byte range, `operator_start`; an inline image is one `BI` operation with its data range) and `locate(offset)` maps back to the piece (item 10).
+- `Document::decode` charges the budget on every call, so a layer that decodes a shared stream more than once caches the decoded bytes (item 11).
+- The fixture writer is `test::PdfBuilder` (with `test::Layout`, `test::StreamOptions` and `test::ObjectOptions` at namespace scope), `test::ContentBuilder`, `test::PdfEncryptor`, `test::require_value`, and `test::open_document` and `test::summarise` in `tests/unit/support/` (item 2).

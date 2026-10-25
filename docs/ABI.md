@@ -152,6 +152,78 @@ is the one function with two output buffers: the PDF bytes are not JSON, and
 the write report travels beside them; on failure `out_pdf` stays empty and
 `out` holds the error.
 
+### 4.3 pdfkit_open (catalogue 1.1)
+
+`pdfkit_open` copies the bytes, finds the `%PDF-` header within the first
+1,024 bytes, reads the cross-reference table along the trailer chain or
+rebuilds it by scanning when that path disappoints, decrypts with the empty
+user password, parses every object once (so every recovery the file needs is
+named at open) and walks the page tree (`docs/DESIGN.md` chapters 1 to 4).
+
+The options are the limits of `docs/DESIGN.md` §3.2, each a positive integer;
+any other key, or a value that is not a positive integer, is
+`invalid_argument`:
+
+| Option | Default | Bounds |
+|---|---|---|
+| `stream_bytes` | 536870912 (512 MiB) | the decoded bytes of one stream |
+| `document_bytes` | 2147483648 (2 GiB) | the decoded bytes of the whole document |
+| `objects` | 8388607 | the objects the cross-reference table or the scan names |
+| `page_ceiling` | 10000 | the pages of the document |
+| `operators_per_page` | 50000000 | the content operators of one page |
+
+On success `*out_doc` receives the handle and `out` the open report:
+
+```json
+{
+  "version": "1.7",
+  "page_count": 3,
+  "encryption": {"filter": "Standard", "version": 4, "revision": 4, "method": "AESV2",
+                 "key_bits": 128, "encrypt_metadata": true},
+  "repairs": ["the file was reconstructed by scanning it, because startxref 1234 does not land on xref or a cross-reference stream"],
+  "warnings": [{"code": "repaired", "message": "...", "page": null, "reasons": ["..."]},
+               {"code": "damaged_stream", "message": "...", "page": 2}]
+}
+```
+
+| Key | Holds |
+|---|---|
+| `version` | the header's version, raised by a later catalog `/Version`; empty when no header was found |
+| `page_count` | the pages in tree order |
+| `encryption` | `null` for an unencrypted file; otherwise the standard handler's version (`/V`), revision (`/R`), method (`RC4`, `AESV2`, `AESV3` or `Identity`), key length in bits and whether the metadata is encrypted |
+| `repairs` | every recovery the file needed, each named once, in the order met; at most 100, the last line then counting the rest; empty for a file read as written |
+| `warnings` | the warnings of `docs/DESIGN.md` chapter 19 met while opening, each with `code`, `message` and `page` (`null` when it concerns no page); when `repairs` is not empty the first is `repaired`, which also carries the `reasons` |
+
+Failures, each with the error object of §3: `invalid_argument` (a null `out` or
+`out_doc`, `bytes` null with a non-zero `size`, malformed or unknown options),
+and the refusals `not_pdf`, `no_page`, `password_required`,
+`unsupported_security_handler`, `limit_exceeded` and `page_ceiling` of
+`docs/DESIGN.md` chapter 19 under `PDFKIT_E_REFUSED`. On failure `*out_doc` is
+`NULL`.
+
+### 4.4 pdfkit_inspect (catalogue 1.2)
+
+`pdfkit_inspect` reports what open read; it takes no options (`NULL` or `{}`;
+anything else is `invalid_argument`) and never fails on a valid handle:
+
+```json
+{
+  "version": "1.7",
+  "page_count": 2,
+  "pages": [{"page": 1, "media_box": [0, 0, 612, 792], "crop_box": [10, 20, 300, 400], "rotate": 90}],
+  "encryption": null,
+  "repairs": [],
+  "warnings": []
+}
+```
+
+`pages` holds one object per page in tree order: its number from 1, the media
+box and the crop box as `[left, bottom, right, top]` in points (normalised, the
+crop box clipped to the media box, a missing media box being US Letter), and
+the rotation (0, 90, 180 or 270). `encryption`, `repairs` and `warnings` are
+those of the open report at the time of the call. Keys are written in the order
+shown, so two calls give the same bytes.
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -179,7 +251,7 @@ version object of §4.1. The tool calls the C ABI and nothing beneath it.
 | `select-pages` | `<file.pdf> --pages <json> --out <output.pdf> [--open-options <json>]` | 9, 10.1, 1.1 |
 | `check` | `<file.pdf> --strings <json>` | 10.2 |
 | `channels` | `<file.pdf> [--options <json>] [--open-options <json>]` | 8, 1.1 |
-| `dataset` | `--manifest <manifest.tsv> --out <folder>`, or `--file <file.pdf> --id <id>` | every function the manifest expects |
+| `dataset` | `--file <file.pdf> --id <id> --out <folder>`, or `--manifest <manifest.tsv> --files <files root> --out <folder>` | every function this build implements (`tests/dataset/outcome.md` owns the outcome) |
 
 The redact job file is a JSON object: `input` and `output` (paths), an optional
 `open_options` object, and at least one of the sections `text`, `images`,
@@ -187,6 +259,12 @@ The redact job file is a JSON object: `input` and `output` (paths), an optional
 (`pdfkit_redact_text`, `pdfkit_redact_images`, `pdfkit_set_metadata`,
 `pdfkit_select_pages`) on one edit plan. An output file is written only when
 `pdfkit_write` succeeds.
+
+The dataset verb writes one outcome per file into `<folder>/outcomes/<id>.json`,
+a folder the caller creates (the harness does), in the shape
+`tests/dataset/outcome.md` fixes, and prints `{"id", "outcome"}` for one file or
+`{"files", "written"}` for a manifest. It exits 0 whenever the outcome was
+written, whatever the file's fate, because the refusal is recorded inside it.
 
 Order of work: the verb parses its arguments, reads its input file, then asks
 `pdfkit_version` whether every function it needs is implemented (its own

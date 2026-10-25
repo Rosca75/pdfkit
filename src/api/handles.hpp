@@ -3,7 +3,8 @@
 //
 // The opaque handles of the C ABI and their checks. pdfkit_document and
 // pdfkit_edit are named by the C header, so they live in the global namespace;
-// the document holds its open options and the edit holds its document. The
+// the document holds the opened syntax::Document and the edit holds its
+// document handle. The
 // require functions turn a null handle into an invalid_argument error that
 // names the symbol and how to obtain a valid handle.
 
@@ -12,13 +13,13 @@
 
 #include "pdfkit/pdfkit.h"
 
-#include "platform/json_value.hpp"
+#include "syntax/document.hpp"
 
 #include <memory>
 #include <string_view>
 
 struct pdfkit_document {
-  pdfkit::platform::JsonValue options;
+  std::unique_ptr<pdfkit::syntax::Document> document;
 };
 
 struct pdfkit_edit {
@@ -27,7 +28,8 @@ struct pdfkit_edit {
 
 namespace pdfkit::api {
 
-[[nodiscard]] std::unique_ptr<pdfkit_document> new_document(platform::JsonValue options);
+[[nodiscard]] std::unique_ptr<pdfkit_document> new_document(
+    std::unique_ptr<syntax::Document> document);
 [[nodiscard]] std::unique_ptr<pdfkit_edit> new_edit(pdfkit_document& document);
 
 // Each throws platform::Error (invalid_argument) naming symbol when the

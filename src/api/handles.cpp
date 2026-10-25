@@ -12,10 +12,10 @@
 
 namespace pdfkit::api {
 
-std::unique_ptr<pdfkit_document> new_document(platform::JsonValue options) {
-  auto document = std::make_unique<pdfkit_document>();
-  document->options = std::move(options);
-  return document;
+std::unique_ptr<pdfkit_document> new_document(std::unique_ptr<syntax::Document> document) {
+  auto handle = std::make_unique<pdfkit_document>();
+  handle->document = std::move(document);
+  return handle;
 }
 
 std::unique_ptr<pdfkit_edit> new_edit(pdfkit_document& document) {
@@ -25,7 +25,7 @@ std::unique_ptr<pdfkit_edit> new_edit(pdfkit_document& document) {
 }
 
 pdfkit_document& require_document(pdfkit_document* doc, std::string_view symbol) {
-  if (doc == nullptr) {
+  if (doc == nullptr || doc->document == nullptr) {
     throw platform::Error(platform::ErrorCode::invalid_argument,
                           std::string(symbol) + " was called with a null document handle",
                           "a handle returned by pdfkit_open and not yet closed",

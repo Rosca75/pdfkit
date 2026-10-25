@@ -9,6 +9,10 @@ target_sources(pdfkit_core PRIVATE
   budget.cpp
   buffer.cpp
   build_info.cpp
+  crypto/aes.cpp
+  crypto/md5.cpp
+  crypto/rc4.cpp
+  crypto/sha2.cpp
   error.cpp
   json_reader.cpp
   json_value.cpp

@@ -54,6 +54,14 @@ to find it.
 | The standard security handler revisions 2 to 6 as pdf.js implements them | https://github.com/mozilla/pdf.js/blob/master/src/core/crypto.js | read |
 | The table's off-by-one first subsection correction, the doubled-sign number, the lone `#` in a name | pdf.js `parser.js` and `xref.js` | recalled |
 | The inline image `EI` pitfall and the check that the following bytes lex | https://github.com/UglyToad/PdfPig/pull/1476 | read |
+| The zlib stream format (two-byte header, FDICT, Adler-32 trailer) and the deflate format, read raw after the header | RFC 1950, https://www.rfc-editor.org/rfc/rfc1950; RFC 1951, https://www.rfc-editor.org/rfc/rfc1951 | recalled; tested in `tests/unit/syntax/filters_test.cpp` against zlib's own output |
+| LZW's code widths, clear and end codes and `/EarlyChange`, and the example "-----A---B" | ISO 32000-1 §7.4.4.2 | recalled; tested in `tests/unit/syntax/filters_test.cpp` |
+| The PNG filter types None, Sub, Up, Average and Paeth used by the predictors | https://www.w3.org/TR/png/ §9 | recalled; tested against hand-encoded rows in `tests/unit/syntax/filters_test.cpp` |
+| The linearization dictionary's `/L` (file length) and `/O` (first page object) | ISO 32000-1 Annex F.2.2 | recalled; tested in `tests/unit/syntax/repair_test.cpp` |
+| A `/Rotate` that is not a multiple of 90 reads as 0 | https://github.com/mozilla/pdf.js/blob/master/src/core/page.js | recalled; tested in `tests/unit/syntax/document_test.cpp` |
+| An object-stream lookup by index, falling back to the object number | https://github.com/mozilla/pdf.js/blob/master/src/core/xref.js | recalled; tested in `tests/unit/syntax/object_streams_test.cpp` |
+| The standard security handler's algorithms 1 to 5 and the padding string; algorithms 2.A, 2.B, 8 to 10 and 13 for revisions 5 and 6 | ISO 32000-1 §7.6.3; ISO 32000-2 §7.6.4 | read in the design record; tested in `tests/unit/syntax/security_handler_test.cpp` through the test tree's own encryptor |
+| The content operators of Annex A, table A.1 | ISO 32000-1 Annex A | read; tested in `tests/unit/syntax/content_lexer_test.cpp` |
 | Measured sizes of open implementations (for estimates) | https://github.com/UglyToad/PdfPig; https://github.com/mozilla/pdf.js; https://github.com/pdfcpu/pdfcpu; https://github.com/py-pdf/pypdf; https://github.com/pdfminer/pdfminer.six | read |
 
 ## 4. DESIGN.md §5 and §6: fonts, the ladder, the interpreter
@@ -135,7 +143,7 @@ to find it.
 
 | Component | Source | Status |
 |---|---|---|
-| zlib | https://zlib.net | recalled |
+| zlib 1.3.2 (zlib licence; released 2026-02-17; the archive's SHA-256 as the release page lists it, in `third_party/inventory.tsv`) | https://zlib.net | read |
 | libjpeg-turbo | https://github.com/libjpeg-turbo/libjpeg-turbo | recalled |
 | OpenJPEG | https://github.com/uclouvain/openjpeg | recalled |
 | doctest 2.5.3 (MIT; release list, archive and its SHA-256 in `third_party/inventory.tsv`) | https://github.com/doctest/doctest/releases/tag/v2.5.3 | read |
@@ -206,3 +214,14 @@ Facts measured on the laptop are recorded with their commands in
 | The `activeCodePage` manifest element sets the process code page to UTF-8; resource type 24 identifier 1 is an executable's manifest | https://learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page | recalled; tested by `pdfkit text` on a Cyrillic file name |
 | P/Invoke with `DllImport`, `NativeLibrary.SetDllImportResolver` and `Marshal.PtrToStringUTF8` | https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke | recalled; tested by `python tests/abi/run.py` |
 | `ctypes.CDLL`, `Structure` and `string_at` | https://docs.python.org/3.12/library/ctypes.html | recalled; tested by `python tests/abi/run.py` |
+| MD5 algorithm, constants T[1..64], rotation amounts, padding, and the seven test vectors of appendix A.5 | https://www.rfc-editor.org/rfc/rfc1321.txt | read; tested in `tests/unit/platform/crypto/md5_test.cpp` |
+| SHA-256, SHA-384 and SHA-512: algorithm, constants K and initial hash values | https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf | read; tested in `tests/unit/platform/crypto/sha2_test.cpp` |
+| SHA-2 digests of "abc", the 448-bit and 896-bit messages | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf (and SHA384.pdf, SHA512.pdf) | read; tested in `tests/unit/platform/crypto/sha2_test.cpp` |
+| SHA-2 digests of one million "a" | https://csrc.nist.gov/files/pubs/fips/180-2/final/docs/fips180-2.pdf; https://www.rfc-editor.org/rfc/rfc6234.txt §8.5 | read; tested in `tests/unit/platform/crypto/sha2_test.cpp` |
+| SHA-384 and SHA-512 of the 448-bit message, the empty digests, and digests at the padding boundaries | Python `hashlib` | computed; tested in `tests/unit/platform/crypto/sha2_test.cpp` and `md5_test.cpp` |
+| AES: cipher, inverse cipher, key expansion, S-boxes, Rcon, and the block vectors of appendix C.1 and C.3 | https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf | read; tested in `tests/unit/platform/crypto/aes_test.cpp` |
+| CBC mode and the vectors F.2.1, F.2.2, F.2.5 and F.2.6 | https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf | read; tested in `tests/unit/platform/crypto/aes_test.cpp` |
+| PKCS#7 padding (n bytes of value n) | https://www.rfc-editor.org/rfc/rfc5652.txt §6.3 | recalled; tested in `tests/unit/platform/crypto/aes_test.cpp` |
+| RC4 (key scheduling and generation) | Schneier, Applied Cryptography, 2nd ed., §17.1 | recalled; confirmed by the RFC 6229 vectors |
+| RC4 keystream vectors for seven key sizes | https://www.rfc-editor.org/rfc/rfc6229.txt | read; tested in `tests/unit/platform/crypto/rc4_test.cpp` |
+| The CLI's SHA-256 (FIPS 180-4 §4.1.2, §4.2.2, §5.1.1, §6.2) | https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf | recalled; tested against the library's SHA-2 in `tests/unit/cli/sha256_test.cpp` and against every manifest hash by the dataset tier |
