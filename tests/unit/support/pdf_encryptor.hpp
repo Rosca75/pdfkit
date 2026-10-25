@@ -41,6 +41,9 @@ class PdfEncryptor {
     // file key fails its check), or one whose permissions differ from /P.
     bool corrupt_perms = false;
     bool perms_other_permissions = false;
+    // Entries written as they are at the end of the /Encrypt dictionary,
+    // whose strings are never encrypted (a vendor key, for instance).
+    std::string extra_entries;
   };
 
   // id0 is the first element of the trailer's /ID.

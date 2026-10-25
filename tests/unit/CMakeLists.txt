@@ -22,6 +22,7 @@ add_executable(pdfkit_tests
   support/content_builder.cpp
   support/document_summary.cpp
   support/pdf_builder.cpp
+  support/pdf_builder_channels.cpp
   support/pdf_encryptor.cpp
   syntax/content_lexer_test.cpp
   syntax/cross_reference_test.cpp
@@ -33,7 +34,9 @@ add_executable(pdfkit_tests
   syntax/repair_test.cpp
   syntax/security_handler_test.cpp
   syntax/stream_test.cpp
+  writer/channel_table_test.cpp
   writer/output_scan.cpp
+  writer/page_selector_test.cpp
   writer/reachability_test.cpp
   writer/serialiser_test.cpp
   writer/stream_copier_test.cpp

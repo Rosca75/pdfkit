@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 The pdfkit authors
+//
+// EditPlan is the state of an edit handle (CLAUDE.md section 4): what the
+// caller asked to change in one document, held until pdfkit_write applies it
+// through the write pipeline. It holds the page selection, a validated list
+// of pages in the caller's order, each named once. The plan grows with the
+// edits the catalogue adds, each a member of its own:
+//   - the text matches with their placeholders (docs/DESIGN.md sections 11
+//     and 12), added by pdfkit_redact_text;
+//   - the image treatments per image identity (section 14), added by
+//     pdfkit_redact_images;
+//   - the metadata field values (section 10), added by pdfkit_set_metadata.
+
+#ifndef PDFKIT_REDACT_EDIT_PLAN_HPP
+#define PDFKIT_REDACT_EDIT_PLAN_HPP
+
+#include "syntax/document.hpp"
+
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+namespace pdfkit::redact {
+
+class EditPlan {
+ public:
+  // document must outlive the plan.
+  explicit EditPlan(syntax::Document& document) : document_(&document) {}
+
+  [[nodiscard]] syntax::Document& document() noexcept { return *document_; }
+
+  // Records the pages to keep, in this order. Throws platform::Error
+  // (invalid_argument) for an empty list, a page named twice or a page out of
+  // range, naming the page and the document's page count.
+  void select_pages(const std::vector<std::int64_t>& pages);
+
+  // The pages to keep, 1-based, in output order; no value keeps every page.
+  [[nodiscard]] const std::optional<std::vector<std::uint32_t>>& pages() const noexcept {
+    return pages_;
+  }
+
+ private:
+  syntax::Document* document_;
+  std::optional<std::vector<std::uint32_t>> pages_;
+};
+
+}  // namespace pdfkit::redact
+
+#endif  // PDFKIT_REDACT_EDIT_PLAN_HPP
