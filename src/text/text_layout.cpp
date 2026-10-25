@@ -228,8 +228,8 @@ class Builder {
       const double corners[4] = {frame.across(box.left, box.bottom),
                                  frame.across(box.right, box.bottom),
                                  frame.across(box.left, box.top), frame.across(box.right, box.top)};
-      item.across_low = key(*std::min_element(std::begin(corners), std::end(corners)));
-      item.across_high = key(*std::max_element(std::begin(corners), std::end(corners)));
+      item.across_low = key(*std::ranges::min_element(corners));
+      item.across_high = key(*std::ranges::max_element(corners));
     }
     return item;
   }

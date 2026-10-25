@@ -115,6 +115,7 @@ double Docstrum::between_line_distance(const std::vector<Line>& lines) {
   double estimate = peak_average(distances);
   if (estimate <= 0.0) {
     std::vector<double> heights;
+    heights.reserve(lines.size());
     for (const Line& line : lines) {
       heights.push_back(line.across_high - line.across_low);
     }

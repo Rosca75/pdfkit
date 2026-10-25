@@ -39,6 +39,7 @@ std::vector<std::string> words_of(const std::vector<TextLayout::Block>& blocks) 
 
 std::vector<std::string> block_texts(const PageText& page) {
   std::vector<std::string> out;
+  out.reserve(page.blocks.size());
   for (const TextLayout::Block& block : page.blocks) {
     out.push_back(PageText::text_of({block}));
   }
@@ -176,6 +177,7 @@ TEST_CASE("order_is_stable") {
                 "BT /F1 10 Tf 72 700 Td (The) Tj ET");
   const PageText page = document.read();
   std::vector<std::size_t> members;
+  members.reserve(page.content.glyphs.size());
   for (const auto& glyph : page.content.glyphs) {
     members.push_back(glyph.draw);
   }

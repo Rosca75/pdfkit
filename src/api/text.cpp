@@ -27,6 +27,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -87,7 +88,7 @@ Options read_options(const JsonValue& input, std::size_t page_count) {
   for (const JsonValue& item : pages->as_array()) {
     const std::optional<std::int64_t> number =
         item.kind() == JsonValue::Kind::number ? item.as_int64() : std::nullopt;
-    if (!number || *number < 1 || static_cast<std::uint64_t>(*number) > page_count) {
+    if (!number || *number < 1 || std::cmp_greater(*number, page_count)) {
       throw Error(
           ErrorCode::invalid_argument,
           "pdfkit_text options_json asks for page " +

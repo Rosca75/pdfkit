@@ -24,6 +24,7 @@
 #include <cmath>
 #include <numbers>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -194,9 +195,9 @@ class ContentInterpreter::Walk {
       ContentStream& stream = content_.streams[stream_index];
       stream.bytes = bytes;
       std::size_t start = 0;
-      for (std::size_t i = 0; i < pieces.size(); ++i) {
+      for (const std::vector<std::byte>& piece : pieces) {
         stream.piece_starts.push_back(start);
-        start += pieces[i].size() + 1;
+        start += piece.size() + 1;
       }
       if (stream.piece_starts.empty()) {
         stream.piece_starts.push_back(0);
@@ -256,8 +257,6 @@ class ContentInterpreter::Walk {
       graphics_state_parameters(operation, resources);
     } else if (op == "BT") {
       text_ = {};
-    } else if (op == "ET") {
-      // The text matrices end with the text object and restart at BT.
     } else if (op == "Tc") {
       state.char_spacing = number_at(operation, 0).value_or(state.char_spacing);
     } else if (op == "Tw") {
@@ -303,8 +302,6 @@ class ContentInterpreter::Walk {
       path_other_ = true;
     } else if (op == "re") {
       path_rectangle(operation);
-    } else if (op == "h") {
-      // Closing a subpath adds no point.
     } else if (op == "W" || op == "W*") {
       clip_pending_ = true;
     } else if (is_painting(op) || op == "n") {
@@ -328,8 +325,9 @@ class ContentInterpreter::Walk {
     } else if (op == "BI") {
       inline_image(operation, index, stream, bytes);
     }
-    // Every other operator (w, J, j, M, d, ri, i, MP, DP, BX, EX, d0, d1 and
-    // unknown keywords) changes nothing the records read.
+    // Every other operator (ET, whose text matrices restart at BT; h, which
+    // adds no point; w, J, j, M, d, ri, i, MP, DP, BX, EX, d0, d1 and unknown
+    // keywords) changes nothing the records read.
   }
 
   void move(double tx, double ty) {
@@ -944,23 +942,23 @@ class ContentInterpreter::Walk {
     record.fill = state.fill;
     record.stroke_white = state.stroke.is_white();
     record.clip = state.clip;
-    for (auto it = marked_.rbegin(); it != marked_.rend(); ++it) {
-      if (!it->tag.empty() && it->tag != "OC") {
-        record.tag = it->tag;
-        record.mcid = it->mcid;
+    for (const Marked& marked : std::views::reverse(marked_)) {
+      if (!marked.tag.empty() && marked.tag != "OC") {
+        record.tag = marked.tag;
+        record.mcid = marked.mcid;
         break;
       }
     }
-    for (auto it = marked_.rbegin(); it != marked_.rend(); ++it) {
-      if (it->mcid >= 0) {
-        record.mcid = it->mcid;
+    for (const Marked& marked : std::views::reverse(marked_)) {
+      if (marked.mcid >= 0) {
+        record.mcid = marked.mcid;
         break;
       }
     }
     if (!marked_.empty()) {
       record.actual_text = marked_.back().span;
-      if (marked_.back().group) {
-        record.optional_content.push_back(*marked_.back().group);
+      if (const std::optional<std::uint32_t> group = marked_.back().group) {
+        record.optional_content.push_back(*group);
       }
     }
     record.optional_content_off = hidden_by_marked_content();

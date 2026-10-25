@@ -110,7 +110,7 @@ int run_text(std::span<char* const> args) {
   if (glyphs) {
     options += std::string(pages ? ", " : "") + R"("glyphs": true)";
   }
-  options += "}";
+  options += '}';
   std::vector<std::string> storage{"--options", options};
   rest.push_back(storage[0].data());
   rest.push_back(storage[1].data());

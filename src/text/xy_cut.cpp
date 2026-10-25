@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 #include <utility>
 
 namespace pdfkit::text {
@@ -74,8 +75,8 @@ std::vector<std::size_t> XyCut::order(const std::vector<Rect>& boxes, bool right
       std::ranges::reverse(parts);
     }
     if (parts.size() > 1) {
-      for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
-        work.push_back(std::move(*it));
+      for (std::vector<std::size_t>& part : std::views::reverse(parts)) {
+        work.push_back(std::move(part));
       }
       continue;
     }

@@ -15,7 +15,7 @@
 
 namespace pdfkit::text {
 
-enum class HiddenClass : std::uint16_t {
+enum class HiddenClass : std::uint8_t {
   render_invisible = 1U << 0U,
   white_fill = 1U << 1U,
   clipped = 1U << 2U,

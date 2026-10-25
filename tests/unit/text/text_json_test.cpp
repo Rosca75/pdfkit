@@ -17,6 +17,7 @@
 #include <doctest.h>
 
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -58,7 +59,7 @@ std::string two_pages() {
   return document.bytes();
 }
 
-const std::string expected =
+constexpr std::string_view expected =
     R"({"pages":[{"page":1,"text":"Hello World","structure_order":false,"blocks":[{"box":[72,697.93,123.67,707.18],"glyphs":[0,11],"lines":[{"box":[72,697.93,123.67,707.18],"glyphs":[0,11],"direction":"ltr","angle":0,"words":[{"text":"Hello","box":[72,697.93,94.78,707.18],"glyphs":[0,5],"hyphenated":false,"hidden":[]},{"text":"World","box":[97.56,697.93,123.67,707.18],"glyphs":[6,11],"hyphenated":false,"hidden":[]}]}]}],"hidden_blocks":[],"unreadable":{"count":0,"fonts":[]},"hidden":{"count":0,"classes":{"render_invisible":0,"white_fill":0,"clipped":0,"off_media":0,"off_crop":0,"optional_content_off":0,"duplicate":0,"covered":0}},"rungs":{"to_unicode":0,"glyph_name":11,"font_program":0,"actual_text":0,"unreadable":0},"warnings":[]},{"page":2,"text":"Page two\n\nHid","structure_order":false,"blocks":[{"box":[72,697.93,113.69,707.18],"glyphs":[0,8],"lines":[{"box":[72,697.93,113.69,707.18],"glyphs":[0,8],"direction":"ltr","angle":0,"words":[{"text":"Page","box":[72,697.93,95.35,707.18],"glyphs":[0,4],"hyphenated":false,"hidden":[]},{"text":"two","box":[98.13,697.93,113.69,707.18],"glyphs":[5,8],"hyphenated":false,"hidden":[]}]}]}],"hidden_blocks":[{"box":[72,597.93,87,607.18],"glyphs":[8,11],"lines":[{"box":[72,597.93,87,607.18],"glyphs":[8,11],"direction":"ltr","angle":0,"words":[{"text":"Hid","box":[72,597.93,87,607.18],"glyphs":[8,11],"hyphenated":false,"hidden":["render_invisible"]}]}]}],"unreadable":{"count":0,"fonts":[]},"hidden":{"count":3,"classes":{"render_invisible":3,"white_fill":0,"clipped":0,"off_media":0,"off_crop":0,"optional_content_off":0,"duplicate":0,"covered":0}},"rungs":{"to_unicode":0,"glyph_name":11,"font_program":0,"actual_text":0,"unreadable":0},"warnings":[{"code":"hidden_text","message":"page 2 holds 3 glyphs a viewer does not show (render_invisible 3); they are extracted after the visible text","page":2}]}]})";
 
 }  // namespace

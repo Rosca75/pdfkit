@@ -23,7 +23,9 @@ namespace {
   for (std::size_t i = 0; i + 1 < bytes.size(); i += 2) {
     const auto first = static_cast<std::uint8_t>(bytes[i]);
     const auto second = static_cast<std::uint8_t>(bytes[i + 1]);
-    const std::uint32_t unit = big_endian ? ((first << 8U) | second) : ((second << 8U) | first);
+    const std::uint32_t high = big_endian ? first : second;
+    const std::uint32_t low = big_endian ? second : first;
+    const std::uint32_t unit = (high << 8U) | low;
     if (unit >= 0xD800 && unit <= 0xDBFF) {
       pending = unit;
       continue;

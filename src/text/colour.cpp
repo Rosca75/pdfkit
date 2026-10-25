@@ -30,9 +30,8 @@ void Colour::reset() {
   if (family == "DeviceCMYK" || (family == "ICCBased" && count == 4)) {
     components.assign(4, 0.0);
     components[3] = 1.0;
-  } else if (family == "DeviceRGB" || family == "CalRGB" || (family == "ICCBased" && count == 3)) {
-    components.assign(3, 0.0);
-  } else if (family == "Lab") {
+  } else if (family == "DeviceRGB" || family == "CalRGB" || family == "Lab" ||
+             (family == "ICCBased" && count == 3)) {
     components.assign(3, 0.0);
   } else if (family == "Separation" || family == "DeviceN") {
     components.assign(static_cast<std::size_t>(std::max(count, 1)), 1.0);

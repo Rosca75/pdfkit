@@ -147,10 +147,12 @@ PageText TextReader::read(std::uint32_t number) {
                                                "); they are extracted after the visible text"});
   }
   for (const std::string& name : content.estimated_widths) {
-    out.warnings.push_back(
-        {"font_not_embedded", page + " uses the font " + name +
-                                  ", which has no program, no widths and no standard metrics; "
-                                  "its widths are estimated"});
+    std::string message = page;
+    message += " uses the font ";
+    message += name;
+    message +=
+        ", which has no program, no widths and no standard metrics; its widths are estimated";
+    out.warnings.push_back({"font_not_embedded", std::move(message)});
   }
   out.content = std::move(content);
   return out;
