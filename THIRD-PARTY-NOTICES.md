@@ -1,14 +1,13 @@
 # Third-party notices
 
 pdfkit is licensed under the Apache License 2.0. It includes the components
-below, each under its own permissive licence. Every component listed here has a
+below, each under its own permissive licence. Every vendored component has a
 row in `third_party/inventory.tsv`, with its version, upstream address and the
-SHA-256 of the upstream source. The full licence text of each component is kept
-in its folder under `third_party/` and is reproduced in this file when the
-component is vendored.
+SHA-256 of the upstream source, and a section here; its full licence text is
+kept in its folder under `third_party/` and reproduced in its section.
 
-`build/check_third_party.py` checks that this file and the inventory name the
-same components.
+`build/check_third_party.py` checks that every inventory component is named in
+this file.
 
 ## 1. zlib
 

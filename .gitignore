@@ -27,3 +27,6 @@ obj/
 
 # Never commit a PDF: fixtures are written in code and the dataset lives outside git
 *.pdf
+
+# Agent worktrees of the local Claude Code sessions
+/.claude/

@@ -70,7 +70,8 @@ registry in `src/api/catalogue.cpp` and the CLI verbs to one another.
 | 10.2 | Check | `pdfkit_check` | PDF bytes; JSON strings with folding rules | JSON: every surviving occurrence by page and surface | the bytes do not open | `build-8.md` |
 
 The lifecycle symbols carry no row of their own: `pdfkit_abi_version`,
-`pdfkit_close`, `pdfkit_edit_new`, `pdfkit_edit_free` and `pdfkit_buffer_free`.
+`pdfkit_version` (the library and ABI versions, the build and each catalogue
+function's implementation status), `pdfkit_close`, `pdfkit_edit_new`, `pdfkit_edit_free` and `pdfkit_buffer_free`.
 
 The CLI exposes the catalogue as verbs, each with a stable exit code and JSON on
 standard output:

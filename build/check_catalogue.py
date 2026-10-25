@@ -16,9 +16,9 @@ from pathlib import Path
 
 import checklib
 
-# The version query is declared beside the lifecycle symbols; docs/ABI.md
-# documents it with them.
-EXTRA_SYMBOLS = {"pdfkit_version"}
+# Every exported symbol outside the catalogue is named in the charter's
+# lifecycle sentence, so no symbol is exempt here.
+EXTRA_SYMBOLS: set[str] = set()
 
 TABLE_ROW = re.compile(r"^\|\s*(\d+(?:\.\d+)?)\s*\|(.*)\|\s*$")
 VERB_ROW = re.compile(r"^\|\s*`([a-z-]+)`\s*\|\s*([^|]*)\|")
