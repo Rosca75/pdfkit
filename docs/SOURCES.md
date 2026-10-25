@@ -135,7 +135,7 @@ to find it.
 
 | Component | Source | Status |
 |---|---|---|
-| zlib | https://zlib.net | recalled |
+| zlib 1.3.2 (zlib licence; released 2026-02-17; the archive's SHA-256 as the release page lists it, in `third_party/inventory.tsv`) | https://zlib.net | read |
 | libjpeg-turbo | https://github.com/libjpeg-turbo/libjpeg-turbo | recalled |
 | OpenJPEG | https://github.com/uclouvain/openjpeg | recalled |
 | doctest 2.5.3 (MIT; release list, archive and its SHA-256 in `third_party/inventory.tsv`) | https://github.com/doctest/doctest/releases/tag/v2.5.3 | read |
