@@ -30,6 +30,7 @@ FILE_CHECKS = [
     ("no network", ["check_network.py"]),
     ("repository", ["check_repo.py"]),
     ("paths", ["check_paths.py"]),
+    ("generated", ["check_generated.py"]),
 ]
 
 
