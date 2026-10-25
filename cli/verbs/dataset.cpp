@@ -20,6 +20,7 @@
 #include "verbs/dataset_images.hpp"
 #include "verbs/dataset_metadata.hpp"
 #include "verbs/dataset_redact.hpp"
+#include "verbs/dataset_redact_images.hpp"
 #include "verbs/dataset_text.hpp"
 #include "verbs/dataset_write.hpp"
 #include "verbs/verbs.hpp"
@@ -261,6 +262,9 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   const std::string set_metadata = opened.status == PDFKIT_OK
                                        ? dataset_set_metadata(document, id, metadata, out_dir)
                                        : R"({"status": "skipped", "code": null})";
+  const std::string redact_images = opened.status == PDFKIT_OK
+                                        ? dataset_redact_images(document, id, out_dir)
+                                        : R"({"status": "skipped", "code": null})";
   pdfkit_close(document);
   for (const std::string_view key : later_keys) {
     if (key == "text") {
@@ -277,6 +281,7 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   writer.raw("select", written.select);
   writer.raw("redact_text", redact_text);
   writer.raw("set_metadata", set_metadata);
+  writer.raw("redact_images", redact_images);
   writer.close_object();
   return writer.finish();
 }
