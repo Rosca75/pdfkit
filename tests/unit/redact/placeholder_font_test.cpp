@@ -92,8 +92,8 @@ TEST_CASE("the embedded font reads back through the font loader") {
     graph.set(graph.root(), pdfkit::syntax::Object::make_dictionary(std::move(entries)));
   }
   const std::string output = pdfkit::writer::FileWriter::write(graph).bytes;
-  const auto document = pdfkit::syntax::Document::open(pdfkit::platform::as_bytes(output),
-                                                       pdfkit::syntax::Limits{});
+  const auto document =
+      pdfkit::syntax::Document::open(pdfkit::platform::as_bytes(output), pdfkit::syntax::Limits{});
   pdfkit::fonts::FontLoader loader(*document);
   const pdfkit::syntax::Dictionary* catalog = document->catalog().dictionary();
   REQUIRE(catalog != nullptr);

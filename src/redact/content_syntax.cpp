@@ -70,8 +70,8 @@ std::string ContentSyntax::hex(std::string_view bytes) {
 }
 
 std::string ContentSyntax::matrix(const text::Matrix& value) {
-  return number(value.a) + " " + number(value.b) + " " + number(value.c) + " " +
-         number(value.d) + " " + number(value.e) + " " + number(value.f);
+  return number(value.a) + " " + number(value.b) + " " + number(value.c) + " " + number(value.d) +
+         " " + number(value.e) + " " + number(value.f);
 }
 
 }  // namespace pdfkit::redact

@@ -57,7 +57,9 @@ TEST_CASE("the diacritic folding strips the marks a decomposition yields") {
 
 TEST_CASE("the whitespace folding collapses runs to one space") {
   CHECK(fold("Jane \t\n Doe", false, false, true) == "Jane Doe");
-  CHECK(fold("Jane\xC2\xA0\xE2\x80\x83" "Doe", false, false, true) == "Jane Doe");
+  CHECK(fold("Jane\xC2\xA0\xE2\x80\x83"
+             "Doe",
+             false, false, true) == "Jane Doe");
   CHECK(fold("Jane  Doe", false, false, false) == "Jane  Doe");
   CHECK(Folding::is_white_space(U'　'));
   CHECK(Folding::is_white_space(U'\u0085'));
@@ -65,8 +67,7 @@ TEST_CASE("the whitespace folding collapses runs to one space") {
 }
 
 TEST_CASE("each folded code point names its source") {
-  const Folding::Mapped mapped =
-      Folding::fold(Folding::decode("A\xC3\x89  b"), {true, true, true});
+  const Folding::Mapped mapped = Folding::fold(Folding::decode("A\xC3\x89  b"), {true, true, true});
   CHECK(Folding::encode(mapped.text) == "ae b");
   REQUIRE(mapped.source.size() == 4);
   CHECK(mapped.source[0] == 0);
@@ -76,7 +77,7 @@ TEST_CASE("each folded code point names its source") {
 }
 
 TEST_CASE("ill-formed UTF-8 reads as the replacement character") {
-  CHECK(Folding::decode("a\xFF" "b") == std::u32string{U'a', U'�', U'b'});
-  CHECK(Folding::encode(std::u32string{U'a', static_cast<char32_t>(0xD800)}) ==
-        "a\xEF\xBF\xBD");
+  CHECK(Folding::decode("a\xFF"
+                        "b") == std::u32string{U'a', U'�', U'b'});
+  CHECK(Folding::encode(std::u32string{U'a', static_cast<char32_t>(0xD800)}) == "a\xEF\xBF\xBD");
 }

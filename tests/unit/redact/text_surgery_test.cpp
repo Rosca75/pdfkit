@@ -88,18 +88,21 @@ void check_kept(const Rewritten& result) {
   }
 }
 
-std::string drawn(const PageContent& content) { return TextDocument::drawn_text(content); }
+std::string drawn(const PageContent& content) {
+  return TextDocument::drawn_text(content);
+}
 
 std::function<bool(std::size_t, const GlyphRecord&)> draws(std::size_t first, std::size_t last) {
-  return [first, last](std::size_t i, const GlyphRecord&) { return i >= first && i < last; };
+  return [first, last](std::size_t i, const GlyphRecord&) {
+    return i >= first && i < last;
+  };
 }
 
 }  // namespace
 
 TEST_CASE("a word leaves a TJ array and the glyphs after it stay put") {
-  const Rewritten result =
-      rewrite("BT /F1 10 Tf 72 700 Td [(Hello) -250 (World) -250 (again)] TJ (tail) Tj ET",
-              draws(5, 10));
+  const Rewritten result = rewrite(
+      "BT /F1 10 Tf 72 700 Td [(Hello) -250 (World) -250 (again)] TJ (tail) Tj ET", draws(5, 10));
   CHECK(drawn(result.after) == "Helloagaintail");
   check_kept(result);
 }
@@ -112,16 +115,16 @@ TEST_CASE("a word leaves a Tj and the text drawn after the operator stays put") 
 }
 
 TEST_CASE("a quote keeps its line advance when its string is cut") {
-  const Rewritten result = rewrite(
-      "BT /F1 10 Tf 14 TL 72 700 Td (first) Tj (Hello World) ' (next) ' ET", draws(11, 16));
+  const Rewritten result =
+      rewrite("BT /F1 10 Tf 14 TL 72 700 Td (first) Tj (Hello World) ' (next) ' ET", draws(11, 16));
   CHECK(drawn(result.after) == "firstHello next");
   check_kept(result);
 }
 
 TEST_CASE("a double quote keeps its word and character spacing when its string is cut") {
-  const Rewritten result = rewrite(
-      "BT /F1 10 Tf 14 TL 72 700 Td (first) Tj 3 1.5 (Hello World x) \" (next) ' ET",
-      draws(11, 16));
+  const Rewritten result =
+      rewrite("BT /F1 10 Tf 14 TL 72 700 Td (first) Tj 3 1.5 (Hello World x) \" (next) ' ET",
+              draws(11, 16));
   CHECK(drawn(result.after) == "firstHello  xnext");
   check_kept(result);
 }
@@ -148,17 +151,17 @@ TEST_CASE("a removal crosses a TJ number") {
 }
 
 TEST_CASE("a removal crosses two operators and a font change") {
-  const Rewritten result = rewrite(
-      "BT /F1 10 Tf 72 700 Td (Hi Ja) Tj /F2 10 Tf <0041> Tj /F1 12 Tf (ne Doe) Tj ET",
-      draws(3, 8));
+  const Rewritten result =
+      rewrite("BT /F1 10 Tf 72 700 Td (Hi Ja) Tj /F2 10 Tf <0041> Tj /F1 12 Tf (ne Doe) Tj ET",
+              draws(3, 8));
   CHECK(drawn(result.after) == "Hi  Doe");
   check_kept(result);
 }
 
 TEST_CASE("a removal crosses a line break and takes the hyphen") {
-  const Rewritten result = rewrite(
-      "BT /F1 10 Tf 14 TL 72 700 Td (Zebulon Quarter-) Tj T* (field lives) Tj ET",
-      [](std::size_t i, const GlyphRecord&) { return i < 16 || (i >= 16 && i < 21); });
+  const Rewritten result =
+      rewrite("BT /F1 10 Tf 14 TL 72 700 Td (Zebulon Quarter-) Tj T* (field lives) Tj ET",
+              [](std::size_t i, const GlyphRecord&) { return i < 16 || (i >= 16 && i < 21); });
   CHECK(drawn(result.after) == " lives");
   check_kept(result);
 }

@@ -8,12 +8,14 @@
 // goes with them (the placeholder drawn for them is then read once, inside
 // or beside the span) and /Alt and /E become the placeholder, and on any
 // other span every occurrence of a redacted string inside a value (under the
-// string's folding) is replaced by its placeholder. A value is a PDF text string; it is read as UTF-8 and
-// written back as PDFDocEncoding-compatible ASCII when it is ASCII and as
-// UTF-16BE with a byte order mark otherwise (ISO 32000-1 section 7.9.2.2,
-// read). The property list is rewritten where it lives: inline, the BDC
-// operation is written again around the new dictionary; by name, the
-// dictionary the /Properties resource names is replaced.
+// string's folding) is replaced by its placeholder. Every other string of a
+// property list, at any depth (an artifact's /Contents, a producer's private
+// key), has the redacted strings replaced too, because an extractor can copy
+// it as well. A value is a PDF text string; it is read as
+// UTF-8 and written back as PDFDocEncoding-compatible ASCII when it is ASCII and as UTF-16BE with a
+// byte order mark otherwise (ISO 32000-1 section 7.9.2.2, read). The property list is rewritten
+// where it lives: inline, the BDC operation is written again around the new dictionary; by name,
+// the dictionary the /Properties resource names is replaced.
 
 #ifndef PDFKIT_REDACT_MARKED_CONTENT_REWRITER_HPP
 #define PDFKIT_REDACT_MARKED_CONTENT_REWRITER_HPP
@@ -44,8 +46,8 @@ class MarkedContentRewriter {
 
   // value (UTF-8) with every occurrence of a needle replaced by the needle's
   // placeholder; no value when no needle occurs.
-  [[nodiscard]] static std::optional<std::string> replace(std::string_view value,
-                                                          std::span<const MatchFinder::Match> needles);
+  [[nodiscard]] static std::optional<std::string> replace(
+      std::string_view value, std::span<const MatchFinder::Match> needles);
 
   // properties with its text values rewritten: when whole is given (the
   // span's glyphs are all removed) /ActualText removed and /Alt and /E set to
@@ -53,12 +55,21 @@ class MarkedContentRewriter {
   // changes. resolve reads a value given by reference.
   [[nodiscard]] static std::optional<syntax::Dictionary> rewrite(
       const syntax::Dictionary& properties, std::span<const MatchFinder::Match> needles,
-      const std::string* whole, const std::function<syntax::Object(const syntax::Object&)>& resolve);
+      const std::string* whole,
+      const std::function<syntax::Object(const syntax::Object&)>& resolve);
 
   // The bytes of a BDC operation whose operands are tag and the inline
   // properties.
   [[nodiscard]] static std::string operation(const syntax::Object& tag,
-                                             const syntax::Dictionary& properties);
+                                             const syntax::Dictionary& properties,
+                                             std::string_view op = "BDC");
+
+  // value with every occurrence of a needle in its strings (inside arrays
+  // and dictionaries too, at most 32 deep) replaced; changed says whether one
+  // was.
+  [[nodiscard]] static syntax::Object replace_strings(const syntax::Object& value,
+                                                      std::span<const MatchFinder::Match> needles,
+                                                      int depth, bool& changed);
 
   // utf8 as a PDF text string object.
   [[nodiscard]] static syntax::Object text_string(std::string_view utf8);

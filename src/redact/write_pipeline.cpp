@@ -108,8 +108,8 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
     unique.insert(match.placeholder);
   }
   const std::vector<std::string> placeholders(unique.begin(), unique.end());
-  const SelfCheck::Result result = SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(),
-                                                  text.needles, placeholders);
+  const SelfCheck::Result result =
+      SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(), text.needles, placeholders);
   report.self_check_strings = result.strings;
   if (!result.survivors.empty()) {
     throw SelfCheck::refusal(result);

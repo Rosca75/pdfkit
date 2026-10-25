@@ -129,8 +129,8 @@ const PlaceholderFont::Metrics& PlaceholderFont::metrics(Face face) {
     for (const Face each : {Face::regular, Face::bold}) {
       const SubsetFace& data = face_data(each);
       out[static_cast<std::size_t>(each)] = {
-          data.base_font, data.sha256,     data.notdef_width, data.ascent, data.descent,
-          data.cap_height, data.bbox, data.stem_v,       data.weight, data.program};
+          data.base_font,  data.sha256, data.notdef_width, data.ascent, data.descent,
+          data.cap_height, data.bbox,   data.stem_v,       data.weight, data.program};
     }
     return out;
   }();
@@ -154,8 +154,8 @@ std::string PlaceholderFont::to_unicode(Face face) {
       "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n";
   out += std::to_string(sorted.size()) + " beginbfchar\n";
   for (const SubsetGlyph* entry : sorted) {
-    out += "<" + hex4(entry->gid) + "> <" + hex4(static_cast<unsigned char>(entry->character)) +
-           ">\n";
+    out +=
+        "<" + hex4(entry->gid) + "> <" + hex4(static_cast<unsigned char>(entry->character)) + ">\n";
   }
   out += "endbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
   return out;
@@ -213,8 +213,9 @@ Object::Reference PlaceholderFont::embed(Face face) {
   descendant.set("CIDSystemInfo", Object::make_dictionary(std::move(system)));
   descendant.set("FontDescriptor", Object::make_reference(descriptor_reference));
   descendant.set("DW", Object::make_integer(data.notdef_width));
-  descendant.set("W", Object::make_array({Object::make_integer(sorted.empty() ? 1 : sorted.front()->gid),
-                                          Object::make_array(std::move(widths))}));
+  descendant.set("W",
+                 Object::make_array({Object::make_integer(sorted.empty() ? 1 : sorted.front()->gid),
+                                     Object::make_array(std::move(widths))}));
   descendant.set("CIDToGIDMap", Object::make_name("Identity"));
   const Object::Reference descendant_reference =
       graph_->add(Object::make_dictionary(std::move(descendant)));

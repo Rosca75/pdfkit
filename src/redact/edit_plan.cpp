@@ -50,8 +50,8 @@ void EditPlan::select_pages(const std::vector<std::int64_t>& pages) {
 
 const std::string& EditPlan::fingerprint() {
   if (fingerprint_.empty()) {
-    const auto digest = platform::crypto::Sha2::digest(platform::crypto::Sha2::Variant::sha256,
-                                                       document_->bytes());
+    const auto digest =
+        platform::crypto::Sha2::digest(platform::crypto::Sha2::Variant::sha256, document_->bytes());
     constexpr std::string_view hex = "0123456789abcdef";
     for (const std::byte value : digest) {
       const auto byte = std::to_integer<unsigned>(value);

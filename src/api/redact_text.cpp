@@ -44,7 +44,9 @@ constexpr std::string_view default_placeholder = "[REDACTED]";
               std::string(shape), fix);
 }
 
-std::string where(std::size_t index) { return "match " + std::to_string(index); }
+std::string where(std::size_t index) {
+  return "match " + std::to_string(index);
+}
 
 bool flag(const JsonValue& value, std::size_t index, const std::string& name) {
   if (value.kind() != JsonValue::Kind::boolean) {
@@ -138,7 +140,8 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index) {
     }
   }
   if (search == glyphs) {
-    refuse(where(index) + (search ? " has both \"search\" and \"glyphs\"" : " has neither \"search\" nor \"glyphs\""),
+    refuse(where(index) + (search ? " has both \"search\" and \"glyphs\""
+                                  : " has neither \"search\" nor \"glyphs\""),
            "give a match either a search string or a glyph range");
   }
   return match;
@@ -197,7 +200,11 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       for (const pdfkit::redact::TextRedactor::Found& found : reports[i].occurrences) {
         writer.begin_object();
         writer.key("page").unsigned_integer(found.page);
-        writer.key("glyphs").begin_array().unsigned_integer(found.first).unsigned_integer(found.last).end_array();
+        writer.key("glyphs")
+            .begin_array()
+            .unsigned_integer(found.first)
+            .unsigned_integer(found.last)
+            .end_array();
         writer.key("text").string(found.text);
         writer.key("rectangles").begin_array();
         for (const pdfkit::text::Rect& box : found.rectangles) {

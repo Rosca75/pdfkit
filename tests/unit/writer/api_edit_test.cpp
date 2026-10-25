@@ -157,7 +157,7 @@ TEST_CASE("pdfkit_write returns the bytes and the report, or an error with out_p
   CHECK(report.find("pages")->as_array().size() == 2);
   CHECK(report.find("pages")->as_array()[0].as_int64() == 2);
   CHECK(report.find("bytes")->as_int64() == static_cast<std::int64_t>(bytes.size()));
-  CHECK(report.find("channels")->as_array().size() == 23);
+  CHECK(report.find("channels")->as_array().size() == 24);
   CHECK(report.find("rectangles")->as_array().empty());
   const JsonValue* check = report.find("self_check");
   CHECK(check->find("status")->as_string() == "not_run");
@@ -174,7 +174,7 @@ TEST_CASE("pdfkit_channels reports every row and refuses options") {
   REQUIRE(pdfkit_channels(session.doc, "{}", &out) == PDFKIT_OK);
   const JsonValue report = JsonReader::parse(text_of(out));
   const auto& rows = report.find("channels")->as_array();
-  REQUIRE(rows.size() == 23);
+  REQUIRE(rows.size() == 24);
   for (const JsonValue& row : rows) {
     CHECK(row.find("present")->as_bool() == false);
     CHECK(row.find("count")->as_int64() == 0);

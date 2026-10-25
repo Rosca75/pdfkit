@@ -111,6 +111,7 @@ ch_encrypt	channels	1	an /Encrypt dictionary carrying a vendor key whose string 
 ch_uri_base	channels	1	a catalog /URI dictionary with a /Base URL	synth
 ch_search_index	channels	1	a private search-index key on the catalog and a non-standard /PageMode	synth
 ch_page_owned	channels	1	the page-selection leak fixture of DESIGN.md 16: a marker in every channel a page owns or names	synth
+ch_xobject_private	channels	1	private keys (a producer's own) on a form or an image XObject	synth
 gen_word	generators	3	produced by Microsoft Word (Save as PDF)	autotag
 gen_word_pdfa	generators	1	produced by Microsoft Word as PDF/A	office
 gen_print_to_pdf	generators	3	produced by Microsoft Print to PDF	autotag

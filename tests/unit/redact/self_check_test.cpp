@@ -160,8 +160,8 @@ TEST_CASE("pdfkit_check answers every survivor by page and surface") {
   CHECK(answer.find(R"({"string":"zebulon","page":1,"surface":"text","object":null})") !=
         std::string::npos);
   CHECK(answer.find("\"strings\":2") != std::string::npos);
-  const pdfkit_status refused = pdfkit_check(
-      reinterpret_cast<const std::uint8_t*>("junk"), 4, R"({"strings": []})", &out);
+  const pdfkit_status refused =
+      pdfkit_check(reinterpret_cast<const std::uint8_t*>("junk"), 4, R"({"strings": []})", &out);
   pdfkit_buffer_free(&out);
   CHECK(refused == PDFKIT_E_REFUSED);
 }

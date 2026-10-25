@@ -34,9 +34,9 @@ std::string three_pages(pdfkit::test::TextDocument& fixture, bool own_resources)
   const std::string font = std::to_string(fixture.helvetica());
   const std::string resources =
       own_resources ? "/Resources << /Font << /F1 " + font + " 0 R >> >> " : "";
-  const std::uint32_t form = fixture.add_stream(
-      "/Type /XObject /Subtype /Form /BBox [0 0 600 100] " + resources,
-      "BT /F1 10 Tf 10 50 Td (Confidential: Zebulon Quarterfield) Tj ET");
+  const std::uint32_t form =
+      fixture.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 600 100] " + resources,
+                         "BT /F1 10 Tf 10 50 Td (Confidential: Zebulon Quarterfield) Tj ET");
   const std::string uses = "/XObject << /Fm1 " + std::to_string(form) + " 0 R >>";
   for (int page = 1; page <= 3; ++page) {
     fixture.page("BT /F1 10 Tf 72 700 Td (Page " + std::to_string(page) +

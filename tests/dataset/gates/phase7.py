@@ -8,7 +8,7 @@
 # scans the planted-marker files itself: a synthesised input that holds markers
 # `PDFKITMARK<RR>X<NN>` is read together with its identity-write output and its
 # page-selection output (raw bytes and every stream the scanner decodes). A marker
-# of a stripped channel (rows 01 to 23) must occur in no output; a marker of drawn
+# of a stripped channel (rows 01 to 24) must occur in no output; a marker of drawn
 # content (rows 90 to 93, NN the page) must occur in the identity write and, in a
 # selection, exactly for the kept pages. The result is a markdown table of every
 # measure (measure, value, threshold, pass or fail), written into the run folder
@@ -32,7 +32,7 @@ import autotag  # noqa: E402
 import common  # noqa: E402
 
 MARK_RE = re.compile(rb"PDFKITMARK(\d\d)X(\d\d)")
-STRIPPED_ROWS = range(1, 24)
+STRIPPED_ROWS = range(1, 25)
 DRAWN_ROWS = range(90, 94)
 
 # The thresholds of the gate; a share is a fraction of its population.

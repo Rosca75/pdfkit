@@ -73,6 +73,24 @@ constexpr std::array<std::string_view, 18> viewer_keys{"HideToolbar",
 constexpr std::array<std::string_view, 6> page_modes{"UseNone",    "UseOutlines", "UseThumbs",
                                                      "FullScreen", "UseOC",       "UseAttachments"};
 
+// ISO 32000-1 tables 5 and 95 (read): the keys of a form XObject kept. The
+// external-file keys (/F, /FFilter, /FDecodeParms), /Ref and /OPI name files
+// outside the document and are dropped with every private key, because a
+// producer's own key on a form (a pdfTeX file name, an editor's private
+// copy of an annotation's text) is a channel nobody listed.
+constexpr std::array<std::string_view, 21> form_keys{
+    "Type",   "Subtype",     "FormType",  "BBox",         "Matrix",       "Resources",
+    "Group",  "Metadata",    "PieceInfo", "LastModified", "StructParent", "StructParents",
+    "OC",     "Name",        "AF",        "Measure",      "PtData",       "Length",
+    "Filter", "DecodeParms", "DL"};
+// ISO 32000-1 tables 5, 89 and 146 (read): the keys of an image XObject kept,
+// /Matte of a soft mask among them; /ID (a web capture identifier) and /OPI go.
+constexpr std::array<std::string_view, 24> image_keys{
+    "Type",   "Subtype",     "Width", "Height",       "ColorSpace",  "BitsPerComponent",
+    "Intent", "ImageMask",   "Mask",  "Decode",       "Interpolate", "Alternates",
+    "SMask",  "SMaskInData", "Name",  "StructParent", "Metadata",    "OC",
+    "AF",     "Measure",     "Matte", "Length",       "Filter",      "DecodeParms"};
+
 template <std::size_t N>
 bool listed(const std::array<std::string_view, N>& list, std::string_view key) {
   return std::ranges::find(list, key) != list.end();
@@ -369,6 +387,38 @@ std::size_t detect_uri_base(Scan& scan) {
   return scan.catalog.contains("URI") ? 1 : 0;
 }
 
+// The kind of XObject a stream dictionary is, by its /Subtype.
+enum class XObject : std::uint8_t { none, form, image };
+
+XObject xobject_of(const Dictionary& dictionary) {
+  const Object& type = dictionary.get("Type");
+  if (!type.is_null() && !type.is_name("XObject")) {
+    return XObject::none;
+  }
+  if (dictionary.get("Subtype").is_name("Form")) {
+    return XObject::form;
+  }
+  return dictionary.get("Subtype").is_name("Image") ? XObject::image : XObject::none;
+}
+
+bool private_key(XObject kind, std::string_view key) {
+  return (kind == XObject::form && !listed(form_keys, key)) ||
+         (kind == XObject::image && !listed(image_keys, key));
+}
+
+std::size_t detect_xobject_private(Scan& scan) {
+  std::size_t count = 0;
+  for (const Object& value : scan.held) {
+    if (const syntax::Stream* stream = value.stream()) {
+      const XObject kind = xobject_of(stream->dictionary());
+      for (const auto& entry : stream->dictionary().entries()) {
+        count += one_if(private_key(kind, entry.first));
+      }
+    }
+  }
+  return count;
+}
+
 std::size_t detect_search_index(Scan& scan) {
   const Object& mode = scan.catalog.get("PageMode");
   const std::string* name = mode.name();
@@ -469,11 +519,15 @@ void strip_search_index(Edits& edits) {
   edits.catalog.insert("SearchIndex");
 }
 
+void strip_xobject_private(Edits& edits) {
+  edits.xobject_private = true;
+}
+
 // The table: docs/DESIGN.md section 15, in its order. Earlier revisions,
 // unreferenced objects and the encryption are stripped by writing a fresh,
 // unencrypted file of the reachable objects only, so their rows declare no
 // edit.
-constexpr std::array<ChannelTable::Row, 23> table{{
+constexpr std::array<ChannelTable::Row, 24> table{{
     {"ch_revisions", "earlier revisions (incremental updates)", &detect_revisions, &strip_nothing},
     {"ch_unreferenced", "unreferenced objects", &detect_unreferenced, &strip_nothing},
     {"ch_thumbnail", "page thumbnails /Thumb", &detect_thumbnails, &strip_thumbnails},
@@ -504,11 +558,13 @@ constexpr std::array<ChannelTable::Row, 23> table{{
     {"ch_encrypt", "encryption /Encrypt", &detect_encryption, &strip_nothing},
     {"ch_uri_base", "the base URI /URI", &detect_uri_base, &strip_uri_base},
     {"ch_search_index", "search indexes", &detect_search_index, &strip_search_index},
+    {"ch_xobject_private", "private keys of form and image XObjects", &detect_xobject_private,
+     &strip_xobject_private},
 }};
 
 // ---- the rewrite pass ---------------------------------------------------------
 
-enum class Role : std::uint8_t { other, catalog, page };
+enum class Role : std::uint8_t { other, catalog, page, form, image };
 
 class Rewriter {
  public:
@@ -559,7 +615,11 @@ class Rewriter {
  private:
   Object rewrite_top(const Object& value, Role role, bool& changed) {
     if (const syntax::Stream* stream = value.stream()) {
-      Dictionary dictionary = rewrite_dictionary(stream->dictionary(), Role::other, changed);
+      const XObject kind = xobject_of(stream->dictionary());
+      const Role own = kind == XObject::form    ? Role::form
+                       : kind == XObject::image ? Role::image
+                                                : Role::other;
+      Dictionary dictionary = rewrite_dictionary(stream->dictionary(), own, changed);
       return changed ? Object::make_stream(stream->with_dictionary(std::move(dictionary))) : value;
     }
     if (const Dictionary* dictionary = value.dictionary()) {
@@ -601,6 +661,12 @@ class Rewriter {
     }
     if (role == Role::page) {
       return !listed(page_keys, key) || edits_.page.contains(key);
+    }
+    if (edits_.xobject_private && role == Role::form) {
+      return private_key(XObject::form, key);
+    }
+    if (edits_.xobject_private && role == Role::image) {
+      return private_key(XObject::image, key);
     }
     return false;
   }

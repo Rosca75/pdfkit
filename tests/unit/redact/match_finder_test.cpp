@@ -128,9 +128,9 @@ TEST_CASE("the text of a glyph range is the extraction's text") {
 }
 
 TEST_CASE("overlapping and adjacent occurrences merge by placeholder") {
-  std::vector<MatchFinder::Occurrence> occurrences{
-      {0, 1, 10, 20, "[A]"}, {1, 1, 15, 25, "[A]"}, {2, 1, 25, 30, "[A]"},
-      {3, 1, 28, 40, "[B]"}, {4, 1, 50, 55, "[B]"}, {5, 1, 52, 53, "[C]"}};
+  std::vector<MatchFinder::Occurrence> occurrences{{0, 1, 10, 20, "[A]"}, {1, 1, 15, 25, "[A]"},
+                                                   {2, 1, 25, 30, "[A]"}, {3, 1, 28, 40, "[B]"},
+                                                   {4, 1, 50, 55, "[B]"}, {5, 1, 52, 53, "[C]"}};
   const auto merged = MatchFinder::merge(occurrences);
   REQUIRE(merged.size() == 3);
   CHECK(merged[0].first == 10U);
@@ -150,4 +150,34 @@ TEST_CASE("a string that folds to nothing finds nothing") {
   MatchFinder finder(page);
   CHECK(finder.find(search("   "), 0).empty());
   CHECK(finder.find(search(""), 0).empty());
+}
+
+TEST_CASE("the codes of a string spread out of reading order are found as bytes") {
+  TextDocument document;
+  // A font whose /Differences name other glyphs for the codes of the letters:
+  // the text reads "xxxxxxx" while the bytes spell the name.
+  document.page("BT /F9 10 Tf 72 700 Td (Zebulon) Tj ET BT /F1 10 Tf 72 600 Td (rest) Tj ET", "",
+                "",
+                "/F9 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << "
+                "/Differences [90 /x 98 /x 101 /x 108 /x 110 /x 111 /x 117 /x] >> >>");
+  const PageText page = document.read();
+  MatchFinder finder(page);
+  CHECK(finder.find(search("zebulon"), 0).empty());
+  const auto coded = finder.find_codes(search("zebulon"), 0);
+  REQUIRE_FALSE(coded.empty());
+  std::size_t covered_glyphs = 0;
+  for (const MatchFinder::Occurrence& occurrence : coded) {
+    covered_glyphs += occurrence.last - occurrence.first;
+  }
+  CHECK(covered_glyphs == 7);
+  CHECK(coded.front().placeholder == "[REDACTED]");
+  CHECK(finder.find_codes(search("absent"), 0).empty());
+}
+
+TEST_CASE("the byte forms of a string are its UTF-8, Latin-1 and UTF-16BE") {
+  const auto forms = MatchFinder::byte_forms(search("\xC3\x89lise  Doe"));
+  REQUIRE(forms.size() == 3);
+  CHECK(forms[0] == "\xC3\x89lise doe");
+  CHECK(forms[1] == "\xC9lise doe");
+  CHECK(forms[2] == std::string("\0\xC9\0l\0i\0s\0e\0 \0d\0o\0e", 18));
 }

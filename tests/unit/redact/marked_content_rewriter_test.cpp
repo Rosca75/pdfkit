@@ -101,3 +101,17 @@ TEST_CASE("a text string is ASCII when it can be and UTF-16BE otherwise") {
   CHECK(wide.string()->bytes.substr(0, 2) == "\xFE\xFF");
   CHECK(pdfkit::text::TextString::to_utf8(wide.string()->bytes) == "\xC3\x89lise");
 }
+
+TEST_CASE("every string of a property list loses the redacted string") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page(
+      "/Artifact << /Contents (Footer by Zebulon) /Type /Pagination >> BDC "
+      "BT /F1 10 Tf 72 40 Td (Footer) Tj ET EMC /Note << /Extra [(Zebulon) << /Deep (Zebulon) >>] "
+      ">> DP BT /F1 10 Tf 72 700 Td (Zebulon wrote) Tj ET");
+  const pdfkit::test::Redaction result =
+      pdfkit::test::redact(fixture.bytes(), pdfkit::test::search("Zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.report);
+  CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
+  CHECK(pdfkit::test::contains_marker(result.pdf, "Footer by [REDACTED]"));
+}

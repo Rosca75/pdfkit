@@ -96,7 +96,8 @@ TEST_CASE("the bold face follows the font's weight and its name") {
       "/Widths [] /FontDescriptor << /Type /FontDescriptor /FontName /Corporate /Flags 32 "
       "/FontWeight 700 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 "
       "/CapHeight 700 /StemV 80 >> /Encoding /WinAnsiEncoding >>";
-  const Fitted weighted = fit("BT /FW 10 Tf 72 700 Td (Jane Doe) Tj ET", 0, 4, "[X]", bold_by_weight);
+  const Fitted weighted =
+      fit("BT /FW 10 Tf 72 700 Td (Jane Doe) Tj ET", 0, 4, "[X]", bold_by_weight);
   CHECK(weighted.result.face == pdfkit::writer::PlaceholderFont::Face::bold);
 }
 

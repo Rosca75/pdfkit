@@ -26,7 +26,7 @@ inline constexpr std::string_view dataset_redaction_marker = "Zebulon Quarterfie
 
 // The words the job of id redacts out of text (the pages' text joined).
 [[nodiscard]] std::vector<std::string> dataset_redaction_words(std::string_view id,
-                                                              std::string_view text);
+                                                               std::string_view text);
 
 // The one-line JSON value of the outcome's "redact_text" for an open
 // document whose text member is text_member; out_dir is the run folder.

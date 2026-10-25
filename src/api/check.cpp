@@ -74,9 +74,9 @@ MatchFinder::Match read_string(const JsonValue& item, std::size_t index) {
         }
       }
     } else {
-      refuse(where + " gives \"" + name + "\" as " +
-                 std::string(JsonValue::kind_name(value.kind())),
-             "give \"text\" as a string and \"folding\" as an object, nothing else");
+      refuse(
+          where + " gives \"" + name + "\" as " + std::string(JsonValue::kind_name(value.kind())),
+          "give \"text\" as a string and \"folding\" as an object, nothing else");
     }
   }
   if (!text) {

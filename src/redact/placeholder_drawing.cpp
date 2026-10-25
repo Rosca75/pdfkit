@@ -12,7 +12,9 @@ namespace pdfkit::redact {
 
 std::string PlaceholderDrawing::fill(const text::Colour& colour) {
   const std::vector<double>& c = colour.components;
-  const auto component = [&c](std::size_t i) { return ContentSyntax::number(c[i]); };
+  const auto component = [&c](std::size_t i) {
+    return ContentSyntax::number(c[i]);
+  };
   if (colour.family == "DeviceGray" && c.size() == 1) {
     return component(0) + " g\n";
   }

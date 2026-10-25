@@ -175,7 +175,8 @@ TextSurgery::Plan TextSurgery::plan(const text::ContentStream& stream, std::size
       }
     } else if (placed) {
       const std::size_t shown =
-          operation.op == "\"" ? 2 : (operation.operands.empty() ? 0 : operation.operands.size() - 1);
+          operation.op == "\"" ? 2
+                               : (operation.operands.empty() ? 0 : operation.operands.size() - 1);
       const syntax::Object::String* string =
           shown < operation.operands.size() ? operation.operands[shown].string() : nullptr;
       placed = string != nullptr && cut(*string, by_operand[shown], removed, items);

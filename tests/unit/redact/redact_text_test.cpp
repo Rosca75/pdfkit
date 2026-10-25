@@ -150,9 +150,9 @@ TEST_CASE("a redaction and a page selection work together") {
 TEST_CASE("the answer lists each match's occurrences with their rectangles") {
   pdfkit::test::TextDocument fixture;
   fixture.page("BT /F1 10 Tf 72 700 Td (Zebulon and zebulon) Tj ET");
-  const pdfkit::test::Redaction result = redact(
-      fixture.bytes(),
-      R"({"matches": [{"search": "ZEBULON", "folding": {"case": true}, "placeholder": "[A]"},
+  const pdfkit::test::Redaction result =
+      redact(fixture.bytes(),
+             R"({"matches": [{"search": "ZEBULON", "folding": {"case": true}, "placeholder": "[A]"},
                       {"search": "absent"}]})");
   REQUIRE(result.match_status == PDFKIT_OK);
   INFO(result.matches);
@@ -180,14 +180,14 @@ TEST_CASE("a glyph range from another document or past its page is refused") {
   const std::size_t at = probe.matches.find("\"fingerprint\":\"");
   REQUIRE(at != std::string::npos);
   const std::string fingerprint = probe.matches.substr(at + 15, 64);
-  const pdfkit::test::Redaction past =
-      redact(file, R"({"matches": [{"glyphs": {"page": 1, "first": 5, "last": 50}, "fingerprint": ")" +
-                       fingerprint + "\"}]}");
+  const pdfkit::test::Redaction past = redact(
+      file, R"({"matches": [{"glyphs": {"page": 1, "first": 5, "last": 50}, "fingerprint": ")" +
+                fingerprint + "\"}]}");
   CHECK(past.match_status == PDFKIT_E_INVALID_ARGUMENT);
   CHECK(past.matches.find("glyph range") != std::string::npos);
-  const pdfkit::test::Redaction good =
-      redact(file, R"({"matches": [{"glyphs": {"page": 1, "first": 0, "last": 3}, "fingerprint": ")" +
-                       fingerprint + "\"}]}");
+  const pdfkit::test::Redaction good = redact(
+      file, R"({"matches": [{"glyphs": {"page": 1, "first": 0, "last": 3}, "fingerprint": ")" +
+                fingerprint + "\"}]}");
   REQUIRE(good.write_status == PDFKIT_OK);
   CHECK(page_text(good.pdf).ends_with("ulon"));
 }
@@ -198,7 +198,8 @@ TEST_CASE("malformed matches are refused") {
   const std::string file = fixture.bytes();
   for (const std::string bad :
        {R"({})", R"({"matches": [1]})", R"({"matches": [{"search": "a", "glyphs": {}}]})",
-        R"({"matches": [{"search": 5}]})", R"({"matches": [{"search": "a", "folding": {"x": true}}]})",
+        R"({"matches": [{"search": 5}]})",
+        R"({"matches": [{"search": "a", "folding": {"x": true}}]})",
         R"({"matches": [{"search": "a"}], "extra": 1})"}) {
     INFO(bad);
     CHECK(redact(file, bad).match_status == PDFKIT_E_INVALID_ARGUMENT);

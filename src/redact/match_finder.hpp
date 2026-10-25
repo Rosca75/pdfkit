@@ -75,6 +75,25 @@ class MatchFinder {
   // string that folds to nothing finds nothing.
   [[nodiscard]] std::vector<Occurrence> find(const Match& match, std::size_t index);
 
+  // The occurrences of a search match in the codes the page's strings show:
+  // per string operand, the bytes of its codes, searched for the match's
+  // byte forms (byte_forms), each found run of glyphs an occurrence for every
+  // stretch of it that is contiguous in reading order. It removes what a font
+  // that reads its codes otherwise still spells in the file's bytes (a code
+  // the decoding ladder could not read, a font whose glyphs are spread out of
+  // reading order), which the self-check's scan of string operands and an
+  // extractor reading the codes as Latin-1 would find.
+  [[nodiscard]] std::vector<Occurrence> find_codes(const Match& match, std::size_t index);
+
+  // The byte forms of a search string the raw scans look for: its UTF-8, its
+  // Latin-1 when every character fits, and its UTF-16BE, its white space
+  // collapsed when white space folds and its ASCII letters in lower case when
+  // case folds.
+  [[nodiscard]] static std::vector<std::string> byte_forms(const Match& match);
+
+  // bytes with its ASCII letters in lower case.
+  [[nodiscard]] static std::string lower_ascii(std::string bytes);
+
   // The page's text over [first, last), as pdfkit_text writes it: the string
   // a glyph-range match redacts.
   [[nodiscard]] std::string text(std::size_t first, std::size_t last) const;
@@ -111,6 +130,8 @@ class MatchFinder {
   std::vector<Unit> plain_;
   std::vector<Unit> joined_;
   std::map<unsigned, Haystack> folded_;
+  // The reading-order position of each draw index, built on first use.
+  std::vector<std::size_t> position_;
 };
 
 }  // namespace pdfkit::redact

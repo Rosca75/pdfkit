@@ -107,9 +107,8 @@ text::Rect PlaceholderFitting::box(const text::GlyphRecord& anchor, std::string_
                                    PlaceholderFont::Face face, double scale) {
   const PlaceholderFont::Metrics& metrics = PlaceholderFont::metrics(face);
   const double size = anchor.font_size;
-  const double length =
-      PlaceholderFont::width(placeholder, face) / 1000.0 * size * anchor.horizontal_scaling / 100.0 *
-      scale;
+  const double length = PlaceholderFont::width(placeholder, face) / 1000.0 * size *
+                        anchor.horizontal_scaling / 100.0 * scale;
   return text::Rect::transformed(0.0, anchor.rise + (metrics.bbox[1] / 1000.0 * size), length,
                                  anchor.rise + (metrics.bbox[3] / 1000.0 * size),
                                  placement(anchor));

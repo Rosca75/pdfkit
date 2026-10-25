@@ -22,11 +22,11 @@
 
 #include <algorithm>
 #include <functional>
-#include <optional>
-#include <utility>
 #include <map>
+#include <optional>
 #include <set>
 #include <string_view>
+#include <utility>
 
 namespace pdfkit::redact {
 
@@ -56,68 +56,11 @@ enum class Kind : std::uint8_t { scan, content, skip };
   return text;
 }
 
-[[nodiscard]] char lower(char value) noexcept {
-  return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a') : value;
-}
-
-// The byte forms of a needle the raw scan looks for.
-[[nodiscard]] std::vector<std::string> forms(const MatchFinder::Match& needle) {
-  std::u32string text = TextFolding::decode(needle.search);
-  if (needle.folding.text.whitespace) {
-    std::u32string collapsed;
-    for (const char32_t value : text) {
-      if (TextFolding::is_white_space(value)) {
-        if (!collapsed.empty() && collapsed.back() != U' ') {
-          collapsed.push_back(U' ');
-        }
-      } else {
-        collapsed.push_back(value);
-      }
-    }
-    while (!collapsed.empty() && collapsed.back() == U' ') {
-      collapsed.pop_back();
-    }
-    text = std::move(collapsed);
-  }
-  std::vector<std::string> out;
-  if (text.empty()) {
-    return out;
-  }
-  out.push_back(TextFolding::encode(text));
-  std::string latin;
-  bool fits = true;
-  std::string utf16;
-  for (const char32_t value : text) {
-    fits = fits && value < 0x100;
-    latin.push_back(static_cast<char>(value & 0xFFU));
-    if (value >= 0x10000) {
-      const char32_t offset = value - 0x10000;
-      for (const char32_t unit : {0xD800 + (offset >> 10U), 0xDC00 + (offset & 0x3FFU)}) {
-        utf16.push_back(static_cast<char>(unit >> 8U));
-        utf16.push_back(static_cast<char>(unit & 0xFFU));
-      }
-    } else {
-      utf16.push_back(static_cast<char>(value >> 8U));
-      utf16.push_back(static_cast<char>(value & 0xFFU));
-    }
-  }
-  if (fits && latin != out.front()) {
-    out.push_back(latin);
-  }
-  out.push_back(utf16);
-  if (needle.folding.text.case_fold) {
-    for (std::string& form : out) {
-      std::ranges::transform(form, form.begin(), lower);
-    }
-  }
-  return out;
-}
-
 [[nodiscard]] bool scan(std::string bytes, const std::vector<std::string>& wanted, bool fold_case,
                         std::span<const std::string> placeholders) {
   bytes = without(std::move(bytes), placeholders);
   if (fold_case) {
-    std::ranges::transform(bytes, bytes.begin(), lower);
+    bytes = MatchFinder::lower_ascii(std::move(bytes));
   }
   return std::ranges::any_of(wanted, [&bytes](const std::string& form) {
     return !form.empty() && bytes.find(form) != std::string::npos;
@@ -127,7 +70,7 @@ enum class Kind : std::uint8_t { scan, content, skip };
 // The character reference or predefined entity at xml[at] ('&'), as UTF-8,
 // and the index of its ';'; no value when it is neither.
 [[nodiscard]] std::optional<std::pair<std::string, std::size_t>> entity_at(std::string_view xml,
-                                                                         std::size_t at) {
+                                                                           std::size_t at) {
   const std::size_t end = xml.find(';', at);
   if (end == std::string_view::npos || end - at > 12) {
     return std::nullopt;
@@ -211,7 +154,7 @@ class Search {
          SelfCheck::Result& result)
       : needles_(needles), placeholders_(placeholders), result_(result) {
     for (const MatchFinder::Match& needle : needles) {
-      forms_.push_back(forms(needle));
+      forms_.push_back(MatchFinder::byte_forms(needle));
     }
   }
 
@@ -255,8 +198,7 @@ class Search {
   std::span<const std::string> placeholders_;
   std::vector<std::vector<std::string>> forms_;
   SelfCheck::Result& result_;
-  std::set<std::tuple<std::string, std::optional<std::uint32_t>, std::string, std::uint32_t>>
-      seen_;
+  std::set<std::tuple<std::string, std::optional<std::uint32_t>, std::string, std::uint32_t>> seen_;
 };
 
 [[nodiscard]] bool font_dictionary(const Dictionary& dictionary) {
@@ -429,7 +371,8 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
       skip(dictionary->get("UseCMap"));
     }
     if (dictionary->contains("CharProcs")) {
-      if (const Dictionary* procedures = document->resolve(dictionary->get("CharProcs")).dictionary()) {
+      if (const Dictionary* procedures =
+              document->resolve(dictionary->get("CharProcs")).dictionary()) {
         for (const auto& [name, procedure] : procedures->entries()) {
           if (const auto reference = procedure.reference()) {
             kinds.try_emplace(reference->number, Kind::content);
@@ -479,8 +422,8 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
         dictionary.get("Type").is_name("Metadata") || dictionary.get("Type").is_name("CMap") ||
         dictionary.get("Type").is_name("XRef") || dictionary.get("Type").is_name("ObjStm")) {
       kind = Kind::skip;
-    } else if (kind == Kind::scan && (dictionary.get("Subtype").is_name("Form") ||
-                                      dictionary.contains("PatternType"))) {
+    } else if (kind == Kind::scan &&
+               (dictionary.get("Subtype").is_name("Form") || dictionary.contains("PatternType"))) {
       kind = Kind::content;
     }
     if (kind == Kind::skip) {
@@ -492,9 +435,9 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
       page = found->second;
     }
     if (kind == Kind::scan) {
-      search.raw(std::string(reinterpret_cast<const char*>(decoded.bytes.data()),
-                             decoded.bytes.size()),
-                 page, number);
+      search.raw(
+          std::string(reinterpret_cast<const char*>(decoded.bytes.data()), decoded.bytes.size()),
+          page, number);
       continue;
     }
     const std::vector<std::vector<std::byte>> pieces{decoded.bytes};

@@ -167,7 +167,8 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
         const JsonText::Node* count = found->member(item, "count");
         counts.emplace_back(count != nullptr ? std::string(count->raw) : "0");
         const JsonText::Node* list_node = found->member(item, "occurrences");
-        for (const std::size_t at : list_node != nullptr ? list_node->items : std::vector<std::size_t>{}) {
+        for (const std::size_t at :
+             list_node != nullptr ? list_node->items : std::vector<std::size_t>{}) {
           ++occurrences;
           if (const JsonText::Node* runs = found->member(found->node(at), "codes")) {
             for (const std::size_t run : runs->items) {
@@ -241,8 +242,8 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
          ", \"sha256\": " + json_quote(Sha256::hex(data, pdf.size())) +
          ", \"bytes\": " + std::to_string(pdf.size()) + ", \"pages\": " + pages +
          ", \"self_check\": " + self_check + ", \"rectangles\": " + rectangles +
-         ", \"placeholders\": " + placeholders + ", \"codes\": " +
-         list(std::vector<std::string>(codes.begin(), codes.end())) +
+         ", \"placeholders\": " + placeholders +
+         ", \"codes\": " + list(std::vector<std::string>(codes.begin(), codes.end())) +
          ", \"reopen\": " + dataset_reopen(pdf) + "}";
 }
 

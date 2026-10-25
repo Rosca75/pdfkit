@@ -12,6 +12,7 @@
 #include "text/text_string.hpp"
 #include "writer/serialiser.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 
@@ -109,14 +110,68 @@ std::optional<syntax::Dictionary> MarkedContentRewriter::rewrite(
       changed = true;
     }
   }
+  // Every other string of the list (an artifact's /Contents, a producer's
+  // own key) is a place an extractor can copy the string from too.
+  for (const auto& [key, value] : properties.entries()) {
+    if (std::ranges::find(keys, std::string_view(key)) != keys.end()) {
+      continue;
+    }
+    bool any = false;
+    syntax::Object replaced = replace_strings(value, needles, 0, any);
+    if (any) {
+      out.set(key, std::move(replaced));
+      changed = true;
+    }
+  }
   if (!changed) {
     return std::nullopt;
   }
   return out;
 }
 
+syntax::Object MarkedContentRewriter::replace_strings(const syntax::Object& value,
+                                                      std::span<const MatchFinder::Match> needles,
+                                                      int depth, bool& changed) {
+  constexpr int max_depth = 32;
+  if (depth > max_depth) {
+    return value;
+  }
+  if (const syntax::Object::String* string = value.string()) {
+    if (const auto replaced = replace(text::TextString::to_utf8(string->bytes), needles)) {
+      changed = true;
+      return text_string(*replaced);
+    }
+    return value;
+  }
+  if (const syntax::Object::Array* items = value.array()) {
+    syntax::Object::Array out;
+    bool any = false;
+    for (const syntax::Object& item : *items) {
+      out.push_back(replace_strings(item, needles, depth + 1, any));
+    }
+    changed = changed || any;
+    return any ? syntax::Object::make_array(std::move(out)) : value;
+  }
+  if (const syntax::Dictionary* dictionary = value.dictionary()) {
+    syntax::Dictionary out = *dictionary;
+    bool any = false;
+    for (const auto& [key, item] : dictionary->entries()) {
+      bool here = false;
+      syntax::Object replaced = replace_strings(item, needles, depth + 1, here);
+      if (here) {
+        out.set(key, std::move(replaced));
+        any = true;
+      }
+    }
+    changed = changed || any;
+    return any ? syntax::Object::make_dictionary(std::move(out)) : value;
+  }
+  return value;
+}
+
 std::string MarkedContentRewriter::operation(const syntax::Object& tag,
-                                             const syntax::Dictionary& properties) {
+                                             const syntax::Dictionary& properties,
+                                             std::string_view op) {
   const writer::Serialiser::Numbering same = [](syntax::Object::Reference reference) {
     return std::optional<std::uint32_t>(reference.number);
   };
@@ -124,7 +179,8 @@ std::string MarkedContentRewriter::operation(const syntax::Object& tag,
   writer::Serialiser::write(out, tag, same);
   out += ' ';
   writer::Serialiser::write(out, syntax::Object::make_dictionary(properties), same);
-  out += " BDC";
+  out += ' ';
+  out += op;
   return out;
 }
 

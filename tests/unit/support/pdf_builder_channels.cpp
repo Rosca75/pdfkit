@@ -185,6 +185,12 @@ std::string plant(std::string_view id, const std::string& marker) {
     s.catalog_extra = "/URI << /Base " + literal(marker) + " >>";
   } else if (id == "ch_search_index") {
     s.catalog_extra = "/SearchIndex << /Data " + literal(marker) + " >>";
+  } else if (id == "ch_xobject_private") {
+    const std::uint32_t form = b.add_stream(
+        "/Type /XObject /Subtype /Form /BBox [0 0 10 10] /PTEX.FileName " + literal(marker),
+        "0 0 1 1 re f");
+    s.resources_extra = "/XObject << /Fx " + ref(form) + " >>";
+    s.content = page_content() + " /Fx Do";
   } else {
     throw std::logic_error("PdfBuilderChannels: no knob for the row " + std::string(id));
   }
@@ -195,12 +201,12 @@ std::string plant(std::string_view id, const std::string& marker) {
 
 const std::vector<std::string_view>& PdfBuilderChannels::rows() {
   static const std::vector<std::string_view> ids{
-      "ch_revisions",     "ch_unreferenced",     "ch_thumbnail",   "ch_pieceinfo",
-      "ch_last_modified", "ch_object_metadata",  "ch_javascript",  "ch_embedded_file",
-      "ch_annotation",    "ch_acroform",         "ch_outline",     "ch_named_dest",
-      "ch_struct_tree",   "ch_optional_content", "ch_page_labels", "ch_xmp_history",
-      "ch_threads",       "ch_web_capture",      "ch_portfolio",   "ch_perms_legal",
-      "ch_encrypt",       "ch_uri_base",         "ch_search_index"};
+      "ch_revisions",     "ch_unreferenced",     "ch_thumbnail",    "ch_pieceinfo",
+      "ch_last_modified", "ch_object_metadata",  "ch_javascript",   "ch_embedded_file",
+      "ch_annotation",    "ch_acroform",         "ch_outline",      "ch_named_dest",
+      "ch_struct_tree",   "ch_optional_content", "ch_page_labels",  "ch_xmp_history",
+      "ch_threads",       "ch_web_capture",      "ch_portfolio",    "ch_perms_legal",
+      "ch_encrypt",       "ch_uri_base",         "ch_search_index", "ch_xobject_private"};
   return ids;
 }
 

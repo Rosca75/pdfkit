@@ -133,11 +133,13 @@ struct Geometry {
       }
     }
   }
-  // Boxes per reading line.
-  std::map<const text::TextLayout::Line*, Rect> per_line;
+  // Boxes per reading line, keyed by the line's first position (a pointer key
+  // would order them by address).
+  std::map<std::size_t, Rect> per_line;
   for (const std::size_t draw : out.removed) {
     const std::size_t p = layout.position[draw];
-    per_line[p == none ? nullptr : layout.line[p]].add(glyph_box(glyphs[draw]));
+    const text::TextLayout::Line* line = p == none ? nullptr : layout.line[p];
+    per_line[line == nullptr ? none : line->first].add(glyph_box(glyphs[draw]));
   }
   for (const auto& [line, box] : per_line) {
     if (!box.is_empty()) {
@@ -146,8 +148,8 @@ struct Geometry {
   }
   // The first line: the line of the occurrence's first glyph.
   const text::TextLayout::Line* first = nullptr;
-  for (std::size_t p = occurrence.first; p < occurrence.last && p < layout.line.size() && first == nullptr;
-       ++p) {
+  for (std::size_t p = occurrence.first;
+       p < occurrence.last && p < layout.line.size() && first == nullptr; ++p) {
     first = layout.line[p];
   }
   if (first == nullptr || occurrence.placeholder.empty()) {
@@ -244,12 +246,34 @@ void note_operation(TextPlan::Target& target, const text::PageContent& content,
   return {};
 }
 
-void rewrite_spans(syntax::Document& document, const PageText& page,
-                   const std::set<std::size_t>& removed,
-                   const std::map<std::size_t, std::string>& placeholder_of,
-                   const std::vector<MatchFinder::Match>& needles, TextPlan::PageWork& work) {
+// For each operation of a stream, the EMC that closes it when it opens
+// marked content (BMC or BDC), else the number of operations; one pass with a
+// stack, so a page of many spans costs one walk of its operations.
+std::vector<std::size_t> closings(const text::ContentStream& stream) {
+  const std::size_t count = stream.operations.size();
+  std::vector<std::size_t> out(count, count);
+  std::vector<std::size_t> open;
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::string& op = stream.operations[i].op;
+    if (op == "BMC" || op == "BDC") {
+      open.push_back(i);
+    } else if (op == "EMC" && !open.empty()) {
+      out[open.back()] = i;
+      open.pop_back();
+    }
+  }
+  return out;
+}
+
+// Rewrites every marked-content property list of the page (BDC and DP,
+// inline or through /Properties) that names a redacted string or covers
+// removed glyphs (MarkedContentRewriter).
+void rewrite_properties(syntax::Document& document, const PageText& page,
+                        const std::set<std::size_t>& removed,
+                        const std::map<std::size_t, std::string>& placeholder_of,
+                        const std::vector<MatchFinder::Match>& needles, TextPlan::PageWork& work) {
   const text::PageContent& content = page.content;
-  if (content.spans.empty()) {
+  if (needles.empty() && removed.empty()) {
     return;
   }
   // Per walk, its glyphs by operation, for the glyphs a span covers.
@@ -261,64 +285,71 @@ void rewrite_spans(syntax::Document& document, const PageText& page,
     std::ranges::stable_sort(items, {}, &std::pair<std::size_t, std::size_t>::first);
   }
   const syntax::Page& source = document.pages().at(content.page - 1);
-  const auto resolve = [&document](const Object& value) { return document.resolve(value); };
-  for (const text::MarkedSpan& span : content.spans) {
-    if (span.stream >= content.streams.size() ||
-        span.operation >= content.streams[span.stream].operations.size()) {
-      continue;
-    }
-    const text::ContentStream& stream = content.streams[span.stream];
-    const std::size_t end = MarkedContentRewriter::closing(stream, span.operation);
-    bool any = false;
-    bool all = true;
-    std::optional<std::string> whole;
-    const auto& items = by_walk[span.stream];
-    const auto begin = std::ranges::upper_bound(items, span.operation, {},
-                                                &std::pair<std::size_t, std::size_t>::first);
-    for (auto it = begin; it != items.end() && it->first < end; ++it) {
-      if (removed.contains(it->second)) {
-        any = true;
-        if (!whole) {
-          whole = placeholder_of.at(it->second);
+  const auto resolve = [&document](const Object& value) {
+    return document.resolve(value);
+  };
+  std::set<std::pair<std::uint32_t, std::size_t>> done;
+  for (std::size_t walk = 0; walk < content.streams.size(); ++walk) {
+    const text::ContentStream& stream = content.streams[walk];
+    std::vector<std::size_t> ends;
+    for (std::size_t index = 0; index < stream.operations.size(); ++index) {
+      const syntax::ContentLexer::Operation& marked = stream.operations[index];
+      if ((marked.op != "BDC" && marked.op != "DP") || marked.operands.size() < 2) {
+        continue;
+      }
+      // A form drawn twice is two walks of one stream: its lists once.
+      if (stream.form != 0 && !done.insert({stream.form, index}).second) {
+        continue;
+      }
+      bool any = false;
+      bool all = true;
+      std::optional<std::string> whole;
+      if (marked.op == "BDC") {
+        if (ends.empty()) {
+          ends = closings(stream);
         }
-      } else {
-        all = false;
+        const auto& items = by_walk[walk];
+        const auto begin =
+            std::ranges::upper_bound(items, index, {}, &std::pair<std::size_t, std::size_t>::first);
+        for (auto it = begin; it != items.end() && it->first < ends[index]; ++it) {
+          if (removed.contains(it->second)) {
+            any = true;
+            if (!whole) {
+              whole = placeholder_of.at(it->second);
+            }
+          } else {
+            all = false;
+          }
+        }
       }
-    }
-    if (!any && needles.empty()) {
-      continue;
-    }
-    const std::string* whole_text = any && all ? &*whole : nullptr;
-    const syntax::ContentLexer::Operation& bdc = stream.operations[span.operation];
-    if (bdc.op != "BDC" || bdc.operands.size() < 2) {
-      continue;
-    }
-    const Object& operand = bdc.operands[1];
-    if (const Dictionary* inline_properties = operand.dictionary()) {
+      const std::string* whole_text = any && all ? &*whole : nullptr;
+      const Object& operand = marked.operands[1];
+      if (const Dictionary* inline_properties = operand.dictionary()) {
+        if (const auto rewritten =
+                MarkedContentRewriter::rewrite(*inline_properties, needles, whole_text, resolve)) {
+          target_of(work, content, walk).replaced[index] =
+              MarkedContentRewriter::operation(marked.operands[0], *rewritten, marked.op);
+        }
+        continue;
+      }
+      const std::string* name = operand.name();
+      if (name == nullptr) {
+        continue;
+      }
+      const TextPlan::Holder holder = holder_of(document, content, walk);
+      const Object entry = resource_entry(document, source, holder, "Properties", *name);
+      const Object value = document.resolve(entry);
+      const Dictionary* properties = value.dictionary();
+      if (properties == nullptr) {
+        continue;
+      }
       if (const auto rewritten =
-              MarkedContentRewriter::rewrite(*inline_properties, needles, whole_text, resolve)) {
-        target_of(work, content, span.stream).replaced[span.operation] =
-            MarkedContentRewriter::operation(bdc.operands[0], *rewritten);
-      }
-      continue;
-    }
-    const std::string* name = operand.name();
-    if (name == nullptr) {
-      continue;
-    }
-    const TextPlan::Holder holder = holder_of(document, content, span.stream);
-    const Object entry = resource_entry(document, source, holder, "Properties", *name);
-    const Object value = document.resolve(entry);
-    const Dictionary* properties = value.dictionary();
-    if (properties == nullptr) {
-      continue;
-    }
-    if (const auto rewritten =
-            MarkedContentRewriter::rewrite(*properties, needles, whole_text, resolve)) {
-      if (const auto reference = entry.reference()) {
-        work.property_objects[reference->number] = *rewritten;
-      } else {
-        work.properties[{holder, *name}] = *rewritten;
+              MarkedContentRewriter::rewrite(*properties, needles, whole_text, resolve)) {
+        if (const auto reference = entry.reference()) {
+          work.property_objects[reference->number] = *rewritten;
+        } else {
+          work.properties[{holder, *name}] = *rewritten;
+        }
       }
     }
   }
@@ -348,8 +379,7 @@ void rewrite_spans(syntax::Document& document, const PageText& page,
       target.removed.insert({record.operation, record.code_start});
       note_operation(target, content, record);
     }
-    work.rectangles.insert(work.rectangles.end(), found.rectangles.begin(),
-                           found.rectangles.end());
+    work.rectangles.insert(work.rectangles.end(), found.rectangles.begin(), found.rectangles.end());
     if (!found.drawn) {
       continue;
     }
@@ -357,9 +387,8 @@ void rewrite_spans(syntax::Document& document, const PageText& page,
     const text::ContentStream& stream = content.streams[anchor.stream];
     TextPlan::Insertion insertion;
     insertion.after = insertion_point(stream, anchor.operation);
-    insertion.operators = PlaceholderDrawing::operators(anchor, occurrence.placeholder,
-                                                        found.fit.face, found.fit.scale,
-                                                        found.invisible);
+    insertion.operators = PlaceholderDrawing::operators(
+        anchor, occurrence.placeholder, found.fit.face, found.fit.scale, found.invisible);
     target_of(work, content, anchor.stream)
         .insertions.try_emplace({anchor.operation, anchor.code_start}, std::move(insertion));
     const TextPlan::Holder holder = holder_of(document, content, anchor.stream);
@@ -371,7 +400,7 @@ void rewrite_spans(syntax::Document& document, const PageText& page,
     }
     ++work.placeholders;
   }
-  rewrite_spans(document, page, page_removed, placeholder_of, needles, work);
+  rewrite_properties(document, page, page_removed, placeholder_of, needles, work);
   return work;
 }
 
@@ -458,9 +487,8 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
 
 // resources with faces named in its /Font and properties set in its
 // /Properties, as a direct dictionary.
-[[nodiscard]] Object edited_resources(writer::ObjectGraph& graph,
-                                      writer::PlaceholderFont& fonts, const Object& resources,
-                                      const std::set<Face>& faces,
+[[nodiscard]] Object edited_resources(writer::ObjectGraph& graph, writer::PlaceholderFont& fonts,
+                                      const Object& resources, const std::set<Face>& faces,
                                       const std::map<std::string, Dictionary>& properties) {
   const Object resolved = graph.resolve(resources);
   Dictionary out = resolved.dictionary() != nullptr ? *resolved.dictionary() : Dictionary();
@@ -503,13 +531,13 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
       continue;
     }
     if (match.fingerprint != plan.fingerprint()) {
-      refuse(i, "is a glyph range taken from another document (its fingerprint " +
-                    (match.fingerprint.empty() ? std::string("is missing") : match.fingerprint) +
-                    ")",
-             "the fingerprint " + plan.fingerprint() +
-                 " that pdfkit_text reports for this document",
-             "extract the text of this document again and take the glyph range and the "
-             "fingerprint from that extraction");
+      refuse(
+          i,
+          "is a glyph range taken from another document (its fingerprint " +
+              (match.fingerprint.empty() ? std::string("is missing") : match.fingerprint) + ")",
+          "the fingerprint " + plan.fingerprint() + " that pdfkit_text reports for this document",
+          "extract the text of this document again and take the glyph range and the "
+          "fingerprint from that extraction");
     }
     if (match.page < 1 || match.page > page_count) {
       refuse(i, "names page " + std::to_string(match.page),
@@ -541,6 +569,15 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
       const MatchFinder::Match& match = matches[i];
       if (match.kind == MatchFinder::Match::Kind::search) {
         std::vector<MatchFinder::Occurrence> here = finder.find(match, base + i);
+        // The codes that spell the string where the text does not read it.
+        for (const MatchFinder::Occurrence& coded : finder.find_codes(match, base + i)) {
+          const bool read = std::ranges::any_of(here, [&coded](const auto& other) {
+            return other.first < coded.last && coded.first < other.last;
+          });
+          if (!read) {
+            here.push_back(coded);
+          }
+        }
         found.insert(found.end(), here.begin(), here.end());
         continue;
       }
@@ -548,11 +585,12 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
         continue;
       }
       if (match.first >= match.last || match.last > page.order.size()) {
-        refuse(i, "is the glyph range [" + std::to_string(match.first) + ", " +
-                      std::to_string(match.last) + ") of page " + std::to_string(number),
-               "a non-empty range within the page's " + std::to_string(page.order.size()) +
-                   " glyphs",
-               "take the range from the glyphs of this page's extraction");
+        refuse(
+            i,
+            "is the glyph range [" + std::to_string(match.first) + ", " +
+                std::to_string(match.last) + ") of page " + std::to_string(number),
+            "a non-empty range within the page's " + std::to_string(page.order.size()) + " glyphs",
+            "take the range from the glyphs of this page's extraction");
       }
       found.push_back({base + i, number, match.first, match.last, match.placeholder});
       MatchFinder::Match needle;
@@ -617,8 +655,7 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
   return reports;
 }
 
-void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph,
-                         writer::WriteReport& report) {
+void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::WriteReport& report) {
   TextPlan& state = plan.text();
   if (state.pages.empty()) {
     return;
@@ -732,8 +769,8 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph,
       }
       const text::ContentStream stream = lex(pieces, document, "page " + std::to_string(number));
       const std::vector<std::byte> bytes = rewrite(stream, work.content);
-      page.set("Contents", Object::make_reference(graph.add(
-                               Object::make_stream(writer::StreamCopier::compress(Dictionary(), bytes)))));
+      page.set("Contents", Object::make_reference(graph.add(Object::make_stream(
+                               writer::StreamCopier::compress(Dictionary(), bytes)))));
     }
     std::set<Face> faces;
     for (const auto& [holder, face] : work.fonts) {
@@ -806,7 +843,8 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph,
     for (const std::string_view key : {"Filter", "DecodeParms", "Length", "DL"}) {
       dictionary.erase(key);
     }
-    graph.set(form, Object::make_stream(writer::StreamCopier::compress(std::move(dictionary), bytes)));
+    graph.set(form,
+              Object::make_stream(writer::StreamCopier::compress(std::move(dictionary), bytes)));
   }
   std::ranges::stable_sort(report.rectangles, {}, &writer::WriteReport::Rectangles::page);
 }
