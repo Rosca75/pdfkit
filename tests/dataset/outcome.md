@@ -28,15 +28,18 @@ A verb that is itself not implemented exits 4 with the code
 `PDFKIT_E_NOT_IMPLEMENTED`; the harness then counts every column as skipped.
 
 The verb never reads a path other than the one it is given, never writes outside
-`<dir>/outcomes/`, and writes nothing that depends on time, locale or the path,
-so two runs over one file write the same bytes.
+`<dir>/outcomes/` and `<dir>/outputs/` (both created by the caller), and writes
+nothing that depends on time, locale or the path, so two runs over one file
+write the same bytes: an output it writes is named in the outcome relative to
+`<dir>` (`outputs/<id>.pdf`).
 
 ## 2. The outcome file
 
 UTF-8 JSON, LF, no byte-order mark, keys in exactly the order shown, two-space
 indentation, one key per catalogue function in the order of the catalogue
-(`open`, `inspect`, `text`, `images`, `metadata`, `channels`, `redact`), each
-present always: a function the verb did not run is `null`.
+(`open`, `inspect`, `text`, `images`, `metadata`, `channels`, `redact`), then
+`write` and `select`, each present always: a function the verb did not run is
+`null`.
 
 ```json
 {
@@ -73,9 +76,44 @@ present always: a function the verb did not run is `null`.
     "output": "<path of the redacted PDF under <dir>/outputs/>",
     "rectangles": [[1, 72.0, 700.0, 180.0, 714.0]],
     "strings": ["Jane Doe"]
+  },
+  "write": {
+    "status": "ok",
+    "code": null,
+    "output": "outputs/qpdf-0001.pdf",
+    "sha256": "<hex of the output>",
+    "bytes": 11873,
+    "pages": 3,
+    "stripped": ["ch_annotation", "ch_unreferenced"],
+    "missing_references": 0,
+    "reopen": {"status": "ok", "code": null, "pages": 3, "repairs": []}
+  },
+  "select": {
+    "status": "ok",
+    "code": null,
+    "pages": [3, 1],
+    "output": "outputs/qpdf-0001.select.pdf",
+    "sha256": "<hex of the output>",
+    "bytes": 7311,
+    "reopen": {"status": "ok", "code": null, "pages": 2, "repairs": []}
   }
 }
 ```
+
+`write` is the identity write: the file opened, an empty edit plan written
+with `pdfkit_write` to `<dir>/outputs/<id>.pdf`, and the output opened again
+with `pdfkit_open` (`reopen`). `stripped` lists the channel rows whose count in
+the write report is above zero, in the order of the channel table.
+`select` keeps a seeded random proper subset of the pages, in a shuffled order,
+and writes it to `<dir>/outputs/<id>.select.pdf`; `pages` lists the kept
+source pages in output order, so output page *i* is source page `pages[i-1]`.
+The subset is a function of the id alone: a SplitMix64 generator seeded with
+the first eight bytes (big-endian) of the SHA-256 of `7:<id>` draws one number
+per page in order and keeps the page when the number's top bit is set; an empty
+draw keeps page 1 and a full draw drops the last page; the kept pages are then
+shuffled by Fisher-Yates from the last index down, each swap index the next
+number modulo the remaining count. `select` is `null` for a file of one page.
+Neither runs when `open` did not succeed (their `status` is `skipped`).
 
 `redact.output`, `redact.rectangles` (page, then the device rectangle in points,
 lower-left and upper-right) and `redact.strings` are what
@@ -107,6 +145,10 @@ checks independently.
 | `expect_images` = `partial:<reason>` | `images.status` | `ok` |
 | `expect_redact` = `stable` | `redact.status`, `redact.stable` | `ok` and `stable` is true |
 | `expect_metadata` = `agree` | `metadata.status`, `metadata.agree` | `ok` and `agree` is true |
+| `expect_write` = `identical` | `write.status`, `write.reopen` | `ok`, and `reopen.status` `ok` with no repairs and the same page count; the pixel identity is measured by `compare.py --check write` |
+| `expect_write` = `known_gap:<reason>` | `write.status` | `ok` (counted apart) |
+| `expect_select` = `ok` | `select.status`, `select.reopen`, `select.pages` | `ok`, and `reopen.status` `ok` with no repairs and as many pages as `select.pages` names |
+| `expect_select` = `known_gap:<reason>` | `select.status` | `ok` (counted apart) |
 | any column = `n/a` | none | not checked |
 
 A function whose status is `not_implemented` makes its column **skipped** for

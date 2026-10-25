@@ -7,9 +7,9 @@
 // file, `--manifest <tsv> --files <root> --out <dir>` for every manifest row
 // (the file of a row being <root>/<set>/<id>.pdf). An outcome holds no time,
 // locale or path, so two runs over one file write the same bytes; it goes to
-// <dir>/outcomes/<id>.json, a folder the caller creates. A function the verb
-// does not run is null in the outcome; the functions of later build files add
-// their keys here.
+// <dir>/outcomes/<id>.json, a folder the caller creates, and the outputs of
+// the write and the selection to <dir>/outputs/ (dataset_write.cpp). A
+// function the verb does not run is null in the outcome.
 
 #include "pdfkit/pdfkit.h"
 
@@ -17,9 +17,11 @@
 #include "output.hpp"
 #include "sha256.hpp"
 #include "support.hpp"
+#include "verbs/dataset_write.hpp"
 #include "verbs/verbs.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <memory>
 #include <optional>
@@ -159,7 +161,8 @@ std::vector<std::string> texts(const JsonText& document, const JsonText::Node* a
 
 // The outcome of one file; bytes is empty with missing set for a manifest row
 // whose file is absent.
-std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes) {
+std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
+                    const std::string& out_dir) {
   Writer writer;
   writer.open_object("");
   writer.string("id", id);
@@ -177,6 +180,8 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes)
     for (const std::string_view key : later_keys) {
       writer.raw(key, "null");
     }
+    writer.raw("write", "null");
+    writer.raw("select", "null");
     writer.close_object();
     return writer.finish();
   }
@@ -187,11 +192,15 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes)
   pdfkit_document* document = nullptr;
   const Call opened =
       take(pdfkit_open(bytes->data(), bytes->size(), nullptr, &document, &out), out);
+  std::uint64_t page_count = 0;
   writer.open_object("open");
   if (opened.status == PDFKIT_OK) {
     std::size_t offset = 0;
     const std::optional<JsonText> report = JsonText::parse(opened.text, offset);
     const JsonText::Node* pages = report ? report->member(report->root(), "page_count") : nullptr;
+    if (pages != nullptr) {
+      (void)std::from_chars(pages->raw.data(), pages->raw.data() + pages->raw.size(), page_count);
+    }
     writer.string("status", "ok");
     writer.raw("code", "null");
     writer.raw("pages", pages != nullptr ? pages->raw : std::string_view("null"));
@@ -232,10 +241,15 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes)
     }
   }
   writer.close_object();
+  const DatasetWrite written = opened.status == PDFKIT_OK
+                                   ? dataset_write(document, id, page_count, out_dir)
+                                   : dataset_write_skipped();
   pdfkit_close(document);
   for (const std::string_view key : later_keys) {
-    writer.raw(key, "null");
+    writer.raw(key, key == "channels" ? std::string_view(written.channels) : "null");
   }
+  writer.raw("write", written.write);
+  writer.raw("select", written.select);
   writer.close_object();
   return writer.finish();
 }
@@ -330,13 +344,13 @@ int run_manifest(const std::string& manifest, const std::string& files, const st
     path += ".pdf";
     std::string result;
     if (!exists(path)) {
-      result = outcome(id, nullptr);
+      result = outcome(id, nullptr, out);
     } else {
       const std::optional<std::vector<std::uint8_t>> bytes = read_input_file("dataset", path);
       if (!bytes) {
         return exit_usage;
       }
-      result = outcome(id, &*bytes);
+      result = outcome(id, &*bytes, out);
     }
     if (!write_outcome(outcome_path(out, id), result)) {
       return exit_usage;
@@ -396,7 +410,7 @@ int run_dataset(std::span<char* const> args) {
     return exit_usage;
   }
   const std::string path = outcome_path(*out, *id);
-  if (!write_outcome(path, outcome(*id, &*bytes))) {
+  if (!write_outcome(path, outcome(*id, &*bytes, *out))) {
     return exit_usage;
   }
   print_json("{\"id\": " + json_quote(*id) + ", \"outcome\": " + json_quote(path) + "}");

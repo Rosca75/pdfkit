@@ -15,6 +15,7 @@ add_executable(pdfkit_cli
   verbs/channels.cpp
   verbs/check.cpp
   verbs/dataset.cpp
+  verbs/dataset_write.cpp
   verbs/images.cpp
   verbs/inspect.cpp
   verbs/metadata.cpp

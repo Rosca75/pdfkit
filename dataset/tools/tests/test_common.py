@@ -66,6 +66,39 @@ class ManifestTest(unittest.TestCase):
         self.assertFalse(common.check_expectation("expect_images", "maybe"))
 
 
+class WriterExpectationTest(unittest.TestCase):
+    def test_columns_sit_before_notes(self):
+        columns = list(common.MANIFEST_COLUMNS)
+        self.assertEqual(columns[-3:], ["expect_write", "expect_select", "notes"])
+
+    def test_accepted_values(self):
+        for value in ("identical", "known_gap:optional_content", "n/a"):
+            self.assertTrue(common.check_expectation("expect_write", value), value)
+        for value in ("ok", "known_gap:x", "n/a"):
+            self.assertTrue(common.check_expectation("expect_select", value), value)
+        self.assertFalse(common.check_expectation("expect_write", "ok"))
+        self.assertFalse(common.check_expectation("expect_select", "identical"))
+        self.assertFalse(common.check_expectation("expect_write", "known_gap:"))
+
+    def test_write_follows_the_open_expectation(self):
+        self.assertEqual(common.default_expect_write("opens"), "identical")
+        self.assertEqual(common.default_expect_write("repaired"), "identical")
+        self.assertEqual(common.default_expect_write("refused:not_pdf"), "n/a")
+
+    def test_select_needs_two_pages_and_a_readable_file(self):
+        self.assertEqual(common.default_expect_select("opens", "2"), "ok")
+        self.assertEqual(common.default_expect_select("repaired", "30"), "ok")
+        self.assertEqual(common.default_expect_select("opens", "1"), "n/a")
+        self.assertEqual(common.default_expect_select("opens", ""), "n/a")
+        self.assertEqual(common.default_expect_select("refused:password_required", "5"), "n/a")
+
+    def test_committed_manifest_follows_the_rule(self):
+        for row in common.read_manifest():
+            self.assertEqual(row["expect_write"], common.default_expect_write(row["expect_open"]), row["id"])
+            self.assertEqual(row["expect_select"],
+                             common.default_expect_select(row["expect_open"], row["pages"]), row["id"])
+
+
 class LocationTest(unittest.TestCase):
     def test_override_names_the_shared_root(self):
         with tempfile.TemporaryDirectory() as tmp:

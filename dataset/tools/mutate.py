@@ -439,7 +439,9 @@ def encrypt_strings(text: bytes, encrypt) -> bytes:
 
 
 def encrypt_file(data: bytes, rng: random.Random, revision: int, user: bytes = b"",
-                 encrypt_metadata: bool = True) -> bytes:
+                 encrypt_metadata: bool = True, encrypt_extra: bytes = b"") -> bytes:
+    """Encrypts a clean file; `encrypt_extra` is dictionary text appended to /Encrypt as it stands
+    (the synthesiser plants a vendor key there, whose strings the format leaves unencrypted)."""
     objs, refs = plain_rewrite(data)
     if "Root" not in refs:
         raise NotApplicable("no /Root")
@@ -471,6 +473,7 @@ def encrypt_file(data: bytes, rng: random.Random, revision: int, user: bytes = b
         enc_dict += b" /P %d" % p
     if not encrypt_metadata:
         enc_dict += b" /EncryptMetadata false"
+    enc_dict += encrypt_extra
 
     def cipher_for(num):
         if revision >= 5:

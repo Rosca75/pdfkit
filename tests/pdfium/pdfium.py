@@ -11,7 +11,10 @@
 # fpdfview.h, fpdf_text.h, fpdf_edit.h and fpdf_doc.h, read at
 # https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/ ; the error
 # codes (FPDF_ERR_*) and FPDF_PAGEOBJ_IMAGE = 3 and FPDF_ANNOT = 0x01 come from
-# the same headers.
+# the same headers. FPDF_RenderPageBitmap takes (bitmap, page, start_x, start_y,
+# size_x, size_y, rotate, flags) and its flag FPDF_ANNOT (0x01) is the only one
+# that draws annotations; tests/pdfium/render.py passes flags 0 (read in
+# fpdfview.h at https://raw.githubusercontent.com/chromium/pdfium/main/public/fpdfview.h).
 
 from __future__ import annotations
 
@@ -295,6 +298,9 @@ def serve(dll: Path) -> None:
 
 
 class Worker:
+    # The script a worker process runs with --serve; a subclass names its own.
+    script = Path(__file__).resolve()
+
     def __init__(self, dll: Path):
         self.dll = dll
         self.proc = None
@@ -304,7 +310,7 @@ class Worker:
     def start(self) -> None:
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         self.proc = subprocess.Popen(
-            [sys.executable, "-I", str(Path(__file__).resolve()), "--serve", "--dll", str(self.dll)],
+            [sys.executable, "-I", str(self.script), "--serve", "--dll", str(self.dll)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=flags,
         )
@@ -352,14 +358,15 @@ class Worker:
 class Pool:
     """A fixed set of workers shared by threads; each call borrows one worker."""
 
-    def __init__(self, size: int = 4, dll: Path | None = None, timeout: float = DEFAULT_TIMEOUT):
+    def __init__(self, size: int = 4, dll: Path | None = None, timeout: float = DEFAULT_TIMEOUT,
+                 worker_class: type = Worker):
         self.dll = dll or default_dll()
         if not Path(self.dll).exists():
             raise FileNotFoundError(
                 f"{self.dll} is missing; run `python tests/pdfium/fetch.py` to fetch PDFium")
         self.timeout = timeout
         self.free: queue.Queue = queue.Queue()
-        self.workers = [Worker(self.dll) for _ in range(size)]
+        self.workers = [worker_class(self.dll) for _ in range(size)]
         for worker in self.workers:
             self.free.put(worker)
 

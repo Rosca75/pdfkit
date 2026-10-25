@@ -206,8 +206,9 @@ class PathsTest(CheckTest):
         self.assert_fails("check_paths.py", "docs/DESIGN.md", "src/nowhere/gone.cpp")
 
     def test_a_pending_path_that_now_exists(self) -> None:
-        (self.tree / "src/writer/channel_table.cpp").write_text("// x\n", encoding="utf-8")
-        self.assert_fails("check_paths.py", "build/paths_pending.tsv", "src/writer/channel_table.cpp")
+        append(self.tree / "build/paths_pending.tsv", "src/writer/planted_pending.cpp\t7\ta planted row\n")
+        (self.tree / "src/writer/planted_pending.cpp").write_text("// x\n", encoding="utf-8")
+        self.assert_fails("check_paths.py", "build/paths_pending.tsv", "src/writer/planted_pending.cpp")
 
 
 class GeneratedTest(CheckTest):

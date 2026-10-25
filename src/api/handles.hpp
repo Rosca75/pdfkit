@@ -4,15 +4,15 @@
 // The opaque handles of the C ABI and their checks. pdfkit_document and
 // pdfkit_edit are named by the C header, so they live in the global namespace;
 // the document holds the opened syntax::Document and the edit holds its
-// document handle. The
-// require functions turn a null handle into an invalid_argument error that
-// names the symbol and how to obtain a valid handle.
+// document handle and its edit plan. The require functions turn a null handle into an
+// invalid_argument error that names the symbol and how to obtain a valid handle.
 
 #ifndef PDFKIT_API_HANDLES_HPP
 #define PDFKIT_API_HANDLES_HPP
 
 #include "pdfkit/pdfkit.h"
 
+#include "redact/edit_plan.hpp"
 #include "syntax/document.hpp"
 
 #include <memory>
@@ -24,6 +24,7 @@ struct pdfkit_document {
 
 struct pdfkit_edit {
   pdfkit_document* document;
+  std::unique_ptr<pdfkit::redact::EditPlan> plan;
 };
 
 namespace pdfkit::api {

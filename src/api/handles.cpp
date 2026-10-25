@@ -21,6 +21,7 @@ std::unique_ptr<pdfkit_document> new_document(std::unique_ptr<syntax::Document> 
 std::unique_ptr<pdfkit_edit> new_edit(pdfkit_document& document) {
   auto edit = std::make_unique<pdfkit_edit>();
   edit->document = &document;
+  edit->plan = std::make_unique<redact::EditPlan>(*document.document);
   return edit;
 }
 

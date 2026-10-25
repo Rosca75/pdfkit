@@ -235,3 +235,15 @@ From `build-1.md` §9:
 
 - The redact job's `images` section is forwarded byte for byte to `pdfkit_redact_images` (`docs/ABI.md` §6, item 7).
 - The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+
+From `build-7.md` §9:
+
+- The write surface is `writer::ObjectGraph` (`src/writer/object_graph.hpp`): `get(number)` reads an object with every earlier stage's edits applied, `set(number, object)` replaces one, `add(object)` adds one under a fresh number; the source `syntax::Document` is never changed. Read through the graph, never through `Document::object`, because page selection runs first and replaces page dictionaries, the catalog and every pruned form (a form with resources of its own gets a pruned copy under its own number) (items 2, 5).
+- A created stream is `syntax::Stream(dictionary, encoded bytes)`; `writer::StreamCopier::compress(dictionary, decoded)` makes a Flate one, `StreamCopier::plain` an uncompressed one; the file writer copies untouched streams byte for byte (decrypted, `/Crypt` dropped) (`build-3.md` §9 item 17).
+- `redact::WritePipeline` (`src/redact/write_pipeline.cpp`) has the named stages page selection, text surgery, image treatments, metadata, channel stripping, serialisation, self-check; fill your stage, never reorder. The write report (`writer::WriteReport`) already carries `rectangles` (empty) and `self_check` (`not_run` with its reason) (items 2, 10).
+- `redact::EditPlan` holds the page list only; add your member beside it (its header names where).
+- Every write prunes resources to the names the content uses (`writer::ResourceUsage` reads `Tf`, `Do`, `gs`, `cs`/`CS`, `scn`/`SCN`, `sh`, `BDC`/`DP` and inline-image colour spaces), so an object your stage stops drawing leaves the output without further work, and a resource your stage starts drawing must be named in the resources it edits (item 5).
+- The channel table strips after your stage: `/Metadata` off every object but the catalog, the catalog's XMP loses its whole `xmpMM` namespace, `/PieceInfo`, `/LastModified`, `/AA`, `/JS`, `/AF`, `/EF`, `/StructParent(s)` go from every dictionary, and the catalog and pages keep only their allow-lists (items 7, 11, 12).
+- Test helpers: `tests/unit/writer/output_scan.hpp` (`identity_write`, `select_write`, `write_report`, `everything` = raw bytes plus every stream decoded, `contains_marker`, `reopen` without repair) and `tests/unit/support/pdf_builder_channels.hpp` (planted markers per channel, the four-page leak fixture); `tests/pdfium/render.py` compares pages exactly or outside a rectangle set with a one-pixel dilation (`compare_bitmaps`).
+- The dataset outcome gains `channels`, `write` and `select`; outputs go to `<run>/outputs/`, named relative to the run folder (`tests/dataset/outcome.md`).
+- An image treatment replaces the image object through `ObjectGraph::set` with a created stream; a removed image's `Do` goes from the content streams that draw it, and pruning then drops the XObject entry.

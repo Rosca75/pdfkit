@@ -7,7 +7,10 @@
 # blind spot, so the tool exits non-zero while a tag is under its minimum
 # (unless --allow-under), while the manifest holds fewer rows than --min-rows,
 # and, with --licences, while a row has no licence or names a set that
-# dataset/sources.tsv does not mark admitted.
+# dataset/sources.tsv does not mark admitted. The tag pages_multi is counted from
+# the `pages` column (two or more pages) and never read from the tags column,
+# because a page count is a measured fact and a tag written beside it could
+# disagree with it.
 
 from __future__ import annotations
 
@@ -22,12 +25,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
 
+MULTI_PAGE_TAG = "pages_multi"
+
+
+def has_many_pages(row: dict) -> bool:
+    """True when PDFium counted two or more pages in the row's file."""
+    pages = row.get("pages", "")
+    return pages.isdigit() and int(pages) >= 2
+
+
 def coverage(rows: list[dict], taxonomy: list[dict]) -> list[dict]:
     """One entry per taxonomy tag: its group, minimum, count and status."""
     counts = collections.Counter()
     for row in rows:
         for tag in common.split_tags(row["tags"]):
             counts[tag] += 1
+        if has_many_pages(row):
+            counts[MULTI_PAGE_TAG] += 1
     out = []
     for entry in taxonomy:
         minimum = int(entry["minimum"])

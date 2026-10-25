@@ -5,4 +5,15 @@
 # layer is one line in this list and touches no other layer's list.
 
 target_sources(pdfkit_core PRIVATE
-  writer_placeholder.cpp)
+  channel_table.cpp
+  document_id.cpp
+  file_writer.cpp
+  object_graph.cpp
+  page_selector.cpp
+  reachability.cpp
+  renumbering.cpp
+  resource_usage.cpp
+  serialiser.cpp
+  stream_copier.cpp
+  write_report.cpp
+  xref_stream_writer.cpp)

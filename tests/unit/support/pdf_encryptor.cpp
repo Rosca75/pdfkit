@@ -238,7 +238,9 @@ std::string PdfEncryptor::dictionary() const {
   if (revision >= 4 && !spec_.encrypt_metadata) {
     out += " /EncryptMetadata false";
   }
-  out += " /O " + hex(o_) + " /U " + hex(u_) + " /P " + std::to_string(spec_.permissions) + " >>";
+  out += " /O " + hex(o_) + " /U " + hex(u_) + " /P " + std::to_string(spec_.permissions);
+  out += spec_.extra_entries.empty() ? "" : " " + spec_.extra_entries;
+  out += " >>";
   return out;
 }
 

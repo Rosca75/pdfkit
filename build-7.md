@@ -246,7 +246,93 @@ rollback after they land reverts them too.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **`syntax::Stream` gains a created form** (`Stream(dictionary, data)`,
+   `owns_data()`, `owned_data()`, `with_dictionary()`), its own commit, recorded
+   in `build-3.md` §9 item 17; `Document::raw` and `Document::decode` read it
+   and never decrypt it.
+2. **Files beyond §2**, each for one class or one concern:
+   `src/writer/object_graph.{hpp,cpp}` (`ObjectGraph`, the source seen through
+   every stage's edits, the surface later stages edit through),
+   `src/writer/file_writer.{hpp,cpp}` (`FileWriter`, the file layout around
+   the serialiser, the stream copier and the cross-reference stream),
+   `src/api/edit.cpp` holds `pdfkit_edit_new`/`pdfkit_edit_free` (moved out of
+   `lifecycle.cpp`), `cli/verbs/dataset_write.{hpp,cpp}` (the dataset verb's
+   `channels`, `write` and `select` members, kept apart from `dataset.cpp` so
+   the parallel phases touch different files), `tests/unit/writer/output_scan.*`
+   (writes through the C ABI and the marker scan), `tests/unit/syntax/stream_test.cpp`.
+   `PdfEncryptor::Spec` gains `extra_entries` (additive) for the `ch_encrypt`
+   fixture. `tests/unit/CMakeLists.txt` gains this phase's test files.
+3. **Row ids are the taxonomy's `ch_*` tags**, not `channel:<row-id>`: phase 2
+   had registered `ch_thumbnail` and sixteen more, and `tests/dataset/outcome.md`
+   already named `"present": ["ch_annotation"]`. The new rows' tags are
+   `ch_revisions`, `ch_last_modified`, `ch_web_capture`, `ch_perms_legal`,
+   `ch_encrypt`, `ch_uri_base`, `ch_search_index` (minimum 1), plus
+   `ch_page_owned` for the leak files; `pages:multi` is `pages_multi`, the
+   taxonomy's spelling, counted by `report.py` from the `pages` column (276
+   files against a minimum of 50). The manifest columns are `expect_write` and
+   `expect_select`, the manifest's spelling of `write` and `select`.
+4. **The synthesiser** is `dataset/tools/synth/channels/` (patterns
+   `mark_<tag>`, loaded by `synth/run.py`), 27 rows `synth-0223` to
+   `synth-0249`: one file per row (two for `ch_acroform` and `ch_encrypt`) and
+   two four-page leak files (classic table, cross-reference stream with a
+   two-level tree). Markers read `PDFKITMARK<row>X<n>`; rows 90 to 93 are drawn
+   content (the page's content, a form, an image, a form without resources of
+   its own reached through the inherited dictionary). The manifest holds 937
+   rows.
+5. **Every write rebuilds the page tree and prunes resources**, a write
+   without a selection included, so a resource no page draws is never written
+   (DESIGN.md §16 now says so). `/DefaultGray`, `/DefaultRGB` and
+   `/DefaultCMYK` are always kept (the first gate run showed three pages
+   rendering in the device spaces without them), `/ProcSet` is kept, keys
+   outside the seven categories are dropped, a Type 3 font's own resources
+   are kept whole. The owner may flip it (`OPEN-QUESTIONS.md` §2.6).
+6. **The Info dictionary is copied as it is** on every write until the
+   metadata stage rewrites it; DESIGN.md §17's "/Info when metadata is
+   written" is read as "/Info when the source has one".
+7. **The XMP channel removes the whole `xmpMM` namespace** of the catalog's
+   packet (history, `DocumentID`, `InstanceID`, `DerivedFrom` and the rest),
+   attributes and elements, keeping every other byte; the identifiers are not
+   regenerated here (phase 10 does, see `build-10.md` §9). A packet that does
+   not decode is dropped with `xmp_unreadable`.
+8. **Numbers are written from their value**, not their read text, which the
+   object model does not keep: integers as integers, reals in the shortest
+   round-trip form with a decimal point and no exponent. A literal string
+   escapes `(`, `)`, `\`, the five named controls and every other byte outside
+   0x20 to 0x7E as three octal digits.
+9. **The page-list refusals are `invalid_argument`**: DESIGN.md §19 has no
+   page-list code, and the list is the caller's argument. `pdfkit_select_pages`
+   answers `{"pages": [...]}` rather than `{}` (an output only gains fields).
+   `--pages` of the CLI takes `1,3-5`, as §0 says; `docs/ABI.md` said JSON.
+10. **The write report counts the channels in the source**, before page
+    selection, so a channel only a removed page held counts as stripped and the
+    old page-tree nodes do not count as unreferenced objects.
+11. **`/PageMode`**: `/UseOutlines`, `/UseThumbs`, `/UseAttachments` and private
+    modes become `/UseNone` (their panels are stripped), `/UseOC` and
+    `/FullScreen` stay; `/NonFullScreenPageMode` likewise.
+12. **`/PieceInfo`, `/LastModified`, `/AA`, `/JS`, `/AF`, `/EF`, `/StructParent`
+    and `/StructParents` are removed from every dictionary**, and `/Metadata`
+    from all but the catalog, because forms, images and fonts carry them too.
+13. **Dataset tooling**: `tests/pdfium/render.py` runs its own worker mode
+    (`pdfium.py` gained `Worker.script` and `Pool(worker_class=...)`,
+    additively); `run.py`'s `expect_write` also requires the written page count
+    to equal the opened one; the select subset is SplitMix64 over the SHA-256
+    of `7:<id>`, fixed in `tests/dataset/outcome.md`.
+14. **The gate run** (`p7-gate1`, repeated as `p7-gate2` on the tip rebased onto phase 4 with the same numbers; release build, 937 manifest rows, two runs):
+    888 of 888 identity writes re-open in pdfkit without a repair; PDFium opens
+    875 of the 875 it opens as input; 8,022 of 8,027 pages pixel-identical at
+    100 dpi (99.94%); PDFium's text F1 = 1.0 on 875 of 875; 0 planted markers
+    survive, 0 drawn markers lost; selections right on 275 of 275 files, 3,724
+    of 3,725 kept pages pixel-identical, 0 leaks; 937 of 937 outcomes
+    identical across the two runs; 0 crashes and 0 hangs. The five differing
+    pages: `pdfium-0048` pages 2 and 3 (PDFium trusts the root `/Count 3` over
+    a tree of one page, `build-3.md` §9 item 15), `pdfminer-0006` page 1 (13
+    pixels of a substituted font PDFium draws differently on its second
+    document in one process; a byte copy of the input reproduces them),
+    `pdfplumber-0012` pages 1 and 2 (a `/MediaBox` number past 64 bits, read
+    and written as a real, which PDFium reads as invalid in the input and as
+    1.8e19 in the output). The selection population counts the pages pdfkit
+    reads, not the manifest's PDFium count, which is why `pdfium-0048` is out
+    of it.
 
 ### Deviations of earlier phases that affect this one
 
