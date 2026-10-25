@@ -58,7 +58,15 @@ indentation, one key per catalogue function in the order of the catalogue
     "status": "ok",
     "code": null,
     "pages": [{"page": 1, "text": "...", "unreadable": 0, "hidden": 0}],
-    "text": "page one text\fpage two text"
+    "text": "page one text\fpage two text",
+    "rungs": {"to_unicode": 812, "glyph_name": 40, "font_program": 0, "actual_text": 0,
+              "unreadable": 0},
+    "hidden_classes": {"render_invisible": 0, "white_fill": 0, "clipped": 0, "off_media": 0,
+                       "off_crop": 0, "optional_content_off": 0, "duplicate": 0, "covered": 0},
+    "warnings": ["hidden_text"],
+    "structure_order_pages": 0,
+    "reserialisation": {"streams": 3, "identical": 3, "damaged": 0, "failed": 0,
+                        "mismatches": []}
   },
   "images": {
     "status": "ok",
@@ -115,6 +123,16 @@ shuffled by Fisher-Yates from the last index down, each swap index the next
 number modulo the remaining count. `select` is `null` for a file of one page.
 Neither runs when `open` did not succeed (their `status` is `skipped`).
 
+`text` is `pdfkit_text` with `{"blocks": false, "reserialisation": true}`: each
+page's text as the function writes it (visible blocks, then hidden blocks, a
+duplicate copy read once), its unreadable codes and hidden glyphs; over the
+whole file the codes per decoding rung, the hidden glyphs per class, the
+warning codes met (sorted, each once), the pages the structure tree ordered,
+and the re-serialisation check: content stream walks written back, walks
+identical to their bytes, walks read only up to a fault, undamaged walks that
+differ (`failed`, which the reading gate holds at zero), and at most ten
+mismatches named. Its `status` is `skipped` when `open` did not succeed.
+
 `redact.output`, `redact.rectangles` (page, then the device rectangle in points,
 lower-left and upper-right) and `redact.strings` are what
 `tests/pdfium/compare.py --render` and `--leak` read; the redaction phases fill
@@ -141,6 +159,8 @@ checks independently.
 | `expect_open` = `refused:<code>` | `open.status`, `open.code` | `refused` and the code matches |
 | `expect_text` = `agree` | `text.status`, `text.text` | `ok`; the agreement itself is measured by `compare.py` against PDFium |
 | `expect_text` = `known_gap:<reason>` | `text.status` | `ok` (counted apart, never as agreement) |
+| `expect_fonts` = `loads` | `text.status`, `text.pages[].unreadable` | `ok` and no page has an unreadable code |
+| `expect_fonts` = `unreadable:<count>` | the same | `ok` and the pages' unreadable codes sum to the count |
 | `expect_images` = `decoded` | `images.status`, `images.undecodable` | `ok` and `undecodable` is empty |
 | `expect_images` = `partial:<reason>` | `images.status` | `ok` |
 | `expect_redact` = `stable` | `redact.status`, `redact.stable` | `ok` and `stable` is true |

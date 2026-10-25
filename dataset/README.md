@@ -54,7 +54,7 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_images` | `decoded` (every image decodes), `partial:<reason>`, or `n/a` (no image) |
 | `expect_redact` | `stable` (a redaction leaves the page pixel-stable outside the changed rectangles) or `n/a` |
 | `expect_metadata` | `agree` (the Info and XMP values agree with the extraction) or `n/a` |
-| `expect_fonts` | the fonts layer's census (`tests/dataset/font_census.py`, not a catalogue function): `loads` (every font loads and every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
+| `expect_fonts` | the decoding ladder over every shown code, read from the `text` outcome's per-page `unreadable` counts and filled by `tests/pdfium/text_agreement.py --write-manifest`: `loads` (every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
 | `expect_write` | `identical` (the identity write re-opens in pdfkit without repair with the same page count, and PDFium renders every page as the input renders), `known_gap:<reason>` (a difference known in advance, with its reason) or `n/a` (a file pdfkit refuses) |
 | `expect_select` | `ok` (a seeded random proper subset of the pages, written in a shuffled order, re-opens without repair with that many pages, and each output page renders as its source page), `known_gap:<reason>` or `n/a` (one page, or a file pdfkit refuses) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |

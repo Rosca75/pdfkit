@@ -38,8 +38,9 @@ EXPECTATIONS = {
     "expect_images": ("images", ("decoded", "partial:", "n/a")),
     "expect_redact": ("redact", ("stable", "n/a")),
     "expect_metadata": ("metadata", ("agree", "n/a")),
-    # Not a catalogue function: the fonts layer's census (tests/dataset/font_census.py).
-    "expect_fonts": ("fonts", ("loads", "unreadable:", "n/a")),
+    # The decoding ladder's unreadable codes, read from the text outcome; filled by
+    # tests/pdfium/text_agreement.py --write-manifest.
+    "expect_fonts": ("text", ("loads", "unreadable:", "n/a")),
     "expect_write": ("write", ("identical", "known_gap:", "n/a")),
     "expect_select": ("select", ("ok", "known_gap:", "n/a")),
 }

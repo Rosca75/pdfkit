@@ -69,7 +69,6 @@ add_executable(pdfkit_tests
   fonts/cmap_parser_test.cpp
   fonts/decoding_ladder_test.cpp
   fonts/encodings_test.cpp
-  fonts/font_census_test.cpp
   fonts/font_data_test.cpp
   fonts/font_widths_test.cpp
   fonts/glyph_list_test.cpp
