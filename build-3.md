@@ -264,3 +264,8 @@ From `build-1.md` §9:
 - `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
 - Remove the `build/paths_pending.tsv` rows `syntax/cross_reference.hpp`, `tests/unit/support/`, `tests/unit/support/pdf_builder` and `tests/unit/support/pdf_builder.hpp` in the change that creates them (item 13).
 - The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+
+From `build-2.md` §9:
+
+- The `dataset` verb's forms are `--file <pdf> --id <id> --out <dir>` and `--manifest <tsv> --files <root> --out <dir>`: the verb reads only the paths it is given, so the shared dataset root is passed in, and every outcome goes to `<dir>/outcomes/<id>.json` as `tests/dataset/outcome.md` fixes; the harness uses the per-file form (item 10).
+- The dataset tools' shared-root override is `PDFKIT_DATASET_ROOT` (item 2).

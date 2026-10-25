@@ -289,4 +289,76 @@ Phase 3 may start on the incomplete manifest.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **Built in parallel with phase 1**, authorised by the team lead: the branch
+   started from the charter commit, with no `build/`, CMake, `src/`, `cli/` or
+   `include/` in the tree, and the charter's rules were followed by hand while
+   the work was written. Phase 1 reached `main` before this phase finished, so
+   the branch was rebased onto it: `build/check_network.py` already names
+   `dataset/tools/fetch.py` and `tests/pdfium/fetch.py` as exemptions, this
+   phase removed its eleven rows from `build/paths_pending.tsv`, and
+   `python build/check.py` and the unit tier ran on the rebased tip. The
+   harness's time gate was measured with phase 1's stubbed verb
+   (`out/mingw-debug/pdfkit.exe`), which answers every file with
+   `not_implemented`.
+2. **The shared-root override is `PDFKIT_DATASET_ROOT`** (team lead's
+   instruction), not `PDFKIT_DATASET`; PDFium then lands in
+   `build/cache/pdfium/` beside the override root.
+3. **PDFium's test resources are fetched with git** (a shallow, blob-less,
+   sparse fetch of `testing/resources` at a pinned commit from
+   pdfium.googlesource.com), not as the gitiles `+archive` tarball: the proxy
+   cuts that chunked download after about 300 KB, twice. On Windows every git
+   call of `fetch.py` checks TLS against the Windows certificate store
+   (`http.sslBackend=schannel`), because the proxy re-signs HTTPS with a
+   certificate only that store trusts; every checkout is written byte for byte
+   (`core.autocrlf false` and `* -text` in the clone's `info/attributes`),
+   because the laptop's global `core.autocrlf true` rewrote the line ends of the
+   PDFs on the first fetch.
+4. **No `cryptography` and no Pillow**: the proxy cut every download of a wheel
+   carrying a compiled extension (IncompleteRead), so AES, RC4 and the password
+   algorithms of the mutator's encryption are written in
+   `dataset/tools/pdfcrypt.py` (tested against the FIPS-197 vectors, and PDFium
+   opens every encrypted file), and `requirements.txt` pins fontTools alone.
+   The synthesiser writes no JPEG or JPEG 2000 image; the public sets cover
+   those encodings (`img_dct`, `img_dct_cmyk`, `img_jpx` are at minimum).
+5. **Two tools beyond the list of §2.4**: `dataset/tools/choose.py` (the
+   selection of a set's files by the `select` rule of `sources.tsv`, which §2.4
+   leaves to "register the selected files") and `dataset/tools/pdfcrypt.py`
+   (above). The synthesised patterns are grouped by family in six modules
+   (`font_paths`, `layout`, `hidden`, `images`, `channels`, `traps`) rather than
+   one module per pattern, each module's `PATTERNS` table naming them; 67
+   patterns write 193 files.
+6. **Word and Edge produced nothing**: Word's automation server fails
+   (`CO_E_SERVER_EXEC_FAILURE` after more than 120 s; the Word-only corporate
+   add-ins are the likely cause) and Edge headless writes no PDF on the managed
+   profile within 90 s. Excel and PowerPoint produced their four files. The tags
+   `gen_word_pdfa` and `gen_edge` (minimum 1 each) stay at 0; the question is
+   `OPEN-QUESTIONS.md` §2.2.
+7. **corkami refused**: no licence or terms, so `licence_unclear` under the
+   owner's rule, instead of the `terms:none` this file planned
+   (`OPEN-QUESTIONS.md` §2.3). Scouted and admitted beyond the named sets:
+   pdf-differences, pdfminer.six, pdfplumber, pikepdf, Apache Tika, NICAR 2025.
+8. **Taxonomy details**: the rare revision-5 tag is `aesv3_r5`; minimum 1 also
+   for `img_jbig2_globals`, `gen_word_pdfa` and `gen_edge` (only one file of each
+   can be made on the laptop). The mutator adds `xref_wrong_offsets` and
+   `linearised_wrong_first_page` (a wrong first-page object number, read as
+   stale hints) to the mutation list, and writes the junk and `/Length`
+   damages in two sizes each.
+9. **The PDFium open-rate gate** counts every row except those tagged with a
+   structural damage (`xref_missing`, `xref_wrong_offsets`, `startxref_wrong`,
+   `eof_missing`, `junk_before_header`, `length_wrong`, `endstream_missing`,
+   `endobj_missing`, `two_trailers`, `truncated`, `damaged_flate`,
+   `linearised_stale_hints`) or `user_password`: object streams, cross-reference
+   streams, linearisation and incremental updates are features, not damage. The
+   perturbation case is judged per file from a hundred words up (a shorter text
+   rounds the dropped share) and on the median over all files.
+10. **The `dataset` verb's interface**, fixed in `tests/dataset/outcome.md`:
+    `--file <pdf> --id <id> --out <dir>` and
+    `--manifest <tsv> --files <root> --out <dir>` (the verb reads only the paths
+    it is given, so the shared root is passed in); the harness uses the per-file
+    form. `tests/dataset/stub_pdfkit.py` writes a full outcome whose functions
+    all answer `not_implemented`, so the harness's outcome path can be
+    exercised without a build (`run.py --pdfkit tests/dataset/stub_pdfkit.py`);
+    on the laptop Python's start-up (about 1.7 s) makes it far slower per file
+    than the real verb.
+11. **The manifest holds 910 rows**, above the 300 of the gate; phase 10 has
+    room for 90 more under the charter's ceiling of 1,000.

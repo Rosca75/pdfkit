@@ -1,15 +1,4 @@
 path	phase	note
-dataset/README.md	2	the dataset's columns, licence rule and tools
-dataset/manifest.tsv	2	one row per dataset file
-dataset/taxonomy.tsv	2	the issue tags and their minimums
-dataset/tools/	2	the dataset tools
-dataset/tools/fetch.py	2	a named exemption of build/check_network.py
-dataset/tools/generate_office.ps1	2	the Office generators
-dataset/tools/mutate.py	2	the seeded mutator
-dataset/tools/synth/	2	the synthesised patterns
-tests/dataset/run.py	2	the dataset harness
-tests/pdfium/	2	the PDFium comparison
-tests/pdfium/fetch.py	2	a named exemption of build/check_network.py
 docs/archive/	1	created by the merge that archives the first done build file
 docs/archive/build/	1	created by the merge that archives the first done build file
 syntax/cross_reference.hpp	3	the charter's example of a file named after its class

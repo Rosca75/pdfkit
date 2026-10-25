@@ -68,3 +68,41 @@ Do you want llvm-mingw added as a second toolchain for the sanitizer tier only?
   by the bounds-checked helpers and the dataset's crash count. Price: about 15
   minutes and $3 to $5 to remove the preset, the toolchain file and its
   section of `build/toolchain.md`; the cache folder can be deleted by hand.
+
+### 2.2 Word and Edge cannot be driven unattended on the laptop (phase 2)
+
+`dataset/tools/generate_office.ps1` produced the Excel and PowerPoint files
+(Save as PDF and Microsoft Print to PDF, 4 files), but no Word and no Edge file:
+Word's automation server never answers (the COM call fails after more than 120 s
+with `CO_E_SERVER_EXEC_FAILURE`; the Word-only add-ins `MSIP.WordAddin` and
+`PwC.SmartWord` are the likely cause), and Edge headless writes no PDF within
+90 s on the managed profile with its forced extensions. So the taxonomy tags
+`gen_word_pdfa` and `gen_edge` stay at 0 of their minimum of 1. The script stays
+able to drive both; nothing on the laptop was changed to make them work.
+
+- **(a) Recommended: run the script once while you are at the laptop**,
+  `powershell -ExecutionPolicy Bypass -File dataset/tools/generate_office.ps1 -Only word,edge`,
+  and answer whatever Word or Edge shows. About 10 minutes of your time, then
+  about 0.5 hour and $5 to $10 of session time to check and commit the 4 new
+  rows.
+- **(b) Accept the two tags under minimum.** No cost now; Word's own Save as PDF
+  is still covered by public files (`gen_word` is above its minimum from the
+  wild sample), but Word's PDF/A output and Edge's printing stay untested until
+  someone runs (a), at the latest in phase 10.
+- **(c) Ask IT to let Word start for automation without the two add-ins.**
+  Unknown delay on IT's side; then (a) at the same cost.
+
+The session took (b) for now; the gate counts 121 of 123 tags at minimum.
+
+### 2.3 corkami's proofs of concept carry no licence (phase 2)
+
+`build-2.md` planned 15 files from https://github.com/corkami/pocs as
+`terms:none`, local reading only. The repository has no LICENSE file and its
+README states no terms, so under the rule "admit a set only when its licence or
+terms allow local testing" the session recorded it `licence_unclear` and did
+not fetch it; the trap patterns it would have covered are synthesised instead.
+
+- **(a) Recommended: keep it refused.** No cost.
+- **(b) Admit it as `terms:none` for local reading only.** About 0.5 hour and
+  $5 to $10 of session time to fetch, select and register 15 files; the files
+  would then sit in the dataset with no grant of any right.

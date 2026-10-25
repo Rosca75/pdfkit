@@ -150,7 +150,7 @@ to find it.
 | PDFium prebuilt binaries (bblanchon) | https://github.com/bblanchon/pdfium-binaries | PDFium BSD-3 and Apache 2.0, packaging MIT | read |
 | qpdf test files (628 PDFs) | https://github.com/qpdf/qpdf/tree/main/qpdf/qtest/qpdf | Apache 2.0 | read |
 | PDFium test resources and corpus | https://pdfium.googlesource.com/pdfium/+/refs/heads/main/testing/resources; https://pdfium.googlesource.com/pdfium_tests | BSD-style, Apache 2.0 | read |
-| PDF Association safedocs and pdf20examples | https://github.com/pdf-association/safedocs; https://github.com/pdf-association/pdf20examples | Apache 2.0; examples CC BY-SA 4.0 (unverified) | read |
+| PDF Association safedocs and pdf20examples | https://github.com/pdf-association/safedocs; https://github.com/pdf-association/pdf20examples | Apache 2.0; examples CC BY-SA 4.0 (LICENSE.md read) | read |
 | Open Preservation Foundation format corpus | https://github.com/openpreserve/format-corpus | CC0 unless stated | read |
 | veraPDF corpus | https://github.com/veraPDF/veraPDF-corpus | CC BY 4.0 | read |
 | pdf.js test files and Debian's per-file licence log | https://github.com/mozilla/pdf.js; https://metadata.ftp-master.debian.org/changelogs//main/p/pdf.js/pdf.js_2.6.347+dfsg-3_copyright | mixed | read |
@@ -161,6 +161,31 @@ to find it.
 | PDF Association stressful corpus (optional, sandboxed) | https://labs.pdfa.org/stressful-corpus/ | none; may be malicious | read |
 | GovDocs1 | https://digitalcorpora.org/corpora/file-corpora/files/ | public domain (US government) | recalled |
 | corkami PDF proofs of concept | https://github.com/corkami/pocs/tree/master/pdf | no licence file | read |
+| pdf.js per-file licences: eleven test files excluded by Debian as non-free, four CC0, one CC BY-SA 3.0, the rest Apache 2.0 | https://metadata.ftp-master.debian.org/changelogs//main/p/pdf.js/pdf.js_2.6.347+dfsg-3_copyright | as listed | read |
+| PDF Association pdf-differences | https://github.com/pdf-association/pdf-differences | Apache 2.0 | read |
+| PDF Association pdf-issues (one PDF, no test files) | https://github.com/pdf-association/pdf-issues | CC BY 4.0 | read |
+| pdfminer.six samples (without samples/nonfree) | https://github.com/pdfminer/pdfminer.six/tree/master/samples | MIT (repository) | read |
+| pdfplumber test files | https://github.com/jsvine/pdfplumber/tree/stable/tests/pdfs | MIT (repository) | read |
+| pikepdf test resources (no notice of their own) | https://github.com/pikepdf/pikepdf/tree/main/tests/resources | MPL 2.0 (repository) | read |
+| Apache Tika PDF test documents | https://github.com/apache/tika (tika-parser-pdf-module test resources) | Apache 2.0 | read |
+| NICAR 2025 hard PDFs | https://github.com/dwillis/nicar25-pdfs | MIT (repository) | read |
+| BFO PDF/A test suite | https://github.com/bfosupport/pdfa-testsuite | no licence file or statement | read |
+| PDF/UA reference suite | https://pdfa.org/resource/pdfua-reference-suite/ | not readable (HTTP 403) | read |
+| Ghent Output Suite | https://gwg.org/workflow-tools-downloads/test-suites/ghent-output-suite/ | no terms found | read |
+| IUST PDF corpus | https://zenodo.org/records/3484013 | not readable (the API answered 406) | read |
+| olmOCR-bench | https://huggingface.co/datasets/allenai/olmOCR-bench | ODC-BY | read |
+| Evil PDF library (malicious, optional) | https://github.com/GerHobbelt/Evil-PDF-Library-for-Qiqqa | GPL 3.0 | read |
+| The index of PDF corpora | https://github.com/pdf-association/pdf-corpora | CC BY 4.0 | read |
+| Digital Corpora's corpus README: zips of 1,000 PDFs under zipfiles/0000-0999/, the request to note Common Crawl's terms | https://digitalcorpora.s3.amazonaws.com/corpora/files/CC-MAIN-2021-31-PDF-UNTRUNCATED/README.md | | read |
+| Common Crawl terms of use: a limited licence to access and use the crawled content | https://commoncrawl.org/terms-of-use | | read |
+| Digital Corpora terms of use (CC0 for its own material) | https://digitalcorpora.org/terms-of-use/ | | read |
+| bblanchon release chromium/8111: asset `pdfium-win-x64.tgz`, its SHA-256 digest, the `releases/download/<tag>/<asset>` URL | https://api.github.com/repos/bblanchon/pdfium-binaries/releases | | read |
+| Liberation fonts 2.1.5 TTF archive URL (in the release notes; the release has no asset) | https://github.com/liberationfonts/liberation-fonts/releases/tag/2.1.5 | SIL OFL 1.1 | read |
+| fontTools 4.67.0 wheel and its hash | https://pypi.org/project/fonttools/4.67.0/ | MIT | read |
+| PDFium's C API signatures used by `tests/pdfium/pdfium.py` | public/fpdfview.h, fpdf_text.h and fpdf_edit.h under https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/ | | recalled; exercised by `tests/pdfium/compare.py` with `--self-test` |
+| AES (FIPS-197) and its appendix C test vectors | https://csrc.nist.gov/pubs/fips/197/final | | recalled; the vectors pass in `dataset/tools/tests/test_pdfcrypt.py` |
+| The security handler algorithms the mutator writes (1 to 5, 2.A, 2.B, 8 to 10) | ISO 32000-1 §7.6.3.3; ISO 32000-2 §7.6.4 | | read in the design record; PDFium opens every mutated file encrypted with the empty user password and refuses the others |
+| Word `ExportAsFixedFormat` and `PrintOut`, Excel `ExportAsFixedFormat` and `PrintOut`, PowerPoint `SaveAs` (32) and `PrintOut`, Edge `--headless --print-to-pdf` | https://learn.microsoft.com/en-us/office/vba/api/overview/ | | recalled; each outcome is recorded in the generation log the script writes |
 
 ## 11. CLAUDE.md §9 and §10: the toolchain, the build and the C ABI
 

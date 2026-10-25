@@ -1,0 +1,124 @@
+tag	group	minimum	description	detector
+xref_missing	damage	5	no cross-reference table or stream reachable from startxref	mutate
+xref_wrong_offsets	damage	5	cross-reference entries point at the wrong byte offsets	autotag
+startxref_wrong	damage	5	startxref names an offset that holds no cross-reference section	autotag
+eof_missing	damage	5	the file does not end with %%EOF	autotag
+junk_before_header	damage	5	bytes before the %PDF- header	autotag
+length_wrong	damage	5	a stream /Length that does not match the bytes before endstream	mutate
+endstream_missing	damage	5	a stream without its endstream keyword	mutate
+endobj_missing	damage	5	an object without its endobj keyword	mutate
+two_trailers	damage	5	two trailer dictionaries in one cross-reference section chain	autotag
+incremental_update	damage	5	more than one revision (several %%EOF markers)	autotag
+object_streams	damage	5	objects stored in /Type /ObjStm streams	autotag
+xref_stream	damage	5	a cross-reference stream instead of a table	autotag
+hybrid_xref	damage	5	a classic table with an /XRefStm hybrid reference	autotag
+linearised	damage	5	a /Linearized dictionary at the start of the file	autotag
+linearised_stale_hints	damage	5	linearised, but a later rewrite left the hint tables and offsets stale	mutate
+truncated	damage	5	the file stops before its last object or cross-reference section	mutate
+damaged_flate	damage	5	a Flate stream whose compressed bytes are corrupted	mutate
+rc4_40	encryption	3	standard security handler revision 2, RC4 40-bit	autotag
+rc4_128	encryption	3	standard security handler revision 3, RC4 128-bit	autotag
+aesv2	encryption	3	standard security handler revision 4 with /AESV2	autotag
+aesv3_r5	encryption	1	standard security handler revision 5, AES-256 (deprecated Adobe extension)	autotag
+aesv3_r6	encryption	3	standard security handler revision 6, AES-256	autotag
+encrypt_metadata_false	encryption	3	/EncryptMetadata false: the XMP stream is left in clear	autotag
+user_password	encryption	3	a non-empty user password: the file must be refused	mutate
+tounicode_correct	fonts	5	a /ToUnicode map that gives the shown text	autotag
+tounicode_missing	fonts	5	a font without /ToUnicode whose text must come from the encoding or the program	autotag
+tounicode_wrong	fonts	5	a /ToUnicode map that contradicts the glyphs drawn	synth
+differences_aglnames	fonts	5	/Differences with Adobe Glyph List names	autotag
+differences_uni	fonts	5	/Differences with uniXXXX or uXXXX names	autotag
+differences_gnn	fonts	5	/Differences with gNN or glyphNN names	autotag
+differences_cdd	fonts	5	/Differences with Cdd or Cxx names	autotag
+symbolic_truetype	fonts	5	a symbolic TrueType font read through its (3,0) cmap	autotag
+type1_builtin	fonts	5	an embedded Type 1 program whose built-in encoding is the only encoding	autotag
+cff_charset	fonts	5	an embedded CFF program (FontFile3) whose charset names the glyphs	autotag
+identity_cid	fonts	5	a Type0 font with Identity-H or Identity-V	autotag
+predefined_cmap	fonts	5	a Type0 font with a predefined CMap other than Identity	autotag
+type3	fonts	1	a Type 3 font drawn by content procedures	autotag
+text_as_outlines	fonts	5	text drawn as filled paths with no font	synth
+font_not_embedded	fonts	5	a font with no embedded program	autotag
+no_space_glyphs	layout	3	words separated by positioning only, no space glyph	synth
+kerning_split	layout	3	words split across TJ kerning adjustments	synth
+ligatures	layout	3	ligature glyphs (fi, fl, ffi) in the shown text	synth
+hyphenation_line	layout	3	a word hyphenated across two lines	synth
+hyphenation_page	layout	3	a word hyphenated across two pages	synth
+multi_column	layout	3	text set in two or more columns	synth
+rotated	layout	3	text drawn at a rotation or on a rotated page	synth
+vertical	layout	1	vertical writing mode (Identity-V or a -V CMap)	autotag
+right_to_left	layout	1	right-to-left script text	synth
+table	layout	3	text set in a ruled table	synth
+header_footer	layout	3	repeated running headers and footers	synth
+actual_text	layout	3	marked content with /ActualText	autotag
+render_invisible	hidden	3	text in render mode 3 or 7	autotag
+white_fill	hidden	3	white text with nothing drawn under it	synth
+clipped	hidden	3	text outside its clipping path	synth
+off_media	hidden	3	text drawn outside the media box	synth
+off_crop	hidden	3	text inside the media box but outside the crop box	synth
+optional_content_off	hidden	3	text in an optional content group that is OFF	synth
+duplicate	hidden	3	the same glyphs drawn twice at one position	synth
+covered	hidden	3	text under an image or a filled path drawn later	synth
+img_flate	images	3	an image with /FlateDecode	autotag
+img_dct	images	3	an image with /DCTDecode	autotag
+img_dct_cmyk	images	3	a CMYK image with /DCTDecode	autotag
+img_jpx	images	1	an image with /JPXDecode	autotag
+img_jbig2	images	1	an image with /JBIG2Decode	autotag
+img_jbig2_globals	images	1	a /JBIG2Decode image with /JBIG2Globals	autotag
+img_ccitt_g3	images	3	a /CCITTFaxDecode image with /K 0 or more (Group 3)	autotag
+img_ccitt_g4	images	3	a /CCITTFaxDecode image with /K below 0 (Group 4)	autotag
+img_lzw	images	3	an image with /LZWDecode	autotag
+img_runlength	images	3	an image with /RunLengthDecode	autotag
+cs_gray	images	3	an image in /DeviceGray	autotag
+cs_rgb	images	3	an image in /DeviceRGB	autotag
+cs_cmyk	images	3	an image in /DeviceCMYK	autotag
+cs_indexed	images	3	an image in an /Indexed colour space	autotag
+cs_icc	images	3	an image in an /ICCBased colour space	autotag
+cs_separation	images	3	an image in a /Separation colour space	autotag
+cs_devicen	images	3	an image in a /DeviceN colour space	autotag
+cs_lab	images	3	an image in a /Lab colour space	autotag
+smask	images	3	an image with a soft mask /SMask	autotag
+stencil	images	3	an /ImageMask stencil image	autotag
+colour_key	images	3	an image with a /Mask array (colour-key masking)	autotag
+inline_image	images	3	an inline image (BI ID EI)	autotag
+shared_image	images	3	one image XObject drawn on more than one page	synth
+image_in_form	images	3	an image drawn from inside a form XObject	synth
+bpc_1	images	3	an image with one bit per component	autotag
+bpc_16	images	3	an image with sixteen bits per component	autotag
+ch_thumbnail	channels	3	a page /Thumb thumbnail image	autotag
+ch_pieceinfo	channels	3	/PieceInfo private application data	autotag
+ch_javascript	channels	3	JavaScript (/JavaScript name tree or /JS actions)	autotag
+ch_embedded_file	channels	3	embedded files (/EmbeddedFiles, /AF or file attachments)	autotag
+ch_annotation	channels	3	page annotations (/Annots)	autotag
+ch_redact_annot	channels	3	a /Redact annotation not yet applied	autotag
+ch_acroform	channels	3	an interactive form /AcroForm	autotag
+ch_xfa	channels	3	an /XFA form	autotag
+ch_outline	channels	3	document outlines /Outlines	autotag
+ch_named_dest	channels	3	named destinations (/Dests or a /Names tree)	autotag
+ch_struct_tree	channels	3	a structure tree /StructTreeRoot	autotag
+ch_optional_content	channels	3	optional content /OCProperties	autotag
+ch_page_labels	channels	3	page labels /PageLabels	autotag
+ch_xmp_history	channels	3	an XMP packet with xmpMM:History	autotag
+ch_object_metadata	channels	3	an object-level /Metadata stream on a page, image, form or font	autotag
+ch_unreferenced	channels	3	objects no reference reaches	autotag
+ch_threads	channels	3	article threads /Threads	autotag
+ch_portfolio	channels	3	a portfolio /Collection	autotag
+gen_word	generators	3	produced by Microsoft Word (Save as PDF)	autotag
+gen_word_pdfa	generators	1	produced by Microsoft Word as PDF/A	office
+gen_print_to_pdf	generators	3	produced by Microsoft Print to PDF	autotag
+gen_excel	generators	3	produced by Microsoft Excel	autotag
+gen_powerpoint	generators	3	produced by Microsoft PowerPoint	autotag
+gen_edge	generators	1	produced by Microsoft Edge's print to PDF	office
+gen_chrome	generators	3	produced by Chrome or another Skia/PDF producer	autotag
+gen_libreoffice	generators	3	produced by LibreOffice or OpenOffice	autotag
+gen_quartz	generators	3	produced by macOS Quartz PDFContext	autotag
+gen_ghostscript	generators	3	produced by Ghostscript	autotag
+gen_pdftex	generators	3	produced by pdfTeX, XeTeX or LuaTeX	autotag
+gen_acrobat	generators	3	produced by Adobe Acrobat (not Distiller)	autotag
+gen_distiller	generators	3	produced by Acrobat Distiller	autotag
+gen_itext	generators	3	produced by iText	autotag
+gen_reportlab	generators	3	produced by ReportLab	autotag
+gen_other	generators	3	a producer string no other generator tag matches	autotag
+overlapped_text	traps	3	two text runs drawn over one another	synth
+incremental_redaction	traps	3	a later revision removes a name an earlier revision drew	synth
+deniable_removal	traps	1	text removed from the drawn content but kept in a reachable object	synth
+box_over_live_text	traps	3	a filled box drawn over text that is still extractable	synth
