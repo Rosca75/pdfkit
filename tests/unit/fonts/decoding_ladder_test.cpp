@@ -353,4 +353,43 @@ TEST_CASE("a font resource naming nothing decodes nothing and never throws") {
   CHECK(FontDocument::decoded(*missing, "A").rungs == Rungs{DecodingRung::unreadable});
 }
 
+TEST_CASE("a truncated or malformed program never throws out of the loader") {
+  // Each program cut at several lengths, embedded under the entry that
+  // names it: the font still loads and its codes decode through the
+  // encoding's glyph names, the rung that remains.
+  FontBuilder::Cff cff_spec;
+  cff_spec.glyph_names = {".notdef", "A", "B"};
+  cff_spec.widths = {std::nullopt, 10, 20};
+  FontBuilder::Type1 type1_spec;
+  type1_spec.glyphs = {{".notdef", 0}, {"A", 722}};
+  const std::vector<std::pair<std::string, std::string>> programs = {
+      {"FontFile2", FontBuilder::true_type(latin_program())},
+      {"FontFile3", FontBuilder::cff(cff_spec)},
+      {"FontFile", FontBuilder::type1(type1_spec)},
+  };
+  for (const auto& [entry, program] : programs) {
+    for (const std::size_t cut : {std::size_t{0}, std::size_t{5}, std::size_t{13},
+                                  program.size() / 3, program.size() / 2, program.size() - 1}) {
+      CAPTURE(entry);
+      CAPTURE(cut);
+      FontDocument doc;
+      const auto stream =
+          doc.add_stream(entry == "FontFile3" ? "/Subtype /Type1C" : "", program.substr(0, cut));
+      const auto descriptor = doc.add("<< /Type /FontDescriptor /FontName /T /Flags 32 /" + entry +
+                                      " " + std::to_string(stream) + " 0 R >>");
+      const auto font = doc.add("<< /Type /Font /Subtype /" +
+                                std::string(entry == "FontFile2" ? "TrueType" : "Type1") +
+                                " /BaseFont /T /Encoding /WinAnsiEncoding /FontDescriptor " +
+                                std::to_string(descriptor) + " 0 R >>");
+      std::shared_ptr<PdfFont> loaded;
+      CHECK_NOTHROW(loaded = doc.load(font));
+      REQUIRE(loaded != nullptr);
+      const auto decoded = FontDocument::decoded(*loaded, "AB");
+      CHECK(decoded.text == "AB");
+      CHECK(decoded.rungs == Rungs(2, DecodingRung::glyph_name));
+      CHECK_NOTHROW((void)loaded->width('A'));
+    }
+  }
+}
+
 }  // namespace
