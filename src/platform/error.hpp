@@ -17,8 +17,10 @@
 
 namespace pdfkit::platform {
 
-// The refusal codes are those of docs/DESIGN.md chapter 19; self_check is the
-// write refusal of chapter 18; the last three are the core's own.
+// The refusal codes are those of docs/DESIGN.md chapter 19; undecodable_image
+// refuses one image (pdfkit_image_data on an image whose encoding does not
+// decode) and rides with the refusals; self_check is the write refusal of
+// chapter 18; the last three are the core's own.
 enum class ErrorCode : std::uint8_t {
   not_pdf,
   no_page,
@@ -26,6 +28,7 @@ enum class ErrorCode : std::uint8_t {
   unsupported_security_handler,
   limit_exceeded,
   page_ceiling,
+  undecodable_image,
   self_check,
   invalid_argument,
   not_implemented,

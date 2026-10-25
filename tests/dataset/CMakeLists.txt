@@ -11,3 +11,11 @@ target_link_libraries(pdfkit_font_census PRIVATE pdfkit_core)
 pdfkit_warnings(pdfkit_font_census)
 pdfkit_sanitize(pdfkit_font_census)
 pdfkit_static_runtime(pdfkit_font_census)
+
+# pdfkit_image_census measures the images layer's decoders over the dataset
+# (tests/pdfium/image_agreement.py drives it and compares with PDFium).
+add_executable(pdfkit_image_census image_census.cpp)
+target_link_libraries(pdfkit_image_census PRIVATE pdfkit_core)
+pdfkit_warnings(pdfkit_image_census)
+pdfkit_sanitize(pdfkit_image_census)
+pdfkit_static_runtime(pdfkit_image_census)

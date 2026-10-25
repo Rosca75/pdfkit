@@ -41,6 +41,7 @@ TEST_CASE("every code has the name the design's refusal table uses") {
         "unsupported_security_handler");
   CHECK(pdfkit::platform::error_code_name(ErrorCode::limit_exceeded) == "limit_exceeded");
   CHECK(pdfkit::platform::error_code_name(ErrorCode::page_ceiling) == "page_ceiling");
+  CHECK(pdfkit::platform::error_code_name(ErrorCode::undecodable_image) == "undecodable_image");
   CHECK(pdfkit::platform::error_code_name(ErrorCode::self_check) == "self_check");
   CHECK(pdfkit::platform::error_code_name(ErrorCode::invalid_argument) == "invalid_argument");
   CHECK(pdfkit::platform::error_code_name(ErrorCode::not_implemented) == "not_implemented");
@@ -54,6 +55,7 @@ TEST_CASE("the refusal codes are exactly the input refusals") {
   CHECK(pdfkit::platform::is_refusal(ErrorCode::unsupported_security_handler));
   CHECK(pdfkit::platform::is_refusal(ErrorCode::limit_exceeded));
   CHECK(pdfkit::platform::is_refusal(ErrorCode::page_ceiling));
+  CHECK(pdfkit::platform::is_refusal(ErrorCode::undecodable_image));
   CHECK_FALSE(pdfkit::platform::is_refusal(ErrorCode::self_check));
   CHECK_FALSE(pdfkit::platform::is_refusal(ErrorCode::invalid_argument));
   CHECK_FALSE(pdfkit::platform::is_refusal(ErrorCode::not_implemented));

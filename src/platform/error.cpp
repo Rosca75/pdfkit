@@ -24,6 +24,8 @@ std::string_view error_code_name(ErrorCode code) noexcept {
       return "limit_exceeded";
     case ErrorCode::page_ceiling:
       return "page_ceiling";
+    case ErrorCode::undecodable_image:
+      return "undecodable_image";
     case ErrorCode::self_check:
       return "self_check";
     case ErrorCode::invalid_argument:
@@ -44,6 +46,7 @@ bool is_refusal(ErrorCode code) noexcept {
     case ErrorCode::unsupported_security_handler:
     case ErrorCode::limit_exceeded:
     case ErrorCode::page_ceiling:
+    case ErrorCode::undecodable_image:
       return true;
     case ErrorCode::self_check:
     case ErrorCode::invalid_argument:

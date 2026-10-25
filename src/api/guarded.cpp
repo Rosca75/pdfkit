@@ -55,6 +55,7 @@ pdfkit_status status_of(platform::ErrorCode code) noexcept {
     case platform::ErrorCode::unsupported_security_handler:
     case platform::ErrorCode::limit_exceeded:
     case platform::ErrorCode::page_ceiling:
+    case platform::ErrorCode::undecodable_image:
       return PDFKIT_E_REFUSED;
   }
   return PDFKIT_E_INTERNAL;
