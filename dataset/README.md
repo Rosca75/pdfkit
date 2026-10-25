@@ -54,6 +54,7 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_images` | `decoded` (every image decodes), `partial:<reason>`, or `n/a` (no image) |
 | `expect_redact` | `stable` (a redaction leaves the page pixel-stable outside the changed rectangles) or `n/a` |
 | `expect_metadata` | `agree` (the Info and XMP values agree with the extraction) or `n/a` |
+| `expect_fonts` | the fonts layer's census (`tests/dataset/font_census.py`, not a catalogue function): `loads` (every font loads and every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |
 
 A new catalogue function adds its expectation column here and in

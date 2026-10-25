@@ -22,7 +22,7 @@ from pathlib import Path
 MANIFEST_COLUMNS = (
     "id", "set", "source", "licence", "sha256", "bytes", "pages", "producer",
     "tags", "expect_open", "expect_text", "expect_images", "expect_redact",
-    "expect_metadata", "notes",
+    "expect_metadata", "expect_fonts", "notes",
 )
 TAXONOMY_COLUMNS = ("tag", "group", "minimum", "description", "detector")
 SOURCES_COLUMNS = (
@@ -38,6 +38,8 @@ EXPECTATIONS = {
     "expect_images": ("images", ("decoded", "partial:", "n/a")),
     "expect_redact": ("redact", ("stable", "n/a")),
     "expect_metadata": ("metadata", ("agree", "n/a")),
+    # Not a catalogue function: the fonts layer's census (tests/dataset/font_census.py).
+    "expect_fonts": ("fonts", ("loads", "unreadable:", "n/a")),
 }
 
 # The refusal codes of docs/DESIGN.md chapter 19 an `expect_open` may name.
