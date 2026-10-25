@@ -291,11 +291,11 @@ header names its source.
 
 | pdfkit component | Ported from | Licence |
 |---|---|---|
-| JBIG2 decoder | pdf.js `src/core/jbig2.js` and `src/core/arithmetic_decoder.js` | Apache-2.0 |
+| JBIG2 decoder | pdf.js `src/core/jbig2.js` and `src/core/arithmetic_decoder.js` at commit fe48736846e2043696738bd54435ebb5ab24ecff (Copyright 2012 Mozilla Foundation) | Apache-2.0 |
 | The simple-font encoding tables (`src/fonts/encodings.cpp`) | pdf.js `src/core/encodings.js` | Apache-2.0 |
 | The CFF standard strings and predefined charsets (`src/fonts/cff_font.cpp`) | pdf.js `src/core/cff_parser.js` and `src/core/charsets.js` | Apache-2.0 |
 | The 258 standard Macintosh glyph names (`src/fonts/true_type_tables.cpp`) | pdf.js `src/core/fonts_utils.js` | Apache-2.0 |
-| CCITT decoder | pdf.js `src/core/ccitt.js` | Apache-2.0 |
+| CCITT decoder | pdf.js `src/core/ccitt.js` at commit fe48736846e2043696738bd54435ebb5ab24ecff (Copyright 2012 Mozilla Foundation), itself a JavaScript port of xpdf's CCITTFaxStream (Copyright 1996-2003 Glyph & Cog, LLC, made available under the Apache 2.0 licence) | Apache-2.0 |
 | Page segmentation (recursive XY-cut, Docstrum) | PdfPig's page segmenters | Apache-2.0 |
 
 ## 9. Test-only components (not shipped)

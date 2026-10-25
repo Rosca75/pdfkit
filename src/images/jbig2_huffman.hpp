@@ -35,7 +35,7 @@ class Jbig2Huffman {
     [[nodiscard]] std::uint32_t read_bits(unsigned n);
     // Skips to the next byte boundary.
     void byte_align() noexcept { shift_ = -1; }
-    // The index of the next byte not yet started.
+    // The index of the first byte this reader has not begun to read.
     [[nodiscard]] std::size_t position() const noexcept { return position_; }
     void set_position(std::size_t position) noexcept {
       position_ = position;

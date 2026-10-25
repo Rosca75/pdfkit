@@ -275,23 +275,54 @@ TEST_CASE("/EncodedByteAlign: every row starts on a byte boundary") {
     CHECK(result.rows == rows.size());
     check_equal(result, rows, false, rows.size());
   }
-  SUBCASE("Group 3 one-dimensional with byte-aligned end-of-line codes") {
+  for (const bool ends_on_boundary : {false, true}) {
+    SUBCASE(ends_on_boundary
+                ? "Group 3 one-dimensional with end-of-line codes ending on a boundary"
+                : "Group 3 one-dimensional with end-of-line codes starting on a boundary") {
+      CcittTestEncoder::Options options;
+      options.k = 0;
+      options.byte_align = true;
+      options.end_of_line = true;
+      options.eol_ends_on_boundary = ends_on_boundary;
+      options.end_of_block = false;
+      const auto data = CcittTestEncoder::encode(rows, options);
+      CcittDecoder::Parameters parameters;
+      parameters.columns = 53;
+      parameters.encoded_byte_align = true;
+      parameters.end_of_line = true;
+      parameters.end_of_block = false;
+      parameters.rows = static_cast<std::int64_t>(rows.size());
+      const auto result = decode(data, parameters);
+      CHECK(result.rows == rows.size());
+      check_equal(result, rows, false, rows.size());
+    }
+  }
+  SUBCASE("Group 3 two-dimensional with end-of-line codes ending on a boundary") {
     CcittTestEncoder::Options options;
-    options.k = 0;
+    options.k = 3;
     options.byte_align = true;
-    options.end_of_line = true;
-    options.end_of_block = false;
+    options.eol_ends_on_boundary = true;
     const auto data = CcittTestEncoder::encode(rows, options);
     CcittDecoder::Parameters parameters;
+    parameters.k = 3;
     parameters.columns = 53;
     parameters.encoded_byte_align = true;
     parameters.end_of_line = true;
-    parameters.end_of_block = false;
-    parameters.rows = static_cast<std::int64_t>(rows.size());
     const auto result = decode(data, parameters);
     CHECK(result.rows == rows.size());
     check_equal(result, rows, false, rows.size());
   }
+}
+
+TEST_CASE("/EndOfLine on Group 4 data, which has no end-of-line codes, changes nothing") {
+  const BitonalRows rows = make_rows(70, 15, 19, 20);
+  const auto data = CcittTestEncoder::encode(rows, {});
+  auto parameters = group4(70);
+  parameters.end_of_line = true;
+  const auto result = decode(data, parameters);
+  CHECK(result.fault.empty());
+  CHECK(result.rows == rows.size());
+  check_equal(result, rows, false, rows.size());
 }
 
 TEST_CASE("/Rows ends the decoding before the data does") {

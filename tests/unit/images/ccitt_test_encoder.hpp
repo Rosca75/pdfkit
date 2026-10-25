@@ -32,6 +32,10 @@ class CcittTestEncoder {
     bool end_of_line = false;
     // Every row starts on a byte boundary.
     bool byte_align = false;
+    // With byte_align and end-of-line codes: fill bits before each code make
+    // it end on the boundary (the T.4 and TIFF convention), where otherwise
+    // the code starts on the boundary and the row follows it directly.
+    bool eol_ends_on_boundary = false;
     // Group 4 ends with the end-of-facsimile-block code, Group 3 with six
     // end-of-line codes (each followed by a 1 tag bit in the two-dimensional
     // coding).

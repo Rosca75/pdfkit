@@ -378,8 +378,14 @@ std::vector<std::byte> CcittTestEncoder::encode(const BitonalRows& rows, const O
     }
     if (end_of_line) {
       if (options.byte_align) {
-        // The fill bits go before the line, which starts with its end-of-line code.
-        align_to_byte(bits);
+        if (options.eol_ends_on_boundary) {
+          while ((bits.size() + k_eol.size()) % 8 != 0) {
+            bits.push_back('0');
+          }
+        } else {
+          // The fill bits go before the line, which starts with its end-of-line code.
+          align_to_byte(bits);
+        }
       }
       bits += k_eol;
     } else if (options.byte_align) {

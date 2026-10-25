@@ -75,8 +75,8 @@ class Jbig2Bitmap {
   // op; pixels falling outside this bitmap are dropped.
   void combine(const Jbig2Bitmap& source, std::int64_t x, std::int64_t y, Operator op);
 
-  // The sub-rectangle from (x, 0) of the given width over the full height,
-  // used to cut a collective bitmap into symbols and patterns.
+  // The sub-rectangle from column first, count columns wide, over the full
+  // height: how a collective bitmap is cut into symbols and patterns.
   [[nodiscard]] Jbig2Bitmap columns(Allowance& allowance, std::uint32_t first,
                                     std::uint32_t count) const;
 

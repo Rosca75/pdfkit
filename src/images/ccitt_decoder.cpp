@@ -23,7 +23,12 @@
 //   bounds-checked, where pdf.js reads and writes typed arrays past their end
 //   as no-ops;
 // - /DamagedRowsBeforeError is honoured by reading a damaged row as white and
-//   counting it, where pdf.js ignores the parameter.
+//   counting it, where pdf.js ignores the parameter;
+// - /EncodedByteAlign skips to the byte boundary after the end-of-line code
+//   has been looked for and only when none was found, as xpdf does, where
+//   pdf.js skips first and so cannot read an end-of-line code that ends on the
+//   boundary; and no end-of-line code is looked for in Group 4 data, which has
+//   none.
 
 #include "images/ccitt_decoder.hpp"
 
@@ -510,7 +515,7 @@ class FaxReader {
   FaxReader(platform::ByteSpan data, const CcittDecoder::Parameters& parameters)
       : data_(data),
         encoding_(parameters.k),
-        eoline_(parameters.end_of_line),
+        eoline_(parameters.end_of_line && parameters.k >= 0),
         byte_align_(parameters.encoded_byte_align),
         eoblock_(parameters.end_of_block),
         rows_(parameters.rows),
@@ -964,12 +969,11 @@ class FaxReader {
   bool finish_row() {
     bool got_eol = false;
     std::uint32_t code1 = 0;
-    if (byte_align_) {
-      input_bits_ -= input_bits_ % 8U;
-    }
     if (!eoblock_ && row_ == rows_ - 1) {
       rows_done_ = true;
-    } else {
+    } else if (eoline_ || !byte_align_) {
+      // With /EncodedByteAlign and no /EndOfLine the fill bits of a row could
+      // begin like an end-of-line code, so none is looked for.
       code1 = look_bits(12);
       if (eoline_) {
         while (code1 != k_no_bits && code1 != 1) {
@@ -988,6 +992,12 @@ class FaxReader {
       } else if (code1 == k_no_bits) {
         eof_ = true;
       }
+    }
+    // The next row starts on a byte boundary, except after an end-of-line
+    // code: producers write that either ending on the boundary or starting on
+    // it, and the next row follows the code directly in both.
+    if (byte_align_ && !got_eol) {
+      input_bits_ -= input_bits_ % 8U;
     }
     last_row_took_eol_ = got_eol;
     if (!eof_ && encoding_ > 0 && !rows_done_) {
