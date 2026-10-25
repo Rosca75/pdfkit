@@ -566,6 +566,23 @@ class FaxReader {
   [[nodiscard]] Stop stop() const noexcept { return stop_; }
   [[nodiscard]] std::int64_t row() const noexcept { return row_; }
 
+  // Consumes the end-of-facsimile-block code of a Group 4 stream that follows
+  // the last row, less the end-of-line code the end of that row already took.
+  void consume_end_of_block() {
+    for (int remaining = last_row_took_eol_ ? 1 : 2; remaining > 0; --remaining) {
+      if (look_bits(12) != 1) {
+        break;
+      }
+      eat_bits(12);
+    }
+  }
+
+  // The bytes read so far, counting a byte of which only some bits were used.
+  [[nodiscard]] std::size_t bytes_consumed() const noexcept {
+    const std::size_t bits = position_ * 8U - input_bits_;
+    return (bits + 7U) / 8U;
+  }
+
   // Renders the coding line into out, which holds (columns + 7) / 8 bytes:
   // white pixels are 1 bits, black pixels 0 bits, and the pad bits of the last
   // byte are 0 (all inverted under /BlackIs1, as pdf.js does).
@@ -965,6 +982,7 @@ class FaxReader {
         eof_ = true;
       }
     }
+    last_row_took_eol_ = got_eol;
     if (!eof_ && encoding_ > 0 && !rows_done_) {
       next_line_2d_ = look_bits(1) == 0;
       eat_bits(1);
@@ -1027,6 +1045,7 @@ class FaxReader {
   bool err_ = false;
   bool bad_code_ = false;
   bool dry_ = false;
+  bool last_row_took_eol_ = false;
   Stop stop_ = Stop::none;
   int codes_in_row_ = 0;
 };
@@ -1085,6 +1104,10 @@ CcittDecoder::Result CcittDecoder::decode(platform::ByteSpan data, const Paramet
             std::to_string(parameters.rows) + " rows the /Rows entry states";
   }
   result.fault = std::move(fault);
+  if (parameters.k < 0 && parameters.end_of_block) {
+    reader.consume_end_of_block();
+  }
+  result.bytes_consumed = reader.bytes_consumed();
   return result;
 }
 

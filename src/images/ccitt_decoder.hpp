@@ -48,6 +48,10 @@ class CcittDecoder {
     std::uint32_t rows = 0;
     // Rows whose codes did not decode, read as white.
     std::uint32_t damaged_rows = 0;
+    // The bytes of data the decoder read, counting the end-of-block code of a
+    // Group 4 stream that stops at /Rows; the next stream of a run of them starts
+    // here.
+    std::size_t bytes_consumed = 0;
     // Empty when the data decoded to its end (or to /Rows); otherwise the
     // fault that stopped the decoder, with data holding the rows before it.
     std::string fault;

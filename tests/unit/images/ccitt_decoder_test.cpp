@@ -306,6 +306,29 @@ TEST_CASE("/Rows ends the decoding before the data does") {
   check_equal(result, rows, false, 6);
 }
 
+TEST_CASE("bytes_consumed ends after the end-of-block code, so streams can follow each other") {
+  const BitonalRows first = make_rows(50, 9, 13, 30);
+  const BitonalRows second = make_rows(50, 7, 14, 30);
+  auto data = CcittTestEncoder::encode(first, {});
+  const std::size_t first_size = data.size();
+  const auto more = CcittTestEncoder::encode(second, {});
+  data.insert(data.end(), more.begin(), more.end());
+
+  auto parameters = group4(50);
+  parameters.rows = 9;
+  const auto one = decode(data, parameters);
+  CHECK(one.fault.empty());
+  CHECK(one.bytes_consumed == first_size);
+  check_equal(one, first, false, 9);
+
+  parameters.rows = 7;
+  const std::vector<std::byte> rest(data.begin() + static_cast<std::ptrdiff_t>(one.bytes_consumed),
+                                    data.end());
+  const auto two = decode(rest, parameters);
+  CHECK(two.fault.empty());
+  CHECK(two.bytes_consumed == more.size());
+  check_equal(two, second, false, 7);
+}
 TEST_CASE("data that holds fewer rows than /Rows is a fault that keeps the rows it has") {
   const BitonalRows rows = make_rows(40, 5, 9, 20);
   const auto data = CcittTestEncoder::encode(rows, {});
