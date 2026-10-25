@@ -26,6 +26,7 @@
 #include "writer/stream_copier.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <ranges>
