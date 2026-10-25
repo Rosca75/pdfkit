@@ -5,4 +5,5 @@
 # layer is one line in this list and touches no other layer's list.
 
 target_sources(pdfkit_core PRIVATE
-  images_placeholder.cpp)
+  ccitt_decoder.cpp
+  jbig2_decoder.cpp)
