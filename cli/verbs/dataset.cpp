@@ -17,6 +17,7 @@
 #include "output.hpp"
 #include "sha256.hpp"
 #include "support.hpp"
+#include "verbs/dataset_images.hpp"
 #include "verbs/dataset_text.hpp"
 #include "verbs/dataset_write.hpp"
 #include "verbs/verbs.hpp"
@@ -244,6 +245,8 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   writer.close_object();
   const std::string text = opened.status == PDFKIT_OK ? dataset_text(document)
                                                       : R"({"status": "skipped", "code": null})";
+  const std::string images = opened.status == PDFKIT_OK ? dataset_images(document)
+                                                        : R"({"status": "skipped", "code": null})";
   const DatasetWrite written = opened.status == PDFKIT_OK
                                    ? dataset_write(document, id, page_count, out_dir)
                                    : dataset_write_skipped();
@@ -251,6 +254,8 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   for (const std::string_view key : later_keys) {
     if (key == "text") {
       writer.raw(key, text);
+    } else if (key == "images") {
+      writer.raw(key, images);
     } else {
       writer.raw(key, key == "channels" ? std::string_view(written.channels) : "null");
     }

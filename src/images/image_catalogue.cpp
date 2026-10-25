@@ -30,6 +30,12 @@ ImageCatalogue::ImageCatalogue(syntax::Document& document) : document_(&document
   }
 }
 
+ImageCatalogue::ImageCatalogue(syntax::Document& document, const syntax::Object& resources,
+                               std::uint32_t page)
+    : document_(&document) {
+  walk(resources, page, true, 0);
+}
+
 const ImageCatalogue::Entry* ImageCatalogue::find(std::string_view identity) const {
   const auto found = by_identity_.find(identity);
   return found != by_identity_.end() ? &entries_[found->second] : nullptr;

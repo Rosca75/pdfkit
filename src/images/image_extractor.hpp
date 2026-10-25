@@ -11,7 +11,10 @@
 #ifndef PDFKIT_IMAGES_IMAGE_EXTRACTOR_HPP
 #define PDFKIT_IMAGES_IMAGE_EXTRACTOR_HPP
 
+#include "platform/byte_span.hpp"
+#include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
+#include "syntax/object.hpp"
 #include "syntax/stream.hpp"
 
 #include <cstdint>
@@ -41,6 +44,14 @@ class ImageExtractor {
 
   [[nodiscard]] static Output extract(syntax::Document& document, const syntax::Stream& stream,
                                       const Request& request);
+
+  // The same for an inline image: its dictionary as written, its data, and
+  // the /ColorSpace resource dictionary of the content that drew it.
+  [[nodiscard]] static Output extract_inline(syntax::Document& document,
+                                             const syntax::Dictionary& dictionary,
+                                             platform::ByteSpan data,
+                                             const syntax::Object& colour_spaces,
+                                             const Request& request);
 };
 
 }  // namespace pdfkit::images
