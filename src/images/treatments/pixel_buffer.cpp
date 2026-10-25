@@ -20,8 +20,8 @@ PixelBuffer::PixelBuffer(std::uint32_t width, std::uint32_t height, std::uint32_
                          std::uint32_t bits, const platform::Budget& budget, std::string_view what)
     : width_(width), height_(height), components_(components), bits_(bits) {
   const auto pixels = platform::checked_mul<std::uint64_t>(width, height, "the pixels of an image");
-  const auto samples = platform::checked_mul<std::uint64_t>(pixels, components,
-                                                            "the samples of an image");
+  const auto samples =
+      platform::checked_mul<std::uint64_t>(pixels, components, "the samples of an image");
   budget.check_claim(platform::checked_mul<std::uint64_t>(samples, 2, "the samples of an image"),
                      "the samples of " + std::string(what) + " held for a treatment");
   samples_.assign(static_cast<std::size_t>(samples), 0);
@@ -43,8 +43,8 @@ PixelBuffer PixelBuffer::unpack(platform::ByteSpan packed, std::size_t stride, s
       std::uint32_t value = 0;
       if (bits == 16) {
         const std::size_t at = row + (2 * i);
-        const std::uint32_t high = at < packed.size() ? std::to_integer<std::uint32_t>(packed[at])
-                                                      : 0;
+        const std::uint32_t high =
+            at < packed.size() ? std::to_integer<std::uint32_t>(packed[at]) : 0;
         const std::uint32_t low =
             at + 1 < packed.size() ? std::to_integer<std::uint32_t>(packed[at + 1]) : 0;
         value = (high << 8U) | low;

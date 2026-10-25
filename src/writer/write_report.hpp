@@ -34,6 +34,19 @@ class WriteReport {
     std::size_t placeholders = 0;
   };
 
+  // What the image-treatment stage did to one image identity: its
+  // treatment, the image objects replaced or removed, the inline draws
+  // rewritten or removed, the draws removed, and the SHA-256 of each
+  // treated object's new encoded bytes, in object order.
+  struct Image {
+    std::string identity;
+    std::string treatment;
+    std::size_t objects = 0;
+    std::size_t inline_draws = 0;
+    std::size_t draws_removed = 0;
+    std::vector<std::string> sha256;
+  };
+
   std::vector<std::uint32_t> pages;
   std::size_t bytes = 0;
   std::string sha256;
@@ -43,6 +56,8 @@ class WriteReport {
   std::size_t missing_references = 0;
   std::size_t unpruned_resources = 0;
   std::vector<Rectangles> rectangles;
+  // Per treated image identity, in identity order; empty without a treatment.
+  std::vector<Image> images;
   // "not_run", or the self-check's verdict once it has run.
   std::string self_check_status = "not_run";
   std::string self_check_reason;

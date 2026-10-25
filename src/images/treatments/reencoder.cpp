@@ -75,11 +75,11 @@ std::vector<std::byte> Reencoder::jpeg(const PixelBuffer& samples, int quality) 
     std::rethrow_exception(delivery.error);
   }
   if (status != 0) {
-    throw platform::Error(platform::ErrorCode::internal,
-                          std::string("libjpeg-turbo could not compress a treated image: ") +
-                              message.data(),
-                          "the JPEG compressor to take 8-bit samples",
-                          "this is a defect in pdfkit; report it with the input file");
+    throw platform::Error(
+        platform::ErrorCode::internal,
+        std::string("libjpeg-turbo could not compress a treated image: ") + message.data(),
+        "the JPEG compressor to take 8-bit samples",
+        "this is a defect in pdfkit; report it with the input file");
   }
   return out;
 }

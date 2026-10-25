@@ -109,17 +109,17 @@ std::uint32_t CaptionDrawer::draw(PixelBuffer& buffer, const PixelBuffer::Rect& 
   const int min_y = low(orientation.right_y, line) + low(orientation.down_y, height);
   const int extent_x = static_cast<int>(turned ? height : line);
   const int extent_y = static_cast<int>(turned ? line : height);
-  const int origin_x = static_cast<int>(area.left) +
-                       ((static_cast<int>(area.width()) - extent_x + 1) / 2) - min_x;
-  const int origin_y = static_cast<int>(area.top) +
-                       ((static_cast<int>(area.height()) - extent_y + 1) / 2) - min_y;
+  const int origin_x =
+      static_cast<int>(area.left) + ((static_cast<int>(area.width()) - extent_x + 1) / 2) - min_x;
+  const int origin_y =
+      static_cast<int>(area.top) + ((static_cast<int>(area.height()) - extent_y + 1) / 2) - min_y;
   int pen = 0;
   for (const char character : caption) {
     const BitmapGlyph& entry = *glyph(height, character);
     for (std::uint32_t row = 0; row < entry.height; ++row) {
       for (std::uint32_t column = 0; column < entry.width; ++column) {
-        const std::uint8_t byte = bitmap_font_rows[entry.offset + (row * entry.stride) +
-                                                   (column / 8)];
+        const std::uint8_t byte =
+            bitmap_font_rows[entry.offset + (row * entry.stride) + (column / 8)];
         if ((byte & (0x80U >> (column % 8))) == 0) {
           continue;
         }

@@ -24,7 +24,7 @@ constexpr std::array<Catalogue::Row, 13> catalogue_rows{{
     {"3.2", "Image pixels", "pdfkit_image_data", "images", "build-6.md", implemented},
     {"4", "Extract metadata", "pdfkit_metadata", "metadata", "build-10.md", implemented},
     {"5", "Redact text", "pdfkit_redact_text", "redact", "build-8.md", implemented},
-    {"6", "Redact images", "pdfkit_redact_images", "redact", "build-9.md", not_implemented},
+    {"6", "Redact images", "pdfkit_redact_images", "redact", "build-9.md", implemented},
     {"7", "Rewrite metadata", "pdfkit_set_metadata", "redact", "build-10.md", implemented},
     {"8", "Strip hidden channels", "pdfkit_channels", "channels", "build-7.md", implemented},
     {"9", "Select pages", "pdfkit_select_pages", "select-pages", "build-7.md", implemented},

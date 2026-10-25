@@ -92,14 +92,14 @@ TEST_CASE("a Flate image round-trips at every depth with every sample equal") {
       data[i] = static_cast<char>((i * 37 + 11) & 0xFF);
     }
     const std::string space = components == 3 ? "/DeviceRGB" : "/DeviceGray";
-    const ImageDecoder::Samples source =
-        samples_of("/Width 11 /Height 7 /ColorSpace " + space + " /BitsPerComponent " +
-                       std::to_string(bits) + " /Decode " +
-                       (components == 3 ? "[0 1 0 1 0 1]" : "[1 0]"),
-                   data);
+    const ImageDecoder::Samples source = samples_of(
+        "/Width 11 /Height 7 /ColorSpace " + space + " /BitsPerComponent " + std::to_string(bits) +
+            " /Decode " + (components == 3 ? "[0 1 0 1 0 1]" : "[1 0]"),
+        data);
     CHECK(source.codec.empty());
     PixelBuffer painted = source.buffer;
-    BoxPainter::paint(painted, {2, 1, 6, 5}, std::vector<std::uint16_t>(static_cast<std::size_t>(components), 0));
+    BoxPainter::paint(painted, {2, 1, 6, 5},
+                      std::vector<std::uint16_t>(static_cast<std::size_t>(components), 0));
     Dictionary original;
     original.set("Width", Object::make_integer(11));
     original.set("Height", Object::make_integer(7));
@@ -121,10 +121,10 @@ TEST_CASE("a DCT image re-encodes as JPEG: the box exact inside, the rest within
   for (std::size_t i = 0; i < pixels.size(); ++i) {
     pixels[i] = static_cast<std::uint8_t>(64 + ((i / 3) % 64) + ((i % 3) * 20));
   }
-  const ImageDecoder::Samples source =
-      samples_of("/Width 64 /Height 48 /ColorSpace /DeviceRGB /BitsPerComponent 8 "
-                 "/Filter /DCTDecode",
-                 pdfkit::test::encode_jpeg(width, height, 3, pixels));
+  const ImageDecoder::Samples source = samples_of(
+      "/Width 64 /Height 48 /ColorSpace /DeviceRGB /BitsPerComponent 8 "
+      "/Filter /DCTDecode",
+      pdfkit::test::encode_jpeg(width, height, 3, pixels));
   CHECK(source.codec == "DCTDecode");
   PixelBuffer painted = source.buffer;
   const PixelBuffer::Rect box{8, 8, 40, 32};
@@ -144,8 +144,8 @@ TEST_CASE("a DCT image re-encodes as JPEG: the box exact inside, the rest within
   REQUIRE(back.buffer.width() == painted.width());
   for (std::uint32_t y = 0; y < painted.height(); ++y) {
     for (std::uint32_t x = 0; x < painted.width(); ++x) {
-      const bool deep = x >= box.left + 8 && x < box.right - 8 && y >= box.top + 8 &&
-                        y < box.bottom - 8;
+      const bool deep =
+          x >= box.left + 8 && x < box.right - 8 && y >= box.top + 8 && y < box.bottom - 8;
       const bool outside = x < box.left || x >= box.right || y < box.top || y >= box.bottom;
       for (std::uint32_t c = 0; c < 3; ++c) {
         const int got = back.buffer.at(x, y, c);
@@ -183,8 +183,8 @@ TEST_CASE("a bitonal CCITT source becomes 1-bit Flate whose /Decode keeps its me
       line[x] = true;
     }
   }
-  const std::string encoded =
-      as_string(pdfkit::test::CcittTestEncoder::encode(rows, pdfkit::test::CcittTestEncoder::Options{}));
+  const std::string encoded = as_string(
+      pdfkit::test::CcittTestEncoder::encode(rows, pdfkit::test::CcittTestEncoder::Options{}));
   const ImageDecoder::Samples source = samples_of(
       "/Width 16 /Height 8 /ColorSpace /DeviceGray /BitsPerComponent 1 /Decode [1 0] "
       "/Filter /CCITTFaxDecode /DecodeParms << /K -1 /Columns 16 /Rows 8 >>",

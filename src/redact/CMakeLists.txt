@@ -7,6 +7,9 @@
 target_sources(pdfkit_core PRIVATE
   content_syntax.cpp
   edit_plan.cpp
+  image_remover.cpp
+  image_treatment_applier.cpp
+  image_treatment_plan.cpp
   marked_content_rewriter.cpp
   match_finder.cpp
   placeholder_drawing.cpp

@@ -37,9 +37,9 @@ PixelBuffer patterned(std::uint32_t width, std::uint32_t height, std::uint32_t c
   for (std::uint32_t y = 0; y < height; ++y) {
     for (std::uint32_t x = 0; x < width; ++x) {
       for (std::uint32_t c = 0; c < components; ++c) {
-        buffer.set(x, y, c,
-                   static_cast<std::uint16_t>(((x * 7) + (y * 13) + (c * 29) + 5) &
-                                              buffer.max_value()));
+        buffer.set(
+            x, y, c,
+            static_cast<std::uint16_t>(((x * 7) + (y * 13) + (c * 29) + 5) & buffer.max_value()));
       }
     }
   }
@@ -127,8 +127,8 @@ TEST_CASE("a /Decode [1 0] grey image is filled with the value that reads black"
 TEST_CASE("an Indexed image is filled with the palette entry nearest the colour") {
   pdfkit::test::ImageFixture fixture;
   // Four entries: red, grey, dark blue, white.
-  const std::uint32_t number = fixture.object(
-      "[/Indexed /DeviceRGB 3 <FF0000 808080 000020 FFFFFF>]");
+  const std::uint32_t number =
+      fixture.object("[/Indexed /DeviceRGB 3 <FF0000 808080 000020 FFFFFF>]");
   auto& document = fixture.open();
   BoxPainter::Meaning meaning;
   meaning.space = ColourSpace::parse(document, fixture.get(number));

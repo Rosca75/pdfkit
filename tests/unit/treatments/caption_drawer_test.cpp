@@ -53,7 +53,8 @@ PixelBuffer::Rect inked(const PixelBuffer& buffer) {
 TEST_CASE("the caption takes the largest height that fits and is centred in the box") {
   PixelBuffer buffer(400, 200, 1, 8, budget, "a test image");
   const PixelBuffer::Rect box{50, 40, 350, 160};
-  const std::uint32_t height = CaptionDrawer::draw(buffer, box, "REDACTED", ink, CaptionDrawer::Orientation{});
+  const std::uint32_t height =
+      CaptionDrawer::draw(buffer, box, "REDACTED", ink, CaptionDrawer::Orientation{});
   // REDACTED at 48 pixels is narrower than 300, at 64 wider or taller than
   // the box's 120 rows? 64 rows fit; the width decides.
   const std::uint32_t chosen = CaptionDrawer::width("REDACTED", 64) <= 300 ? 64U : 48U;

@@ -163,6 +163,11 @@ void ImageListing::probe(Entry& entry) {
       result = ImageDecoder::decode(*document_, *entry.stream.stream(), ImageDecoder::Part::base);
     }
     entry.fault = result.image ? std::string() : result.fault;
+    if (result.image) {
+      entry.width = result.image->width;
+      entry.height = result.image->height;
+      entry.bitonal = result.image->bits == 1 && result.image->channels == 1;
+    }
   } catch (const platform::Error& error) {
     if (error.code() != platform::ErrorCode::limit_exceeded) {
       throw;

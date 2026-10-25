@@ -52,6 +52,22 @@ std::string WriteReport::json() const {
     writer.end_object();
   }
   writer.end_array();
+  writer.key("images").begin_array();
+  for (const Image& image : images) {
+    writer.begin_object();
+    writer.key("identity").string(image.identity);
+    writer.key("treatment").string(image.treatment);
+    writer.key("objects").unsigned_integer(image.objects);
+    writer.key("inline_draws").unsigned_integer(image.inline_draws);
+    writer.key("draws_removed").unsigned_integer(image.draws_removed);
+    writer.key("sha256").begin_array();
+    for (const std::string& digest : image.sha256) {
+      writer.string(digest);
+    }
+    writer.end_array();
+    writer.end_object();
+  }
+  writer.end_array();
   writer.key("self_check").begin_object();
   writer.key("status").string(self_check_status);
   if (!self_check_reason.empty()) {

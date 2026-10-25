@@ -9,6 +9,7 @@
 
 #include "platform/byte_span.hpp"
 #include "platform/crypto/sha2.hpp"
+#include "redact/image_treatment_applier.hpp"
 #include "redact/self_check.hpp"
 #include "redact/text_redactor.hpp"
 #include "writer/channel_table.hpp"
@@ -60,9 +61,10 @@ void WritePipeline::text_surgery(EditPlan& plan, writer::ObjectGraph& graph,
   TextRedactor::apply(plan, graph, report);
 }
 
-void WritePipeline::image_treatments(EditPlan& /*plan*/, writer::ObjectGraph& /*graph*/,
-                                     writer::WriteReport& /*report*/) {
-  // The plan holds no image treatment: every image is kept.
+void WritePipeline::image_treatments(EditPlan& plan, writer::ObjectGraph& graph,
+                                     writer::WriteReport& report) {
+  // A plan without image treatments keeps every image as it is.
+  ImageTreatmentApplier::apply(plan, graph, report);
 }
 
 void WritePipeline::metadata(EditPlan& plan, writer::ObjectGraph& graph,

@@ -57,7 +57,8 @@ std::optional<PixelBuffer::Rect> RegionMapper::to_pixels(const text::Matrix& ctm
   const double w = width;
   const double h = height;
   PixelBuffer::Rect out{floor_to(square.left * w, width), floor_to((1.0 - square.top) * h, height),
-                        ceil_to(square.right * w, width), ceil_to((1.0 - square.bottom) * h, height)};
+                        ceil_to(square.right * w, width),
+                        ceil_to((1.0 - square.bottom) * h, height)};
   if (out.empty()) {
     return std::nullopt;
   }
@@ -79,8 +80,8 @@ std::optional<PixelBuffer::Rect> RegionMapper::clip(const std::array<double, 4>&
   return out;
 }
 
-text::Rect RegionMapper::to_page(const text::Matrix& ctm, std::uint32_t width,
-                                 std::uint32_t height, const PixelBuffer::Rect& pixels) {
+text::Rect RegionMapper::to_page(const text::Matrix& ctm, std::uint32_t width, std::uint32_t height,
+                                 const PixelBuffer::Rect& pixels) {
   if (pixels.empty() || width == 0 || height == 0) {
     return text::Rect::empty();
   }

@@ -67,8 +67,7 @@ void each_candidate(const BoxPainter::Meaning& meaning, Visit visit) {
   while (true) {
     for (std::uint32_t c = 0; c < components; ++c) {
       tuple[c] = static_cast<std::uint16_t>(
-          count == 1 ? 0
-                     : std::lround(static_cast<double>(index[c]) * max_value / (count - 1)));
+          count == 1 ? 0 : std::lround(static_cast<double>(index[c]) * max_value / (count - 1)));
     }
     visit(tuple);
     std::uint32_t c = components;

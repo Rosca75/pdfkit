@@ -31,9 +31,9 @@ class RegionMapper {
   // rectangle covers, cut to the image; no value when it covers none or the
   // CTM is singular.
   [[nodiscard]] static std::optional<PixelBuffer::Rect> to_pixels(const text::Matrix& ctm,
-                                                                   std::uint32_t width,
-                                                                   std::uint32_t height,
-                                                                   const text::Rect& page);
+                                                                  std::uint32_t width,
+                                                                  std::uint32_t height,
+                                                                  const text::Rect& page);
 
   // A caller's pixel rectangle [left, top, right, bottom] (columns and rows,
   // from the top-left corner, right and bottom exclusive) rounded outward and

@@ -48,7 +48,8 @@ TEST_CASE("a scaled image maps a page rectangle to its pixels, rounded outward")
 TEST_CASE("a page rectangle on exact pixel edges keeps its size") {
   const Matrix ctm{100.0, 0.0, 0.0, 100.0, 0.0, 0.0};
   const PixelBuffer::Rect rect{10, 20, 30, 40};
-  const auto pixels = RegionMapper::to_pixels(ctm, 100, 100, RegionMapper::to_page(ctm, 100, 100, rect));
+  const auto pixels =
+      RegionMapper::to_pixels(ctm, 100, 100, RegionMapper::to_page(ctm, 100, 100, rect));
   REQUIRE(pixels);
   CHECK(*pixels == rect);
 }
