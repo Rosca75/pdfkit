@@ -119,6 +119,32 @@ std::optional<int> require_implemented(std::initializer_list<std::string_view> s
   return std::nullopt;
 }
 
+bool is_implemented(std::string_view symbol) {
+  pdfkit_buffer out{nullptr, 0, nullptr};
+  if (pdfkit_version(&out) != PDFKIT_OK) {
+    pdfkit_buffer_free(&out);
+    return false;
+  }
+  const std::string text(reinterpret_cast<const char*>(out.data), out.size);
+  pdfkit_buffer_free(&out);
+  std::size_t error_offset = 0;
+  const std::optional<JsonText> version = JsonText::parse(text, error_offset);
+  const JsonText::Node* catalogue =
+      version ? version->member(version->root(), "catalogue") : nullptr;
+  if (catalogue == nullptr || catalogue->kind != JsonText::Kind::array) {
+    return false;
+  }
+  for (const std::size_t index : catalogue->items) {
+    const JsonText::Node& row = version->node(index);
+    const JsonText::Node* name = version->member(row, "symbol");
+    const JsonText::Node* implemented = version->member(row, "implemented");
+    if (name != nullptr && name->text == symbol && implemented != nullptr) {
+      return implemented->text == "true";
+    }
+  }
+  return false;
+}
+
 int run_document_verb(const Arguments& args, std::string_view verb,
                       std::initializer_list<std::string_view> needs, DocumentCall call) {
   const std::optional<std::vector<std::uint8_t>> bytes =

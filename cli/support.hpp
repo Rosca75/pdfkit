@@ -37,6 +37,10 @@ namespace pdfkit::cli {
 [[nodiscard]] std::optional<int> require_implemented(
     std::initializer_list<std::string_view> symbols);
 
+// Whether the loaded library lists symbol as implemented in its catalogue;
+// false when the catalogue cannot be read.
+[[nodiscard]] bool is_implemented(std::string_view symbol);
+
 using DocumentCall = pdfkit_status (*)(pdfkit_document*, const char*, pdfkit_buffer*);
 
 // The shape of inspect, text, images, metadata and channels: read the file,

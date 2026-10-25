@@ -18,6 +18,7 @@
 #include "sha256.hpp"
 #include "support.hpp"
 #include "verbs/dataset_images.hpp"
+#include "verbs/dataset_redact.hpp"
 #include "verbs/dataset_text.hpp"
 #include "verbs/dataset_write.hpp"
 #include "verbs/verbs.hpp"
@@ -250,6 +251,9 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   const DatasetWrite written = opened.status == PDFKIT_OK
                                    ? dataset_write(document, id, page_count, out_dir)
                                    : dataset_write_skipped();
+  const std::string redact_text = opened.status == PDFKIT_OK
+                                      ? dataset_redact(document, id, text, out_dir)
+                                      : R"({"status": "skipped", "code": null})";
   pdfkit_close(document);
   for (const std::string_view key : later_keys) {
     if (key == "text") {
@@ -262,6 +266,7 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   }
   writer.raw("write", written.write);
   writer.raw("select", written.select);
+  writer.raw("redact_text", redact_text);
   writer.close_object();
   return writer.finish();
 }
