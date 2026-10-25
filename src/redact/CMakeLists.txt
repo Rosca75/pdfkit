@@ -6,4 +6,5 @@
 
 target_sources(pdfkit_core PRIVATE
   edit_plan.cpp
+  match_finder.cpp
   write_pipeline.cpp)
