@@ -46,9 +46,12 @@ class ImageOccurrence {
   std::string resource_name;
   syntax::Object image;
 
-  // For an inline image: its dictionary as written (abbreviated keys kept)
+  // For an inline image: its dictionary as written (abbreviated keys kept),
+  // the /ColorSpace resource dictionary of the content that drew it (a named
+  // colour space of an inline image is looked up there; null when none),
   // and its data, [data_start, data_end) of the stream's bytes, copied.
   syntax::Object dictionary;
+  syntax::Object colour_spaces;
   std::size_t data_start = 0;
   std::size_t data_end = 0;
   std::shared_ptr<const std::vector<std::byte>> data;

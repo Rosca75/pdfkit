@@ -254,7 +254,7 @@ class ContentInterpreter::Walk {
         state.ctm = *matrix * state.ctm;
       }
     } else if (op == "gs") {
-      graphics_state_parameters(operation, resources);
+      graphics_state_parameters(operation, index, stream, resources);
     } else if (op == "BT") {
       text_ = {};
     } else if (op == "Tc") {
@@ -312,6 +312,9 @@ class ContentInterpreter::Walk {
       set_space(op == "cs" ? state.fill : state.stroke, operation, resources);
     } else if (op == "SC" || op == "SCN" || op == "sc" || op == "scn") {
       set_components(op == "sc" || op == "scn" ? state.fill : state.stroke, operation);
+      if (!operation.operands.empty() && operation.operands.back().name() != nullptr) {
+        note_pattern(*operation.operands.back().name(), index, stream, resources);
+      }
     } else if (op == "G" || op == "g" || op == "RG" || op == "rg" || op == "K" || op == "k") {
       set_device_colour(op, operation);
     } else if (op == "BMC" || op == "BDC") {
@@ -323,7 +326,7 @@ class ContentInterpreter::Walk {
     } else if (op == "Do") {
       draw_object(operation, index, stream, resources, depth);
     } else if (op == "BI") {
-      inline_image(operation, index, stream, bytes);
+      inline_image(operation, index, stream, bytes, resources);
     }
     // Every other operator (ET, whose text matrices restart at BT; h, which
     // adds no point; w, J, j, M, d, ri, i, MP, DP, BX, EX, d0, d1 and unknown
@@ -335,7 +338,33 @@ class ContentInterpreter::Walk {
     text_.text = text_.line;
   }
 
-  void graphics_state_parameters(const Operation& operation, const syntax::Resources& resources) {
+  // Records content the walk does not enter.
+  void note_unwalked(PageContent::Unwalked::Kind kind, const syntax::Object& raw, std::size_t index,
+                     std::size_t stream) {
+    PageContent::Unwalked unwalked;
+    unwalked.kind = kind;
+    unwalked.content = document_.resolve(raw);
+    unwalked.reference = raw.reference().value_or(syntax::Object::Reference{});
+    if (const syntax::Dictionary* entries = unwalked.content.dictionary_or_stream_dictionary()) {
+      unwalked.resources = document_.resolve_entry(*entries, "Resources");
+    }
+    unwalked.stream = stream;
+    unwalked.operation = index;
+    unwalked.form_path = content_.streams[stream].form_path;
+    content_.unwalked.push_back(std::move(unwalked));
+  }
+
+  // A pattern set as a colour: a tiling pattern (a stream) holds content.
+  void note_pattern(const std::string& name, std::size_t index, std::size_t stream,
+                    const syntax::Resources& resources) {
+    const syntax::Object raw = raw_entry(resources, "Pattern", name);
+    if (document_.resolve(raw).stream() != nullptr) {
+      note_unwalked(PageContent::Unwalked::Kind::pattern, raw, index, stream);
+    }
+  }
+
+  void graphics_state_parameters(const Operation& operation, std::size_t index, std::size_t stream,
+                                 const syntax::Resources& resources) {
     const std::string* name =
         operation.operands.empty() ? nullptr : operation.operands.front().name();
     if (name == nullptr) {
@@ -361,7 +390,13 @@ class ContentInterpreter::Walk {
       state.fill_alpha = *alpha;
     }
     if (entries->contains("SMask")) {
-      state.soft_mask = !document_.resolve_entry(*entries, "SMask").is_name("None");
+      const syntax::Object mask = document_.resolve_entry(*entries, "SMask");
+      state.soft_mask = !mask.is_name("None");
+      if (const syntax::Dictionary* mask_entries = mask.dictionary()) {
+        if (const syntax::Object* group = mask_entries->find("G")) {
+          note_unwalked(PageContent::Unwalked::Kind::soft_mask, *group, index, stream);
+        }
+      }
     }
     if (entries->contains("BM")) {
       syntax::Object mode = document_.resolve_entry(*entries, "BM");
@@ -656,9 +691,12 @@ class ContentInterpreter::Walk {
   }
 
   void inline_image(const Operation& operation, std::size_t index, std::size_t stream,
-                    const std::vector<std::byte>& bytes) {
+                    const std::vector<std::byte>& bytes, const syntax::Resources& resources) {
     ImageOccurrence occurrence = occurrence_at(index, stream);
     occurrence.kind = ImageOccurrence::Kind::inline_image;
+    if (const syntax::Dictionary* entries = resources.dictionary().dictionary()) {
+      occurrence.colour_spaces = document_.resolve_entry(*entries, "ColorSpace");
+    }
     occurrence.dictionary =
         operation.operands.empty() ? syntax::Object() : operation.operands.front();
     occurrence.data_start = std::min(operation.data_start, bytes.size());

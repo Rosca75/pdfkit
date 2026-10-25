@@ -31,6 +31,25 @@ namespace pdfkit::text {
 
 class PageContent {
  public:
+  // Content a draw names that the interpreter does not walk (docs/DESIGN.md
+  // section 6.1): a tiling pattern set as a colour, or the group of a soft
+  // mask set by an ExtGState. An image inside one is listed with the warning
+  // image_in_pattern and never numbered among the page's occurrences.
+  struct Unwalked {
+    enum class Kind : std::uint8_t { pattern, soft_mask };
+    Kind kind = Kind::pattern;
+    // The resolved pattern stream or soft-mask group form, and the reference
+    // that named it (number 0 when written directly).
+    syntax::Object content;
+    syntax::Object::Reference reference;
+    // The resources its content draws with: its own /Resources, or null.
+    syntax::Object resources;
+    // The walk and the operator (scn, SCN or gs) that set it.
+    std::size_t stream = 0;
+    std::size_t operation = 0;
+    std::vector<std::uint32_t> form_path;
+  };
+
   // 1-based.
   std::uint32_t page = 0;
   syntax::Page::Box media_box;
@@ -44,6 +63,8 @@ class PageContent {
   // In draw order: images[i].ordinal == i.
   std::vector<ImageOccurrence> images;
   std::vector<MarkedSpan> spans;
+  // Patterns and soft masks set on the page, in the order set.
+  std::vector<Unwalked> unwalked;
 
   // Unreadable codes per font name, and the names of fonts drawn with
   // estimated widths.

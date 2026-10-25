@@ -307,3 +307,37 @@ TEST_CASE("a q stack past 256 saves nothing more and Q still balances") {
   REQUIRE(!page.faults.empty());
   CHECK(page.faults.front().find("deeper than 256") != std::string::npos);
 }
+
+TEST_CASE("patterns and soft masks are noted, not walked, and inline images keep their spaces") {
+  TextDocument document;
+  const std::uint32_t image = document.add_stream(
+      "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray "
+      "/BitsPerComponent 8",
+      std::string(1, '\x80'));
+  const std::uint32_t pattern = document.add_stream(
+      "/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 10 10] /XStep 10 "
+      "/YStep 10 /Resources << /XObject << /Im " +
+          std::to_string(image) + " 0 R >> >>",
+      "10 0 0 10 0 0 cm /Im Do");
+  const std::uint32_t group = document.add_stream(
+      "/Type /XObject /Subtype /Form /BBox [0 0 10 10] /Group << /S /Transparency >> "
+      "/Resources << /XObject << /Im " +
+          std::to_string(image) + " 0 R >> >>",
+      "10 0 0 10 0 0 cm /Im Do");
+  document.page("/Pattern cs /P1 scn 0 0 50 50 re f /G1 gs BI /W 1 /H 1 /CS /C0 /BPC 8 ID \x7f EI",
+                "/Pattern << /P1 " + std::to_string(pattern) +
+                    " 0 R >> /ExtGState << /G1 << /SMask << /S /Luminosity /G " +
+                    std::to_string(group) + " 0 R >> >> >> /ColorSpace << /C0 /DeviceGray >>");
+  const PageContent page = document.interpret();
+  REQUIRE(page.unwalked.size() == 2U);
+  CHECK(page.unwalked[0].kind == PageContent::Unwalked::Kind::pattern);
+  CHECK(page.unwalked[0].reference.number == pattern);
+  CHECK(page.unwalked[0].resources.dictionary() != nullptr);
+  CHECK(page.unwalked[1].kind == PageContent::Unwalked::Kind::soft_mask);
+  CHECK(page.unwalked[1].reference.number == group);
+  // Neither the pattern's image nor the mask's is an occurrence of the page.
+  REQUIRE(page.images.size() == 1U);
+  CHECK(page.images[0].kind == ImageOccurrence::Kind::inline_image);
+  REQUIRE(page.images[0].colour_spaces.dictionary() != nullptr);
+  CHECK(page.images[0].colour_spaces.dictionary()->contains("C0"));
+}

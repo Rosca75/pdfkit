@@ -320,6 +320,12 @@ the `text` column of the manifest is reverted with the merge.
     (dccc-0012, synth-0151); CJK predefined CMaps have no data
     (`docs/DESIGN.md` §5.3); a few subset fonts read no rung (pdfdiff-0025,
     pdfdiff-0026, pdfjs-0042).
+19. **What the images listing reads** (`build-6.md` §9's request): an inline
+    occurrence carries `colour_spaces`, the drawing content's `/ColorSpace`
+    resources; `PageContent::unwalked` names every tiling pattern and
+    soft-mask group a page sets, which the interpreter does not walk, so the
+    listing reports the images inside as `image_in_pattern` without
+    numbering them.
 
 ### Deviations of earlier phases that affect this one
 
