@@ -17,8 +17,7 @@ namespace {
 
 [[nodiscard]] bool white(char32_t c) noexcept {
   return c == U' ' || c == U'\t' || c == U'\n' || c == U'\r' || c == U'\f' || c == 0x0B ||
-         c == 0xA0 || (c >= 0x2000 && c <= 0x200B) || c == 0x202F || c == 0x205F ||
-         c == 0x3000;
+         c == 0xA0 || (c >= 0x2000 && c <= 0x200B) || c == 0x202F || c == 0x205F || c == 0x3000;
 }
 
 }  // namespace

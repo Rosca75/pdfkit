@@ -94,8 +94,8 @@ TEST_CASE("Tz scales the advance and Ts raises the origin") {
 }
 
 TEST_CASE("TD sets the leading that T*, ' and \" then use") {
-  const PageContent page = one_page(
-      "BT /F1 10 Tf 100 700 Td (A) Tj 0 -14 TD (B) Tj T* (A) Tj (B) ' 3 1 (A) \" ET");
+  const PageContent page =
+      one_page("BT /F1 10 Tf 100 700 Td (A) Tj 0 -14 TD (B) Tj T* (A) Tj (B) ' 3 1 (A) \" ET");
   REQUIRE(page.glyphs.size() == 5U);
   CHECK(page.glyphs[1].origin.y == Approx(686.0));
   CHECK(page.glyphs[2].origin.y == Approx(672.0));
@@ -108,7 +108,8 @@ TEST_CASE("TD sets the leading that T*, ' and \" then use") {
 }
 
 TEST_CASE("Tm and cm place text in device space, rotation included") {
-  const PageContent page = one_page("q 0 1 -1 0 300 100 cm BT /F1 10 Tf 1 0 0 1 20 0 Tm (A) Tj ET Q");
+  const PageContent page =
+      one_page("q 0 1 -1 0 300 100 cm BT /F1 10 Tf 1 0 0 1 20 0 Tm (A) Tj ET Q");
   REQUIRE(page.glyphs.size() == 1U);
   CHECK(page.glyphs[0].origin.x == Approx(300.0));
   CHECK(page.glyphs[0].origin.y == Approx(120.0));
@@ -129,9 +130,9 @@ TEST_CASE("vertical writing advances down the page by the vertical width") {
 
 TEST_CASE("a form is walked with its matrix once per draw and carries its path") {
   TextDocument document;
-  const std::uint32_t form = document.add_stream(
-      "/Type /XObject /Subtype /Form /BBox [0 0 200 50] /Matrix [1 0 0 1 10 0]",
-      "BT /F1 10 Tf 0 0 Td (A) Tj ET");
+  const std::uint32_t form =
+      document.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 200 50] /Matrix [1 0 0 1 10 0]",
+                          "BT /F1 10 Tf 0 0 Td (A) Tj ET");
   document.page("q 1 0 0 1 100 100 cm /Fm Do Q q 1 0 0 1 100 300 cm /Fm Do Q",
                 "/XObject << /Fm " + std::to_string(form) + " 0 R >>");
   const PageContent page = document.interpret();
@@ -170,8 +171,7 @@ TEST_CASE("forms nested past the depth limit are skipped with a note") {
   for (int i = 39; i >= 0; --i) {
     const std::string body = next == 0 ? "BT /F1 10 Tf (A) Tj ET" : "/N Do";
     const std::string resources =
-        next == 0 ? "/Font << /F1 3 0 R >>"
-                  : "/XObject << /N " + std::to_string(next) + " 0 R >>";
+        next == 0 ? "/Font << /F1 3 0 R >>" : "/XObject << /N " + std::to_string(next) + " 0 R >>";
     next = document.add_stream(
         "/Type /XObject /Subtype /Form /BBox [0 0 10 10] /Resources << " + resources + " >>", body);
   }
@@ -216,8 +216,8 @@ TEST_CASE("image draws are numbered in draw order through forms") {
 }
 
 TEST_CASE("path painting between q and Q is one figure with a paint per operator") {
-  const PageContent page = one_page(
-      "q 0 0 m 10 10 l S 1 0 0 rg 0 0 100 50 re f Q q 1 g 5 5 1 1 re f Q 0 0 1 1 re W n");
+  const PageContent page =
+      one_page("q 0 0 m 10 10 l S 1 0 0 rg 0 0 100 50 re f Q q 1 g 5 5 1 1 re f Q 0 0 1 1 re W n");
   REQUIRE(page.figures.size() == 2U);
   CHECK(page.figures[0].paints.size() == 2U);
   CHECK(page.figures[0].first_operation == 3U);

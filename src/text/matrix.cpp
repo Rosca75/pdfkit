@@ -20,12 +20,9 @@ std::optional<Matrix> Matrix::of(const std::array<double, 6>& values) noexcept {
 }
 
 Matrix Matrix::operator*(const Matrix& other) const noexcept {
-  return {(a * other.a) + (b * other.c),
-          (a * other.b) + (b * other.d),
-          (c * other.a) + (d * other.c),
-          (c * other.b) + (d * other.d),
-          (e * other.a) + (f * other.c) + other.e,
-          (e * other.b) + (f * other.d) + other.f};
+  return {(a * other.a) + (b * other.c),           (a * other.b) + (b * other.d),
+          (c * other.a) + (d * other.c),           (c * other.b) + (d * other.d),
+          (e * other.a) + (f * other.c) + other.e, (e * other.b) + (f * other.d) + other.f};
 }
 
 bool Matrix::axis_aligned() const noexcept {

@@ -43,8 +43,8 @@ TEST_CASE("records_reserialise_to_the_stream over every way a string is written"
   CHECK(page.glyphs.size() > 40U);
   // The literal escape \( is two bytes of the stream for one code.
   const std::string bytes = as_text(*page.streams[0].bytes);
-  CHECK(bytes.substr(page.glyphs[1].code_start, page.glyphs[1].code_end - page.glyphs[1].code_start) ==
-        "\\(");
+  CHECK(bytes.substr(page.glyphs[1].code_start,
+                     page.glyphs[1].code_end - page.glyphs[1].code_start) == "\\(");
 }
 
 TEST_CASE("pieces of /Contents reserialise as one joined stream") {
@@ -52,8 +52,8 @@ TEST_CASE("pieces of /Contents reserialise as one joined stream") {
   const std::uint32_t first = document.add_stream("", "BT /F1 10 Tf 72 700 Td (Hel");
   const std::uint32_t second = document.add_stream("", "lo) Tj ET");
   // A later /Contents entry replaces the one the fixture writes (last wins).
-  document.page("", "", "/Contents [" + std::to_string(first) + " 0 R " +
-                            std::to_string(second) + " 0 R]");
+  document.page("", "",
+                "/Contents [" + std::to_string(first) + " 0 R " + std::to_string(second) + " 0 R]");
   const PageContent page = document.interpret();
   // The joining newline is a code 10 inside the string, which WinAnsi leaves
   // unnamed, so it draws an unreadable glyph.

@@ -30,7 +30,9 @@ class Colour {
   // The components the family takes (an ICCBased space's /N, a DeviceN's
   // colorant count); 0 when unknown.
   int count = 1;
-  std::vector<double> components{0.0};
+  // Empty in a value not yet set; the graphics state starts each colour at
+  // black (gray 0).
+  std::vector<double> components;
 
   // The initial colour of a space: black for the device families, tint 1 for
   // Separation and DeviceN, index 0 for Indexed (ISO 32000-1 section 8.6.8,

@@ -19,7 +19,7 @@ using enum Catalogue::Status;
 constexpr std::array<Catalogue::Row, 13> catalogue_rows{{
     {"1.1", "Open", "pdfkit_open", "inspect", "build-3.md", implemented},
     {"1.2", "Inspect", "pdfkit_inspect", "inspect", "build-3.md", implemented},
-    {"2", "Extract text", "pdfkit_text", "text", "build-5.md", not_implemented},
+    {"2", "Extract text", "pdfkit_text", "text", "build-5.md", implemented},
     {"3.1", "List images", "pdfkit_images", "images", "build-6.md", not_implemented},
     {"3.2", "Image pixels", "pdfkit_image_data", "images", "build-6.md", implemented},
     {"4", "Extract metadata", "pdfkit_metadata", "metadata", "build-10.md", not_implemented},

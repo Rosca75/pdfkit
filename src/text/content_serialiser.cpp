@@ -37,10 +37,9 @@ void append(std::vector<std::byte>& out, const std::vector<std::byte>& bytes, st
 
 }  // namespace
 
-ContentSerialiser::Result ContentSerialiser::write(const ContentStream& stream,
-                                                   std::size_t stream_index,
-                                                   std::span<const GlyphRecord> records,
-                                                   const std::map<std::size_t, std::string>& edits) {
+ContentSerialiser::Result ContentSerialiser::write(
+    const ContentStream& stream, std::size_t stream_index, std::span<const GlyphRecord> records,
+    const std::map<std::size_t, std::string>& edits) {
   Result result;
   if (stream.bytes == nullptr) {
     return result;

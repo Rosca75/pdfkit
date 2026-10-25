@@ -78,8 +78,7 @@ using Operation = syntax::ContentLexer::Operation;
 }
 
 [[nodiscard]] bool is_filling(std::string_view op) noexcept {
-  return op == "f" || op == "F" || op == "f*" || op == "B" || op == "B*" || op == "b" ||
-         op == "b*";
+  return op == "f" || op == "F" || op == "f*" || op == "B" || op == "B*" || op == "b" || op == "b*";
 }
 
 [[nodiscard]] bool is_stroking(std::string_view op) noexcept {
@@ -180,11 +179,10 @@ class ContentInterpreter::Walk {
   // Lexes pieces into the walk stream_index, then interprets its operations.
   void walk(std::size_t stream_index, const std::vector<std::vector<std::byte>>& pieces,
             const syntax::Resources& resources, int depth) {
-    const std::string what =
-        content_.streams[stream_index].form == 0
-            ? "page " + std::to_string(page_.number)
-            : "form " + std::to_string(content_.streams[stream_index].form) + " on page " +
-                  std::to_string(page_.number);
+    const std::string what = content_.streams[stream_index].form == 0
+                                 ? "page " + std::to_string(page_.number)
+                                 : "form " + std::to_string(content_.streams[stream_index].form) +
+                                       " on page " + std::to_string(page_.number);
     syntax::ContentLexer lexer(pieces, document_.limits(), what);
     std::vector<Operation> operations;
     while (std::optional<Operation> operation = lexer.next()) {
@@ -237,8 +235,7 @@ class ContentInterpreter::Walk {
   }
 
   void operate(const Operation& operation, std::size_t index, std::size_t stream,
-               const std::vector<std::byte>& bytes, const syntax::Resources& resources,
-               int depth) {
+               const std::vector<std::byte>& bytes, const syntax::Resources& resources, int depth) {
     const std::string& op = operation.op;
     GraphicsState::State& state = state_.current();
     if (op == "q") {
@@ -340,8 +337,7 @@ class ContentInterpreter::Walk {
     text_.text = text_.line;
   }
 
-  void graphics_state_parameters(const Operation& operation,
-                                 const syntax::Resources& resources) {
+  void graphics_state_parameters(const Operation& operation, const syntax::Resources& resources) {
     const std::string* name =
         operation.operands.empty() ? nullptr : operation.operands.front().name();
     if (name == nullptr) {
@@ -356,7 +352,8 @@ class ContentInterpreter::Walk {
     if (const syntax::Object* font = entries->find("Font")) {
       // [font size] (ISO 32000-1 section 8.4.5, table 58, read).
       const syntax::Object pair = document_.resolve(*font);
-      if (const syntax::Object::Array* items = pair.array(); items != nullptr && items->size() >= 2) {
+      if (const syntax::Object::Array* items = pair.array();
+          items != nullptr && items->size() >= 2) {
         state.font = owner_.loader_->load((*items)[0]);
         state.font_size = document_.resolve((*items)[1]).number().value_or(state.font_size);
         state.font_resource = *name;
@@ -425,7 +422,8 @@ class ContentInterpreter::Walk {
     if (*family == "ICCBased" && items->size() > 1) {
       const syntax::Object profile = document_.resolve((*items)[1]);
       if (const syntax::Dictionary* entries = profile.dictionary_or_stream_dictionary()) {
-        colour.count = static_cast<int>(document_.resolve_entry(*entries, "N").integer().value_or(0));
+        colour.count =
+            static_cast<int>(document_.resolve_entry(*entries, "N").integer().value_or(0));
       }
     } else if (*family == "DeviceN" && items->size() > 1) {
       if (const syntax::Object::Array* names = document_.resolve((*items)[1]).array()) {
@@ -620,8 +618,8 @@ class ContentInterpreter::Walk {
     }
     const syntax::Dictionary& entries = object->dictionary();
     const syntax::Object subtype = document_.resolve_entry(entries, "Subtype");
-    const bool off = entries.contains("OC") &&
-                     owner_.optional_content_->hidden(*entries.find("OC"));
+    const bool off =
+        entries.contains("OC") && owner_.optional_content_->hidden(*entries.find("OC"));
     xobject_off_ += off ? 1 : 0;
     if (subtype.is_name("Image")) {
       ImageOccurrence occurrence = occurrence_at(index, stream);
@@ -672,8 +670,7 @@ class ContentInterpreter::Walk {
 
   void draw_form(const syntax::Object& raw, const syntax::Stream& object, std::size_t index,
                  std::size_t stream, const syntax::Resources& resources, int depth) {
-    const std::uint32_t number =
-        raw.reference() ? raw.reference()->number : object.owner().number;
+    const std::uint32_t number = raw.reference() ? raw.reference()->number : object.owner().number;
     const std::vector<std::uint32_t>& path = content_.streams[stream].form_path;
     if (std::ranges::find(path, number) != path.end()) {
       content_.fault("form " + std::to_string(number) + " draws itself (operator " +
@@ -710,7 +707,8 @@ class ContentInterpreter::Walk {
       }
     }
     const syntax::Object box = document_.resolve_entry(entries, "BBox");
-    if (const syntax::Object::Array* values = box.array(); values != nullptr && values->size() == 4) {
+    if (const syntax::Object::Array* values = box.array();
+        values != nullptr && values->size() == 4) {
       const auto x0 = (*values)[0].number();
       const auto y0 = (*values)[1].number();
       const auto x1 = (*values)[2].number();
@@ -850,7 +848,8 @@ class ContentInterpreter::Walk {
     std::size_t offset = 0;
     bool first = true;
     for (const fonts::PdfFont::DecodedCode& code : codes) {
-      GlyphRecord record;
+      // Built in place: a record is large and a page can hold millions.
+      GlyphRecord& record = content_.glyphs.emplace_back();
       record.page = page_.number;
       record.stream = stream;
       record.operation = index;
@@ -880,9 +879,8 @@ class ContentInterpreter::Walk {
       if (font.widths_estimated()) {
         content_.estimated_widths.insert(font.name());
       }
-      record.draw = content_.glyphs.size();
+      record.draw = content_.glyphs.size() - 1;
       record.sequence = sequence_++;
-      content_.glyphs.push_back(std::move(record));
     }
   }
 
@@ -925,7 +923,8 @@ class ContentInterpreter::Walk {
       record.origin = matrix.apply(0.0, state.rise);
       record.advance_end = matrix.apply(0.0, ty + state.rise);
       record.size = std::abs(size) * length(matrix.apply_vector(1.0, 0.0));
-      record.angle = degrees(matrix.apply_vector(0.0, -1.0));
+      // The direction the advance runs in: a negative size runs it backwards.
+      record.angle = degrees(matrix.apply_vector(0.0, size < 0.0 ? 1.0 : -1.0));
       text_.text = Matrix::translation(0.0, ty) * text_.text;
     } else {
       const double w0 = font.width(code.code);
@@ -937,11 +936,13 @@ class ContentInterpreter::Walk {
       record.origin = matrix.apply(0.0, state.rise);
       record.advance_end = matrix.apply(tx, state.rise);
       record.size = std::abs(size) * length(matrix.apply_vector(0.0, 1.0));
-      record.angle = degrees(matrix.apply_vector(scale < 0.0 ? -1.0 : 1.0, 0.0));
+      // The direction the advance runs in: a negative size or scaling runs
+      // it backwards (the text is drawn turned half a turn).
+      record.angle = degrees(matrix.apply_vector((scale < 0.0) != (size < 0.0) ? -1.0 : 1.0, 0.0));
       text_.text = Matrix::translation(tx, 0.0) * text_.text;
     }
     record.fill = state.fill;
-    record.stroke = state.stroke;
+    record.stroke_white = state.stroke.is_white();
     record.clip = state.clip;
     for (auto it = marked_.rbegin(); it != marked_.rend(); ++it) {
       if (!it->tag.empty() && it->tag != "OC") {

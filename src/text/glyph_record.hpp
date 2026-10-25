@@ -99,7 +99,9 @@ class GlyphRecord {
   double angle = 0.0;
 
   Colour fill;
-  Colour stroke;
+  // The stroke colour reads white (what render modes 1, 2, 5 and 6 paint
+  // with), for the white_fill class.
+  bool stroke_white = false;
   // The innermost marked-content tag and its /MCID, -1 for none.
   std::string tag;
   std::int64_t mcid = -1;

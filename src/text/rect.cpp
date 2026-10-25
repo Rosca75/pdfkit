@@ -59,8 +59,8 @@ void Rect::add(const Rect& other) noexcept {
 }
 
 Rect Rect::intersection(const Rect& other) const noexcept {
-  return {std::max(left, other.left), std::max(bottom, other.bottom),
-          std::min(right, other.right), std::min(top, other.top)};
+  return {std::max(left, other.left), std::max(bottom, other.bottom), std::min(right, other.right),
+          std::min(top, other.top)};
 }
 
 bool Rect::intersects(const Rect& other) const noexcept {

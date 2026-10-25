@@ -39,8 +39,8 @@ class GraphicsState {
     Matrix ctm;
     // The clip bound in device space; everything until a W narrows it.
     Rect clip = Rect::everything();
-    Colour fill;
-    Colour stroke;
+    Colour fill{"DeviceGray", "DeviceGray", 1, {0.0}};
+    Colour stroke{"DeviceGray", "DeviceGray", 1, {0.0}};
     // The /ca of the ExtGState in force.
     double fill_alpha = 1.0;
     // An ExtGState /SMask other than /None is in force.

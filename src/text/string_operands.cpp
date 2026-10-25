@@ -139,8 +139,8 @@ void hexadecimal(platform::ByteSpan bytes, std::size_t position, std::size_t end
       pending = digit;
       pending_at = position;
     } else {
-      out.push_back(static_cast<char>((static_cast<unsigned>(pending) << 4U) |
-                                      static_cast<unsigned>(digit)));
+      out.push_back(
+          static_cast<char>((static_cast<unsigned>(pending) << 4U) | static_cast<unsigned>(digit)));
       if (ranges != nullptr) {
         ranges->emplace_back(pending_at, position + 1);
       }
@@ -158,8 +158,8 @@ void hexadecimal(platform::ByteSpan bytes, std::size_t position, std::size_t end
 
 }  // namespace
 
-std::vector<StringOperands::Token> StringOperands::scan(platform::ByteSpan bytes,
-                                                        std::size_t start, std::size_t end) {
+std::vector<StringOperands::Token> StringOperands::scan(platform::ByteSpan bytes, std::size_t start,
+                                                        std::size_t end) {
   std::vector<Token> tokens;
   syntax::Lexer lexer(bytes, start);
   while (true) {
