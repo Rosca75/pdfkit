@@ -37,6 +37,8 @@ enable_testing()
 # The vendored components, one target each.
 add_subdirectory(third_party/doctest)
 add_subdirectory(third_party/zlib)
+add_subdirectory(third_party/libjpeg-turbo)
+add_subdirectory(third_party/openjpeg)
 
 # The static core: every layer adds its sources to it from src/<layer>/.
 add_library(pdfkit_core STATIC)
@@ -54,6 +56,11 @@ target_compile_definitions(pdfkit_core
 # zlib is public so the unit tier's fixture writer compresses with the same
 # library the reader inflates with.
 target_link_libraries(pdfkit_core PUBLIC zlib)
+# libjpeg-turbo and openjpeg are public so the unit tier encodes its JPEG and
+# JPEG 2000 fixtures with the encoders of the libraries the images layer
+# decodes with.
+target_link_libraries(pdfkit_core PUBLIC libjpeg-turbo)
+target_link_libraries(pdfkit_core PUBLIC openjpeg)
 pdfkit_warnings(pdfkit_core)
 pdfkit_sanitize(pdfkit_core)
 # The core's objects are linked into the DLL, so they are compiled for its

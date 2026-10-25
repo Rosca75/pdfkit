@@ -9,6 +9,23 @@ add_executable(pdfkit_tests
   main.cpp
   ../../cli/sha256.cpp
   cli/sha256_test.cpp
+  images/arithmetic_decoder_test.cpp
+  images/ccitt_decoder_test.cpp
+  images/ccitt_test_encoder.cpp
+  images/colour_space_test.cpp
+  images/dct_decoder_test.cpp
+  images/image_catalogue_test.cpp
+  images/image_data_test.cpp
+  images/image_fixture.cpp
+  images/image_identity_test.cpp
+  images/jbig2_conformance_vectors.cpp
+  images/jbig2_decoder_test.cpp
+  images/jpx_decoder_test.cpp
+  images/masks_test.cpp
+  images/mq_test_encoder.cpp
+  images/pdf_function_test.cpp
+  images/png_writer_test.cpp
+  images/sample_unpacker_test.cpp
   platform/budget_test.cpp
   platform/buffer_test.cpp
   platform/checked_test.cpp

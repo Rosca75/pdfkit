@@ -21,6 +21,7 @@ formatting and its output.
 | clang-tidy | `clang-tidy --version` | `LLVM version 23.1.3` |
 | git | `git --version` | `git version 2.53.0.windows.1` |
 | curl (Git for Windows) | `curl --version` | `curl 8.18.0 (x86_64-w64-mingw32) libcurl/8.18.0 Schannel` |
+| NASM | `nasm -v` | not installed: libjpeg-turbo is built with its SIMD extensions off (`third_party/libjpeg-turbo/CMakeLists.txt` leaves `WITH_SIMD` unset), so DCT decoding runs its portable C code |
 
 GCC, CMake, Ninja and binutils come from one WinLibs package (UCRT runtime,
 POSIX threads, SEH exceptions), installed through winget for the user, in:

@@ -229,7 +229,121 @@ to their phase-1 stubs. Nothing persisted changes shape.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **Stopped at split point 3.** Phase 5 (the content interpreter) had not
+   merged when the decoders were green, so the listing step is left for the
+   session that resumes this branch: `image_listing`, `src/api/images.cpp`
+   (still the not-implemented stub), `cli/verbs/images.cpp` (unchanged; it
+   stops at catalogue 3.1), the `pdfkit_images` section of `docs/ABI.md`,
+   `image_listing_test.cpp` and the occurrence half of gate 1. Catalogue row
+   3.2 is implemented; row 3.1 is not.
+2. **`images::ImageCatalogue`** (`src/images/image_catalogue.{hpp,cpp}`,
+   beyond §2) lists every image XObject the pages reach through their
+   resources, their forms' resources and the resources of tiling patterns and
+   soft-mask groups (those marked `in_pattern`), by identity, without reading
+   any content stream. `pdfkit_image_data` resolves an identity against it;
+   the document handle keeps it (`pdfkit_document::images`, one member and one
+   include in `src/api/handles.hpp`). The listing step keeps it for
+   `pdfkit_image_data` (an occurrence-only image list would miss images a
+   caller names from an earlier listing) or replaces it with the
+   interpreter's occurrences. A form, pattern or group stream is entered once
+   per page and context, because a tree of forms sharing forms
+   (`pdfjs-0045`) made the plain recursive walk run for minutes.
+3. **Gate measured before the listing step**, by a census tool
+   (`tests/dataset/image_census.cpp`, target `pdfkit_image_census`, beside
+   phase 4's font census) driven by `tests/pdfium/image_agreement.py`. An
+   "occurrence" in its gate 1 is an image times a page whose resources reach
+   it, not an interpreter occurrence. PDFium's bitmap
+   (`FPDFImageObj_GetBitmap`) is aligned with pdfkit's image by the SHA-256 of
+   the encoded data (`FPDFImageObj_GetImageDataRaw`). Not compared, each
+   listed in the report: images whose soft mask has `/Matte` (pdfkit
+   un-premultiplies as §9.4 says, PDFium's bitmap keeps the premultiplied
+   colours: 16 images) and 1-bit Indexed images, which PDFium hands back as
+   palette indices without the palette. Stencils are compared as the mask
+   they paint (255 where they paint). The census gets four times the 30 s per
+   file (it decodes each image three times and writes its pixels) and a
+   64 GiB document budget; the per-stream limit is unchanged.
+4. **Gate numbers** (888 files opened or repaired, run of 2026-10-25, branch
+   tip before the rebase): decoded 4,396 of 4,402 images (99.86%), 6,086 of
+   6,092 page occurrences (99.90%), every failure with its fault; bitonal
+   agreement 491 of 492 (99.80%; JBIG2 16 of 16, CCITT 475 of 476);
+   continuous-tone agreement 3,663 of 3,697 (99.08%); identities and PNG
+   bytes equal over two runs on every file; no crash or hang; `python
+   build/check.py` (15 groups), the unit tier and both sanitizer tiers green
+   at the branch tip. The one bitonal
+   disagreement is `qpdf-0026` (a 2500 x 3250 Group 4 page): its first coding
+   line reads, by T.4's tables, as horizontal mode with a white run of 0 and a
+   black run of 2496 + 4, so pdfkit's page is black where PDFium's bitmap and
+   rendering are white; left as a PDFium difference, not fixed. The 34
+   continuous-tone disagreements are colour management (27 `ICCBased` images,
+   `OPEN-QUESTIONS.md` §2.8), PDFium's Lab reading (3, item 8), 2 images of
+   `pdfjs-0048` (Indexed over an ICC base, MAD 3.6 and 4.4), and 2 of
+   `pdfpig-0009` and `pikepdf-0038` (Indexed, not investigated). Undecoded: 6
+   (a PNG stored as DCT twice, a filter `/XXXDecode`, an empty stream, an
+   LZW image without `/ColorSpace`, a DeviceN without colorant names).
+5. **CMYK converts through PDFium's Adobe CMYK table**
+   (`src/images/adobe_cmyk.{hpp,cpp}`, ported from PDFium's
+   `cfx_cmyk_to_srgb.cpp`, BSD-3, notice in `THIRD-PARTY-NOTICES.md` §8)
+   instead of the naive complement of §2 and `docs/DESIGN.md` §9.4, which
+   failed the continuous-tone gate on every real CMYK image; DESIGN §9.4 says
+   so and `OPEN-QUESTIONS.md` §2.7 asks the owner to confirm.
+6. **An Adobe APP14 marker inverts nothing**: the dataset's YCCK JPEGs agree
+   with PDFium uninverted (MAD 0.65) and not inverted (MAD 248), so §2's
+   "the Adobe inversion of CMYK" and DESIGN §9.3's row are corrected. A JP2
+   palette is left unapplied for an Indexed space
+   (`OPJ_DPARAMETERS_IGNORE_PCLR_CMAP_CDEF_FLAG`), as PDFium leaves it.
+7. **The DCT guard is `src/images/dct_guard.c`**, the library's one C source,
+   so the C++ checks (format, tidy, headers, layout) do not read it; it keeps
+   the licence and purpose headers by hand, and `src/images/CMakeLists.txt`
+   names it with its reason.
+8. **Lab follows ISO 32000-1**: `/Range` maps the a* and b* samples, where
+   PDFium reads every 8-bit sample as the byte minus 128, so the dataset's
+   three Lab images differ from PDFium by about 12.
+9. **Identity**: the hash covers the encoded bytes as stored after
+   decryption, with no filter applied (stable under renumbering, encryption
+   and page selection and cheap to list); a stream inside a decisive entry
+   (an ICC profile, a lookup, a function, `/JBIG2Globals`) counts by the
+   SHA-256 of its stored bytes and its entries, a mask stream by its own
+   identity.
+10. **`pdfkit_image_data`** takes `{"mask": bool, "decode_jpeg": bool}`
+    (`decode_jpeg`, beyond §0, gives a PNG of a JPEG's pixels, which the gate
+    and the treatments need); an image that does not decode is refused with
+    the new refusal code `undecodable_image` (`platform::ErrorCode`,
+    `src/api/guarded.cpp`, DESIGN §19, ABI §2 and §4.8); an unknown identity
+    or a mask of an image without one is `invalid_argument`.
+11. **Files beyond §2**: `decode_fault.hpp` (the codecs' internal fault),
+    `adobe_cmyk.*`, `image_catalogue.*`, `dct_guard.c`; from the bitonal
+    helper session, `jbig2_bitmap.*` and `jbig2_huffman.*` (keeping
+    `jbig2_regions.cpp` under 1,500 lines) and `CcittDecoder::Result`'s
+    `bytes_consumed` (the halftone MMR planes need it); tests
+    `image_fixture.*` (fixtures and the libjpeg-turbo encoder),
+    `image_catalogue_test.cpp`, `image_data_test.cpp` (the C ABI, kept beside
+    the layer's tests), `arithmetic_decoder_test.cpp`, `mq_test_encoder.*`,
+    `ccitt_test_encoder.*`, `jbig2_conformance_vectors.*` (28 streams of
+    pdf.js's `bitmap-*.pdf`, each pinned by a hash).
+12. **The JBIG2 and CCITT ports** read pdf.js at commit
+    `fe48736846e2043696738bd54435ebb5ab24ecff`, the last before pdf.js
+    replaced its JavaScript decoders with a build of PDFium's; they decode
+    more than pdf.js does (intermediate and refinement regions, the five
+    combination operators, Huffman with refinement, the halftone skip bitmap,
+    both file organisations) and agree with PDFium on 107 of 108 images of
+    pdf.js's JBIG2 test files (the exception is a stream with a file header
+    PDFium shows blank).
+13. **Vendoring**: libjpeg-turbo 3.2.0 and OpenJPEG 2.5.4 are built by our
+    own `CMakeLists.txt` in each folder from the release's source lists, not
+    by the releases' CMake; the `add_subdirectory` lines went into the root
+    `CMakeLists.txt` (there is no `third_party/CMakeLists.txt`), and both
+    targets are public dependencies of `pdfkit_core`, so the unit tier
+    encodes its fixtures with the libraries' own encoders. OpenJPEG is built
+    without threads.
+14. **No `dataset/tools/synth/images.py`**: every image tag of the taxonomy
+    is at or above its minimum (`python dataset/tools/report.py`).
+15. **The manifest's `expect_images` column** is written by
+    `tests/pdfium/image_agreement.py --write-manifest` from the census, over
+    resource-reached images: six files become `partial:<encoding>` (the six
+    undecoded images of item 4) and `qpdf-0029`, refused at open, `n/a`; a
+    file whose resources reach no image keeps phase 2's value, because inline
+    images are not reached that way. The listing step re-derives the column
+    from occurrences.
 
 ### Deviations of earlier phases that affect this one
 

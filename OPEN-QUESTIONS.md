@@ -170,3 +170,62 @@ says so. Do you want to keep it?
 - **(b) Prune only when pages are selected.** About 0.5 hour and $5 to $10
   of session time (one condition in `src/writer/page_selector.cpp`, its test,
   §16 and a gate run); undrawn resources then reach every identity write.
+
+### 2.7 CMYK images convert through PDFium's table, not the naive complement (raised by phase 6)
+
+`docs/DESIGN.md` §9.4 decided, as an author decision, that CMYK becomes RGB by
+the naive complement `R = (1-C)(1-K)`. Measured against PDFium over the
+dataset, that complement differs by a mean of 7 to 40 per channel on 93 of the
+107 comparable DeviceCMYK images and on every Separation and DeviceN image with
+a CMYK alternate, which alone puts the continuous-tone gate (MAD at most 2 on
+99% of images) out of reach (about 96%). PDFium converts through Adobe's CMYK
+table: a 9 x 9 x 9 x 9 grid of sRGB samples interpolated per axis, about 20 KB
+of data under PDFium's BSD-3 licence. The phase ported it
+(`src/images/adobe_cmyk.cpp`, notice in `THIRD-PARTY-NOTICES.md` §8) and every
+DeviceCMYK, Separation and DeviceN image now agrees with PDFium (the gate
+reads 99.08%). Do you want to keep it?
+
+- **(a) Keep PDFium's Adobe CMYK table — recommended, and taken while this
+  question stands.** No cost; a CMYK image then looks as it does in Chrome's
+  viewer, and the treated images of `build-9.md` re-encode from the kept CMYK
+  samples either way.
+- **(b) Return to the naive complement.** About 0.5 hour and $5 to $10 (one
+  function, its tests, the notice row and a gate run); the continuous-tone
+  gate then fails at about 96% and CMYK images look washed out beside every
+  viewer.
+
+### 2.8 ICC profiles are read as their device space (raised by phase 6)
+
+No colour management is vendored, so an `ICCBased` image converts as the
+device space of its component count. PDFium applies the embedded profile
+through Little CMS, so 17 `ICCBased` CMYK images (all in one file, dccc-0065)
+and 10 `ICCBased` RGB and grey images differ from PDFium by a mean of 3 to 30
+per channel. The gate passes without them (99.08% of 3,697 images). Do you
+want colour management?
+
+- **(a) No — recommended, and taken while this question stands.** No cost;
+  the listed images keep a visible but moderate colour shift, and the
+  `ICCBased` disagreements stay named in the gate report.
+- **(b) Vendor Little CMS 2 (MIT) and convert through each image's profile to
+  sRGB.** About 6 to 10 hours and $100 to $180 (vendoring, the profile cache
+  per document, the budget on profile sizes, tests, a gate run); about 300 KB
+  more in `pdfkit.dll`; the CMYK table of §2.7 then serves only images without
+  a profile.
+
+### 2.9 The per-document decoding budget spans every image call (raised by phase 6)
+
+`docs/DESIGN.md` §3.2 counts every decoded byte of a document handle against
+2 GiB. `pdfkit_image_data` decodes on each call, so a caller extracting every
+image of a large scanned document (hundreds of page-sized images) reaches
+`limit_exceeded` on the handle after about 2 GiB of pixels, although each image
+is far below the 512 MiB per-stream limit. The images layer leaves the rule as
+it is. Do you want it changed?
+
+- **(a) Keep one budget per handle — recommended, and taken while this
+  question stands.** No cost; a caller that needs more opens the document with
+  a larger `document_bytes` or reopens it, and a hostile file still cannot make
+  one handle decode more than the limit.
+- **(b) Count each image call against a fresh per-call budget of the same
+  size.** About 1 hour and $15 to $25 (a budget scope in `syntax::Document`,
+  shared with phase 3's code, tests); one handle can then decode without
+  bound over many calls.

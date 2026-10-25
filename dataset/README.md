@@ -80,7 +80,12 @@ overrides them from provenance:
   text is scored against the text pdfkit's decoding ladder will report, and a
   score under 0.90 gives `known_gap:pdfium_f1_<score>`.
 - `expect_images`: `decoded` when the file holds an image XObject or an inline
-  image, `n/a` otherwise.
+  image, `n/a` otherwise. `python tests/pdfium/image_agreement.py
+  --write-manifest` rewrites it from a run of the images layer's decoders over
+  the images the pages' resources reach: `decoded` when every one decodes,
+  `partial:<encodings that failed>` (joined by `+`) otherwise, and `n/a` for
+  a file not opened; a file whose resources reach no image keeps its value (an
+  inline image is not reached that way); `--check` compares a run with it.
 - `expect_redact` and `expect_metadata`: `n/a` until the phases that deliver
   redaction and metadata set them.
 - `expect_write`: `identical` when `expect_open` is `opens` or `repaired`, `n/a`

@@ -247,3 +247,11 @@ From `build-7.md` §9:
 - Test helpers: `tests/unit/writer/output_scan.hpp` (`identity_write`, `select_write`, `write_report`, `everything` = raw bytes plus every stream decoded, `contains_marker`, `reopen` without repair) and `tests/unit/support/pdf_builder_channels.hpp` (planted markers per channel, the four-page leak fixture); `tests/pdfium/render.py` compares pages exactly or outside a rectangle set with a one-pixel dilation (`compare_bitmaps`).
 - The dataset outcome gains `channels`, `write` and `select`; outputs go to `<run>/outputs/`, named relative to the run folder (`tests/dataset/outcome.md`).
 - An image treatment replaces the image object through `ObjectGraph::set` with a created stream; a removed image's `Do` goes from the content streams that draw it, and pruning then drops the XObject entry.
+
+From `build-6.md` §9:
+
+- The decoded image is `images::PixelImage` (`src/images/pixel_image.hpp`): grey or RGB samples at 1 bit (one byte per sample, 0 or 255), 8 or 16 bits (most significant byte first), a CMYK source's 8-bit CMYK samples kept in `cmyk`, an optional 8-bit `alpha` plane and a stencil's `transparent` grey; `images::ImageDecoder::decode(document, stream, Part::base | Part::mask)` returns it or a fault (`undecodable_image`), and `images::PngWriter::write` writes it (items 10, 11).
+- Images are found by identity through `images::ImageCatalogue` (`src/images/image_catalogue.hpp`), which the document handle keeps (`pdfkit_document::images`); its entry holds the stream and its object number (item 2).
+- CMYK converts through `images::AdobeCmyk` (PDFium's table), not the naive complement; re-encode a treated CMYK JPEG from `PixelImage::cmyk` (item 5, `OPEN-QUESTIONS.md` §2.7).
+- A CMYK JPEG's samples are used as libjpeg returns them, never inverted for an Adobe marker (item 6).
+- libjpeg-turbo's compressor is linked into `pdfkit_core` (public), so re-encoding needs no new dependency; `tests/unit/images/image_fixture.hpp` has `encode_jpeg` for test fixtures (items 11, 13).
