@@ -9,6 +9,7 @@
 
 #include "images/colour_space.hpp"
 
+#include "images/adobe_cmyk.hpp"
 #include "images/decode_fault.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/stream.hpp"
@@ -279,10 +280,8 @@ void ColourSpace::convert(std::span<const double> in, std::span<double> out) con
       }
       return;
     case Family::device_cmyk: {
-      const double k = std::clamp(c(3), 0.0, 1.0);
-      for (std::size_t i = 0; i < 3; ++i) {
-        out[i] = (1.0 - std::clamp(c(i), 0.0, 1.0)) * (1.0 - k);
-      }
+      const std::array<double, 3> rgb = AdobeCmyk::to_rgb(c(0), c(1), c(2), c(3));
+      std::copy(rgb.begin(), rgb.end(), out.begin());
       return;
     }
     case Family::lab: {

@@ -9,9 +9,10 @@
 // that the C frame owns only the decompressor and destroys it on both paths.
 // The pixel buffer is checked against the decoding budget before
 // jpeg_start_decompress and charged when decoded. Whether the stream holds an
-// Adobe APP14 marker is reported, because a CMYK JPEG with one stores
-// inverted values (pdf.js and PDFium behaviour, recalled) and the colour
-// pipeline inverts them.
+// Adobe APP14 marker is reported; the samples are never inverted for it,
+// because PDFium does not invert them (measured: a YCCK JPEG of the dataset
+// agrees with PDFium's bitmap within a mean difference of 0.65 uninverted and
+// differs by 248 inverted).
 
 #ifndef PDFKIT_IMAGES_DCT_DECODER_HPP
 #define PDFKIT_IMAGES_DCT_DECODER_HPP

@@ -7,6 +7,7 @@
 # libjpeg-turbo, which must hold no C++ object in its frame.
 
 target_sources(pdfkit_core PRIVATE
+  adobe_cmyk.cpp
   arithmetic_decoder.cpp
   ccitt_decoder.cpp
   colour_space.cpp

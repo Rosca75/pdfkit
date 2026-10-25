@@ -6,9 +6,11 @@
 // unpacker, /Decode and the colour space into the output samples. A
 // one-component image converts through a table of every raw value; a
 // multi-component one through a cache of the raw values met, bounded in size,
-// so a tint transform runs once per distinct colour. A CMYK JPEG with an Adobe
-// APP14 marker stores inverted values (pdf.js and PDFium read it so,
-// recalled), which swapping each pair of /Decode undoes. A codec's own size
+// so a tint transform runs once per distinct colour. A CMYK JPEG's samples are
+// read as libjpeg returns them, whatever its Adobe APP14 marker says: PDFium
+// reads them so (measured on the dataset's CMYK JPEGs against
+// FPDFImageObj_GetBitmap), and /Decode inverts them where a file means it. A
+// codec's own size
 // (the JPEG's, the JPEG 2000 codestream's) wins over /Width and /Height, as
 // the pixels are what the codec holds; a bitonal codec's output is cropped or
 // padded with white to /Width and /Height.
@@ -83,7 +85,6 @@ struct Samples {
   std::uint32_t bits = 8;
   std::uint32_t components = 1;
   std::shared_ptr<const ColourSpace> space;
-  bool adobe_inverted = false;
   // A JPEG 2000 codestream's alpha (SMaskInData).
   std::vector<std::uint8_t> alpha;
 };
@@ -159,11 +160,6 @@ class Pipeline {
     if (decode.size() < 2 * samples.components) {
       decode =
           image_mask_ ? std::vector<double>{0.0, 1.0} : samples.space->default_decode(samples.bits);
-    }
-    if (samples.adobe_inverted) {
-      for (std::size_t i = 0; i + 1 < decode.size(); i += 2) {
-        std::swap(decode[i], decode[i + 1]);
-      }
     }
     std::vector<std::uint32_t> key;
     if (want_colour_key_alpha && !image_mask_) {
@@ -250,7 +246,6 @@ class Pipeline {
       samples.bits = 8;
       samples.stride = static_cast<std::size_t>(jpeg.width) * jpeg.components;
       samples.bytes = std::move(jpeg.samples);
-      samples.adobe_inverted = jpeg.adobe && jpeg.components == 4;
       if (image_mask_) {
         if (jpeg.components != 1) {
           throw DecodeFault("DCTDecode: a stencil JPEG has " + std::to_string(jpeg.components) +

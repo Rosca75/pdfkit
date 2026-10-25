@@ -138,6 +138,12 @@ JpxDecoder::Result JpxDecoder::decode(platform::ByteSpan data, const Options& op
   opj_set_error_handler(codec.get(), keep_error, &error);
   opj_dparameters_t parameters;
   opj_set_default_decoder_parameters(&parameters);
+  if (options.raw) {
+    // An Indexed image's samples are the indices: a JP2 palette is not
+    // applied, as PDFium's CJPX_Decoder leaves it for an Indexed space
+    // (recalled; measured on the dataset's Indexed JPX images).
+    parameters.flags |= OPJ_DPARAMETERS_IGNORE_PCLR_CMAP_CDEF_FLAG;
+  }
   if (opj_setup_decoder(codec.get(), &parameters) == OPJ_FALSE) {
     result.fault = "OpenJPEG: " + error;
     return result;

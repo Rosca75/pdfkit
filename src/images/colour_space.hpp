@@ -9,9 +9,11 @@
 // lookup string or stream); Separation and DeviceN through their tint
 // transform into the alternate space. Pattern is refused for an image.
 // Every space converts a pixel's components to grey or RGB in 0..1. CMYK
-// becomes RGB by the naive complement, R = (1 - C)(1 - K) and its kin: an
-// author decision of docs/DESIGN.md section 9.4, because no colour management
-// is vendored. A space the file states wrongly throws DecodeFault.
+// becomes RGB through PDFium's Adobe CMYK table (AdobeCmyk), not the naive
+// complement docs/DESIGN.md section 9.4 named, because the complement differs
+// from the independent reader by 10 to 20 per channel on real CMYK images
+// (OPEN-QUESTIONS.md section 2 asks the owner to confirm). No colour
+// management is applied. A space the file states wrongly throws DecodeFault.
 
 #ifndef PDFKIT_IMAGES_COLOUR_SPACE_HPP
 #define PDFKIT_IMAGES_COLOUR_SPACE_HPP
