@@ -106,6 +106,7 @@ class JudgeTest(unittest.TestCase):
                 select = {"status": "ok", "code": None, "pages": [2, 1], "output": f"outputs/{row_id}.select.pdf",
                           "reopen": {"status": "ok", "code": None, "pages": 2, "repairs": []}}
             (run_dir / "outcomes" / f"{row_id}.json").write_text(json.dumps({
+                "open": {"status": "ok", "code": None, "pages": pages},
                 "write": write_outcome(pages, output=f"outputs/{row_id}.pdf"), "select": select}),
                 encoding="utf-8")
         if pixel:

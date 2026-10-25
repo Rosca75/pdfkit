@@ -127,6 +127,14 @@ def pages_of(row: dict) -> int:
     return int(row["pages"]) if row["pages"].isdigit() else 0
 
 
+def pdfkit_pages(outcome: dict | None) -> int:
+    """pdfkit's page count of a file, 0 when it did not open: the pages a selection draws from.
+    PDFium's count can differ (it trusts a root /Count the tree does not hold), and a selection
+    is made from the pages pdfkit reads."""
+    pages = ((outcome or {}).get("open") or {}).get("pages")
+    return pages if isinstance(pages, int) else 0
+
+
 def reopens(write: dict | None) -> bool:
     """An identity write that opens again in pdfkit without repair with the pages it wrote."""
     if not write or write.get("status") != "ok":
@@ -228,7 +236,7 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
     measures.zero("planted markers of drawn content missing from an identity write",
                   len(planted["missing_drawn"]), {"missing": planted["missing_drawn"][:50]})
 
-    multi = [r for r in opened if pages_of(r) >= 2]
+    multi = [r for r in opened if pdfkit_pages(outcomes.get(r["id"])) >= 2]
     counted = [r["id"] for r in multi if select_count_right(r, outcomes.get(r["id"]), pixel_select)]
     measures.share("page selection, files of two or more pages: output page count right", len(counted),
                    len(multi), SELECT_COUNT, {"failing": sorted({r["id"] for r in multi} - set(counted))[:50]})
@@ -267,7 +275,7 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
 def select_count_right(row: dict, outcome: dict | None, pixel_select: dict) -> bool:
     """The selection opens with the pages it names in pdfkit, and in PDFium when PDFium read it."""
     select = (outcome or {}).get("select")
-    if not valid_selection(select, pages_of(row)):
+    if not valid_selection(select, pdfkit_pages(outcome)):
         return False
     entry = pixel_select.get("files", {}).get(row["id"])
     return entry is None or entry.get("pages_right") is True

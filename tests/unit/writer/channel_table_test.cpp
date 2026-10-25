@@ -23,6 +23,8 @@
 
 #include <doctest.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
