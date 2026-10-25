@@ -37,9 +37,38 @@ ImageListing::Entry& ImageListing::entry_for(const std::string& identity) {
   return entries_.back();
 }
 
+bool ImageListing::may_draw_images(std::uint32_t number) {
+  const syntax::Page& page = document_->pages().at(number - 1);
+  const syntax::Object resources = document_->resolve(page.resources);
+  if (const syntax::Dictionary* dictionary = resources.dictionary()) {
+    for (const std::string_view category : {"XObject", "Pattern", "ExtGState"}) {
+      const syntax::Object group = document_->resolve_entry(*dictionary, category);
+      if (const syntax::Dictionary* entries = group.dictionary();
+          entries != nullptr && !entries->empty()) {
+        return true;
+      }
+    }
+  }
+  // Without XObjects, patterns or graphics states, only an inline image in
+  // the page's own content can draw a picture: look for its BI keyword.
+  for (const std::vector<std::byte>& piece : document_->content_pieces(page.contents, number)) {
+    for (std::size_t i = 0; i + 1 < piece.size(); ++i) {
+      if (piece[i] == std::byte{'B'} && piece[i + 1] == std::byte{'I'}) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void ImageListing::read(const std::vector<std::uint32_t>& pages) {
   for (const std::uint32_t number : pages) {
     if (!read_.insert(number).second) {
+      continue;
+    }
+    // A page that can draw no image is not interpreted, which is most of
+    // the cost of a text-only document.
+    if (!may_draw_images(number)) {
       continue;
     }
     const text::PageContent content = reader_->interpret(number);
@@ -86,9 +115,6 @@ void ImageListing::read(const std::vector<std::uint32_t>& pages) {
       }
       entry.occurrences.push_back(
           {draw.page, draw.ordinal, draw.box, draw.form_path, draw.optional_content_off});
-      std::ranges::stable_sort(entry.occurrences, [](const Occurrence& a, const Occurrence& b) {
-        return a.page != b.page ? a.page < b.page : a.ordinal < b.ordinal;
-      });
     }
     for (const text::PageContent::Unwalked& unwalked : content.unwalked) {
       if (unwalked.resources.is_null()) {
@@ -108,6 +134,13 @@ void ImageListing::read(const std::vector<std::uint32_t>& pages) {
         }
       }
     }
+  }
+  // Pages may be read in any order; the draws of an entry are kept in page
+  // order, then draw order, sorted once per call.
+  for (Entry& entry : entries_) {
+    std::ranges::stable_sort(entry.occurrences, [](const Occurrence& a, const Occurrence& b) {
+      return a.page != b.page ? a.page < b.page : a.ordinal < b.ordinal;
+    });
   }
 }
 

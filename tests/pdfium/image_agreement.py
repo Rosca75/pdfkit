@@ -22,7 +22,13 @@
 # encoding and per colour space) into --out. --write-manifest fills the
 # manifest's expect_images column from the run: decoded (every image
 # decodes), partial:<encodings that failed>, or n/a (no image, or not
-# opened); --check compares the run with that column.
+# opened); --check compares the run with that column. With --listing it
+# measures the listing instead: it runs `pdfkit images` on each file (the C
+# ABI's pdfkit_images, the content interpreter's occurrences), counts the
+# decoded occurrences per encoding, checks that every undecodable image
+# carries its warning, and compares each page's occurrence count with the
+# image objects PDFium's page holds (forms descended); it writes listing.tsv
+# and listing.md.
 """Run the image agreement: python tests/pdfium/image_agreement.py --out <folder> [--repeat] [--write-manifest | --check]."""
 
 from __future__ import annotations
@@ -102,6 +108,7 @@ def handle_images(library: pdfium.Library, request: dict) -> dict:
     except pdfium.PdfiumError as err:
         return {"ok": False, "error": err.name}
     seen: dict[str, dict] = {}
+    counts: dict[int, int] = {}
     with doc:
         for index in range(doc.page_count()):
             page = lib.FPDF_LoadPage(doc.handle, index)
@@ -118,6 +125,7 @@ def handle_images(library: pdfium.Library, request: dict) -> dict:
                     digest = hashlib.sha256(buffer.raw[:int(size)]).hexdigest()
                     record = seen.setdefault(digest, {"pages": [], "bitmap": None})
                     record["pages"].append(index + 1)
+                    counts[index + 1] = counts.get(index + 1, 0) + 1
                     if digest not in want or record["bitmap"] is not None:
                         continue
                     bitmap = lib.FPDFImageObj_GetBitmap(obj)
@@ -137,7 +145,7 @@ def handle_images(library: pdfium.Library, request: dict) -> dict:
                         lib.FPDFBitmap_Destroy(bitmap)
             finally:
                 lib.FPDF_ClosePage(page)
-    return {"ok": True, "images": seen}
+    return {"ok": True, "images": seen, "counts": counts}
 
 
 def serve(dll: Path) -> None:
@@ -274,6 +282,121 @@ def percent(part: int, whole: int) -> str:
     return f"{100.0 * part / whole:.2f}%" if whole else "n/a"
 
 
+def find_cli(explicit: str | None) -> Path | None:
+    candidates = [Path(explicit)] if explicit else []
+    for preset in ("mingw-release", "mingw-debug"):
+        candidates += [REPO / "out" / preset / "pdfkit.exe", REPO / "out" / preset / "pdfkit"]
+    return next((c for c in candidates if c.is_file()), None)
+
+
+def listing_file(cli: Path, pool, row: dict, work: Path) -> dict:
+    """pdfkit images over one file (the C ABI's listing) and PDFium's image
+    objects per page, pages and drawn forms walked."""
+    import common
+    path = common.file_path(row)
+    started = time.monotonic()
+    try:
+        proc = subprocess.run([str(cli), "images", str(path)], capture_output=True,
+                              timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {"status": "hang"}
+    seconds = round(time.monotonic() - started, 3)
+    try:
+        listing = json.loads(proc.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {"status": "crash", "exit": proc.returncode, "seconds": seconds}
+    if proc.returncode != 0:
+        return {"status": "refused", "code": listing.get("code"), "seconds": seconds}
+    answer = pool.ask({"path": str(path), "want": [], "out": str(work / row["id"])})
+    shutil.rmtree(work / row["id"], ignore_errors=True)
+    return {"status": "ok", "listing": listing, "pdfium": answer, "seconds": seconds}
+
+
+def run_listing(args, rows: list[dict], out_dir: Path) -> int:
+    """The listing half of the gate: occurrences from the content interpreter,
+    decoded per encoding, every undecoded one with its warning, and the
+    occurrences per page against PDFium's image objects per page."""
+    cli = find_cli(args.pdfkit)
+    if cli is None:
+        print("SKIPPED image listing: no pdfkit executable found; build it with "
+              "`cmake --build --preset mingw-release`, or pass --pdfkit <path>.")
+        return 0
+    work = out_dir / "work"
+    results: dict[str, dict] = {}
+    with pdfium.Pool(size=max(1, args.workers // 2), worker_class=ImageWorker) as pool, \
+            concurrent.futures.ThreadPoolExecutor(args.workers) as executor:
+        jobs = {executor.submit(listing_file, cli, pool, r, work): r["id"] for r in rows}
+        for job in concurrent.futures.as_completed(jobs):
+            results[jobs[job]] = job.result()
+    shutil.rmtree(work, ignore_errors=True)
+    by_encoding: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    pages_compared = pages_equal = 0
+    unwarned, crashes, mismatched = [], [], []
+    lines = ["set\tid\tidentity\tsource\tencoding\tcolour_space\toccurrences\tpattern_pages\t"
+             "decodable\twarnings"]
+    for row in rows:
+        result = results[row["id"]]
+        if result["status"] in ("hang", "crash"):
+            crashes.append((row["id"], result["status"]))
+            continue
+        if result["status"] != "ok":
+            continue
+        listing = result["listing"]
+        mine: collections.Counter = collections.Counter()
+        for image in listing["images"]:
+            occurrences = len(image["occurrences"])
+            counter = by_encoding[image["encoding"]]
+            counter["images"] += 1
+            counter["occurrences"] += occurrences
+            counter["decoded"] += occurrences if image["decodable"] else 0
+            counter["in_pattern"] += 1 if image["pattern_pages"] else 0
+            if not image["decodable"] and "undecodable_image" not in image["warnings"]:
+                unwarned.append((row["id"], image["identity"]))
+            for occurrence in image["occurrences"]:
+                mine[occurrence["page"]] += 1
+            lines.append("\t".join(str(v) for v in (
+                row["set"], row["id"], image["identity"], image["source"], image["encoding"],
+                image["colour_space"], occurrences, ",".join(map(str, image["pattern_pages"])),
+                image["decodable"], ",".join(image["warnings"]))))
+        pdfium_answer = result["pdfium"]
+        if pdfium_answer.get("ok"):
+            theirs = {int(k): v for k, v in pdfium_answer.get("counts", {}).items()}
+            for page in sorted(set(mine) | set(theirs)):
+                pages_compared += 1
+                if mine.get(page, 0) == theirs.get(page, 0):
+                    pages_equal += 1
+                else:
+                    mismatched.append((row["id"], page, mine.get(page, 0), theirs.get(page, 0)))
+    (out_dir / "listing.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    total = collections.Counter()
+    for counter in by_encoding.values():
+        total.update(counter)
+    summary = [
+        "# Image listing",
+        "",
+        f"Files: {len(rows)}; crashes or hangs: {len(crashes)}.",
+        "",
+        f"1. Decoded occurrences: {total['decoded']} of {total['occurrences']} "
+        f"({percent(total['decoded'], total['occurrences'])}); images listed {total['images']}, "
+        f"{total['in_pattern']} reached inside a pattern or soft mask.",
+        f"2. Undecodable images without their warning: {len(unwarned)}.",
+        f"3. Pages whose occurrence count equals PDFium's image objects: {pages_equal} of "
+        f"{pages_compared} ({percent(pages_equal, pages_compared)}).",
+        "",
+        "| Encoding | Images | Occurrences | Decoded occurrences |",
+        "|---|---|---|---|",
+    ]
+    for name in sorted(by_encoding):
+        c = by_encoding[name]
+        summary.append(f"| {name} | {c['images']} | {c['occurrences']} | {c['decoded']} |")
+    summary += ["", "## Pages whose counts differ (file, page, pdfkit, PDFium)", ""]
+    summary += [f"- {i} p{p}: {a} / {b}" for i, p, a, b in mismatched] or ["none"]
+    summary += ["", "## Crashes and hangs", ""] + ([f"- {i}: {s}" for i, s in crashes] or ["none"])
+    (out_dir / "listing.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
+    print("\n".join(summary[:8]))
+    return 1 if crashes or unwarned else 0
+
+
 def main() -> int:
     import common
     parser = argparse.ArgumentParser(description=__doc__)
@@ -284,12 +407,26 @@ def main() -> int:
     parser.add_argument("--id", action="append", help="only these ids")
     parser.add_argument("--repeat", action="store_true", help="run the census twice per file")
     parser.add_argument("--keep", action="store_true", help="keep the decoded dumps")
+    parser.add_argument("--listing", action="store_true",
+                        help="measure the listing (pdfkit images) instead of the decoders")
+    parser.add_argument("--pdfkit", help="the pdfkit executable for --listing (default: out/)")
     parser.add_argument("--write-manifest", action="store_true",
                         help="write the run's values into the manifest's expect_images column")
     parser.add_argument("--check", action="store_true",
                         help="fail when a file's value differs from expect_images")
     args = parser.parse_args()
 
+    if args.listing:
+        import common
+        rows = [r for r in common.read_manifest() if r["expect_open"] in ("opens", "repaired")]
+        if args.set:
+            rows = [r for r in rows if r["set"] in args.set]
+        if args.id:
+            rows = [r for r in rows if r["id"] in args.id]
+        rows = [r for r in rows if common.file_path(r).exists()]
+        out_dir = Path(args.out)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return run_listing(args, rows, out_dir)
     census = find_census(args.census)
     if census is None:
         print("SKIPPED image agreement: no pdfkit_image_census executable found. Build it with "

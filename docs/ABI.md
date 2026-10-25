@@ -322,7 +322,8 @@ bytes into `out` (`docs/DESIGN.md` §9.5); the bytes are not JSON. `identity`
 is an image identity (`img:` and 16 lower-case hexadecimal digits, `CLAUDE.md`
 §4) of an image XObject the document's pages reach through their resources,
 their forms' resources, or the resources of a tiling pattern or soft-mask
-group. The options:
+group, or of an inline image a page draws (found by reading the pages' content
+when no XObject has the identity). The options:
 
 | Key | Value | Default | Effect |
 |---|---|---|---|
@@ -420,6 +421,63 @@ null handle or `out`, malformed or unknown options, or a page number outside
 the document; a refusal of the document itself met while a page is decoded
 (`limit_exceeded`) under `PDFKIT_E_REFUSED`.
 
+### 4.10 pdfkit_images (catalogue 3.1)
+
+`pdfkit_images(doc, options_json, out)` lists the images the asked pages draw
+(`docs/DESIGN.md` §9.1, §9.2). The draws come from the content interpreter,
+through forms, in each page's draw order; they are grouped by image identity
+(`CLAUDE.md` §4), so one picture drawn on several pages, or stored twice, or
+once as an XObject and once inline, is one entry with several occurrences. An
+image a page reaches only inside a tiling pattern or a soft-mask group it sets
+(which the interpreter does not walk) is listed with that page in
+`pattern_pages`, no occurrence, and the warning `image_in_pattern`. Each image
+is decoded once to say whether it decodes; one that does not carries the
+warning `undecodable_image`, and `pdfkit_image_data` refuses it. The handle
+keeps what it read, so a later call reads only pages not read yet.
+
+The only option is `pages`, an array of page numbers from 1, each at most
+once (default: every page); an image is listed when it is drawn, or reached
+inside a pattern, on one of them, with only those pages' occurrences.
+
+```json
+{
+  "pages": [1, 2],
+  "count": 1,
+  "images": [
+    {"identity": "img:0123456789abcdef", "source": "xobject", "object": 12,
+     "encoding": "DCTDecode", "filters": ["DCTDecode"], "width": 640, "height": 480,
+     "bits_per_component": 8, "colour_space": "DeviceRGB", "components": 3,
+     "image_mask": false, "mask": "smask", "interpolate": false,
+     "decodable": true, "warnings": [],
+     "occurrences": [{"page": 1, "ordinal": 0, "box": [72.00, 500.00, 300.00, 671.00],
+                      "form_path": [], "optional_content_off": false}],
+     "pattern_pages": []}
+  ],
+  "warnings": [{"code": "undecodable_image", "message": "...", "page": 2}]
+}
+```
+
+| Key | Holds |
+|---|---|
+| `pages`, `count` | the pages read and the number of images listed |
+| `identity` | the key `pdfkit_image_data` and `pdfkit_redact_images` take |
+| `source`, `object` | `xobject` with its object number (`null` for a direct stream), or `inline` with `null` |
+| `encoding`, `filters` | the last filter by its full name (`none` without one) and the chain in order |
+| `width`, `height`, `bits_per_component` | as the dictionary states them, `null` when absent |
+| `colour_space`, `components` | the colour space's family (`DeviceRGB`, `ICCBased`, `Indexed`, ..., `invalid` for one that does not parse) and its component count; `null` for a stencil or an image that states none |
+| `image_mask`, `mask`, `interpolate` | `/ImageMask`; the mask kind (`none`, `smask`, `stencil`, `color_key`, `smask_in_data`); `/Interpolate` |
+| `decodable`, `warnings` | whether the image decodes, and its warning codes (`undecodable_image`, `image_in_pattern`) |
+| `occurrences` | one per draw on the asked pages: `page`, `ordinal` (the draw's place among the page's image draws, from 0, forms included), `box` (the unit square's device bound, `[left, bottom, right, top]` rounded to 0.01 pt), `form_path` (the form XObjects drawn through, outermost first), `optional_content_off` (the default configuration hides the draw) |
+| `pattern_pages` | the asked pages on which it is reached only inside a pattern or soft mask |
+| `warnings` (top level) | one object per image warning, with `code`, `message` and `page` (the first page concerned) |
+
+Images are ordered by their first draw on the asked pages (page, then
+ordinal), an image reached only inside a pattern after that page's draws, then
+by identity. A page out of range, a page listed twice, a non-array `pages` or
+an unknown option is `invalid_argument`; a limit met while reading a content
+stream is the document's refusal (`limit_exceeded`); a limit met while
+probing one image is that image's `undecodable_image` warning.
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -441,7 +499,7 @@ version object of §4.1. The tool calls the C ABI and nothing beneath it.
 |---|---|---|
 | `inspect` | `<file.pdf> [--options <json>] [--open-options <json>]` | 1.2, 1.1 |
 | `text` | `<file.pdf> [--pages <1-3,7>] [--glyphs] [--options <json>] [--open-options <json>]`; the flags are written into the options and exclude `--options` | 2, 1.1 |
-| `images` | `<file.pdf> [--out <folder>] [--options <json>] [--open-options <json>]` | 3.1, 3.2, 1.1 |
+| `images` | `<file.pdf> [--out <folder>] [--options <json>] [--open-options <json>]`; prints the JSON of `pdfkit_images`; with `--out`, writes each image as `<identity digits>.jpg` (a DCT source's stored bytes) or `.png`, and each mask as `<identity digits>.mask.png`, and adds `files` to the JSON: per file `{"identity", "file"}`, or `{"identity", "skipped"}` with the error code of an image that does not decode | 3.1, 3.2, 1.1 |
 | `metadata` | `<file.pdf> [--options <json>] [--open-options <json>]` | 4, 1.1 |
 | `redact` | `<job.json>` | 5, 6, 7, 9 (each section present), 10.1, 1.1 |
 | `select-pages` | `<file.pdf> --pages <list> --out <output.pdf> [--open-options <json>]`, the list being page numbers and ascending ranges separated by commas (`1,3-5`) | 9, 10.1, 1.1 |

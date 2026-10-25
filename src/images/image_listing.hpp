@@ -83,6 +83,10 @@ class ImageListing {
 
  private:
   Entry& entry_for(const std::string& identity);
+  // Whether page number can draw an image at all: its resources name an
+  // XObject, a pattern or a graphics state, or its content holds "BI". A page
+  // that cannot is not interpreted.
+  [[nodiscard]] bool may_draw_images(std::uint32_t number);
 
   syntax::Document* document_;
   std::unique_ptr<text::TextReader> reader_;
