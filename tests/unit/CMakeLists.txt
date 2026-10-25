@@ -18,10 +18,18 @@ add_executable(pdfkit_tests
   platform/json_reader_test.cpp
   platform/json_writer_test.cpp
   support/content_builder.cpp
+  support/document_summary.cpp
   support/pdf_builder.cpp
   support/pdf_encryptor.cpp
+  syntax/content_lexer_test.cpp
+  syntax/cross_reference_test.cpp
+  syntax/document_test.cpp
+  syntax/filters_test.cpp
   syntax/lexer_test.cpp
+  syntax/object_streams_test.cpp
   syntax/parser_test.cpp
+  syntax/repair_test.cpp
+  syntax/security_handler_test.cpp
   api/abi_test.cpp)
 # Fixtures are written by the support library, included as "support/...".
 target_include_directories(pdfkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

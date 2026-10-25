@@ -12,6 +12,7 @@
 #include <doctest.h>
 
 #include <optional>
+#include <stdexcept>
 #include <utility>
 
 namespace pdfkit::test {
@@ -20,7 +21,8 @@ template <typename T>
 [[nodiscard]] T require_value(std::optional<T> value) {
   REQUIRE(value.has_value());
   if (!value.has_value()) {
-    return T{};
+    // REQUIRE has already ended the test case; this keeps the access checked.
+    throw std::logic_error("require_value: an empty optional");
   }
   return std::move(*value);
 }
