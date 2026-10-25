@@ -177,7 +177,7 @@ TEST_CASE("a glyph range from another document or past its page is refused") {
   CHECK(other.match_status == PDFKIT_E_INVALID_ARGUMENT);
   CHECK(other.matches.find("another document") != std::string::npos);
   const pdfkit::test::Redaction probe = redact(file, search("x"));
-  const std::size_t at = probe.matches.find("\"fingerprint\":\"");
+  const std::size_t at = probe.matches.find(R"("fingerprint":")");
   REQUIRE(at != std::string::npos);
   const std::string fingerprint = probe.matches.substr(at + 15, 64);
   const pdfkit::test::Redaction past = redact(
@@ -228,4 +228,23 @@ TEST_CASE("the self-check reads the changed pages of a search again and every su
   REQUIRE(result.write_status == PDFKIT_OK);
   CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
   CHECK(page_text(result.pdf, 2) == "nothing to see");
+}
+
+TEST_CASE("a comment of a content stream that spells the string is emptied") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("% drawn for Zebulon\nBT /F1 10 Tf 72 700 Td (a note) Tj ET % (Zebulon) too\n");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), search("zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
+  CHECK(page_text(result.pdf) == "a note");
+}
+
+TEST_CASE("an unknown keyword and an unterminated string that spell the string go") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (kept) Tj ET\n1 2 cjZebulon81\nq Q\n(Zebulon\n");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), search("zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.report);
+  CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
+  CHECK(page_text(result.pdf) == "kept");
 }

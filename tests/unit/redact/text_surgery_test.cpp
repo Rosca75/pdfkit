@@ -202,8 +202,8 @@ TEST_CASE("character and word spacing are part of the hole") {
 
 TEST_CASE("a literal string with escapes and parentheses is rewritten whole") {
   const Rewritten result =
-      rewrite("BT /F1 10 Tf 72 700 Td (a\\(b\\)c \\\\ (d) e) Tj ET", draws(2, 3));
-  CHECK(drawn(result.after) == "a()c \\ (d) e");
+      rewrite(R"(BT /F1 10 Tf 72 700 Td (a\(b\)c \\ (d) e) Tj ET)", draws(2, 3));
+  CHECK(drawn(result.after) == R"(a()c \ (d) e)");
   check_kept(result);
 }
 

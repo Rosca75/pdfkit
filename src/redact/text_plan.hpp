@@ -55,9 +55,12 @@ class TextPlan {
     std::map<Key, Insertion> insertions;
     // Marked-content operations written again.
     std::map<std::size_t, std::string> replaced;
+    // A comment of the stream, or bytes its lexer skipped, spell a redacted
+    // string, so the stream is written again without them.
+    bool comments = false;
 
     [[nodiscard]] bool empty() const noexcept {
-      return removed.empty() && insertions.empty() && replaced.empty();
+      return removed.empty() && insertions.empty() && replaced.empty() && !comments;
     }
     // Adds other's changes; this target's keep the place where both have one.
     void merge(const Target& other);

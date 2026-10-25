@@ -32,7 +32,7 @@ using Item = std::variant<Piece, double>;
 
 void push_number(std::vector<Item>& items, double value) {
   if (!items.empty()) {
-    if (double* last = std::get_if<double>(&items.back())) {
+    if (auto* last = std::get_if<double>(&items.back())) {
       *last += value;
       return;
     }
@@ -41,10 +41,11 @@ void push_number(std::vector<Item>& items, double value) {
 }
 
 void push_piece(std::vector<Item>& items, Piece& piece) {
+  const bool hex = piece.hex;
   if (!piece.bytes.empty()) {
     items.emplace_back(std::move(piece));
   }
-  piece = Piece{{}, piece.hex};
+  piece = Piece{{}, hex};
 }
 
 [[nodiscard]] bool unplaced(const text::GlyphRecord& record, const Operation& operation) {

@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <limits>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <utility>
 
@@ -185,12 +186,12 @@ struct Geometry {
 [[nodiscard]] TextPlan::Holder holder_of(syntax::Document& document,
                                          const text::PageContent& content, std::size_t walk) {
   const std::vector<std::uint32_t>& path = content.streams[walk].form_path;
-  for (auto it = path.rbegin(); it != path.rend(); ++it) {
-    const Object form = document.object({*it, 0});
+  for (const std::uint32_t number : std::views::reverse(path)) {
+    const Object form = document.object({number, 0});
     if (const syntax::Stream* stream = form.stream();
         stream != nullptr &&
         document.resolve_entry(stream->dictionary(), "Resources").dictionary() != nullptr) {
-      return *it;
+      return number;
     }
   }
   return 0;
@@ -302,7 +303,6 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
       if (stream.form != 0 && !done.insert({stream.form, index}).second) {
         continue;
       }
-      bool any = false;
       bool all = true;
       std::optional<std::string> whole;
       if (marked.op == "BDC") {
@@ -314,7 +314,6 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
             std::ranges::upper_bound(items, index, {}, &std::pair<std::size_t, std::size_t>::first);
         for (auto it = begin; it != items.end() && it->first < ends[index]; ++it) {
           if (removed.contains(it->second)) {
-            any = true;
             if (!whole) {
               whole = placeholder_of.at(it->second);
             }
@@ -323,7 +322,7 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
           }
         }
       }
-      const std::string* whole_text = any && all ? &*whole : nullptr;
+      const std::string* whole_text = all && whole.has_value() ? &whole.value() : nullptr;
       const Object& operand = marked.operands[1];
       if (const Dictionary* inline_properties = operand.dictionary()) {
         if (const auto rewritten =
@@ -354,6 +353,62 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
       }
     }
   }
+}
+
+// Whether bytes spell one of the needles' byte forms.
+[[nodiscard]] bool spells_bytes(std::string_view bytes,
+                                const std::vector<std::vector<std::string>>& forms,
+                                const std::vector<MatchFinder::Match>& needles) {
+  for (std::size_t i = 0; i < needles.size(); ++i) {
+    const std::string text = needles[i].folding.text.case_fold
+                                 ? MatchFinder::lower_ascii(std::string(bytes))
+                                 : std::string(bytes);
+    for (const std::string& form : forms[i]) {
+      if (text.find(form) != std::string::npos) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::vector<std::vector<std::string>> forms_of(
+    const std::vector<MatchFinder::Match>& needles) {
+  std::vector<std::vector<std::string>> forms;
+  forms.reserve(needles.size());
+  for (const MatchFinder::Match& needle : needles) {
+    forms.push_back(MatchFinder::byte_forms(needle));
+  }
+  return forms;
+}
+
+// Whether a stretch of bytes outside the operations (with operations their
+// lexed operations: a comment, bytes a lexer recovery skipped) spells a
+// needle, and bytes with every such stretch removed.
+[[nodiscard]] bool comments_spell(std::span<const std::byte> bytes,
+                                  std::span<const syntax::ContentLexer::Operation> operations,
+                                  const std::vector<std::vector<std::string>>& forms,
+                                  const std::vector<MatchFinder::Match>& needles,
+                                  std::vector<std::byte>* scrubbed) {
+  bool found = false;
+  std::size_t cursor = 0;
+  for (const auto& [start, end] : ContentSyntax::gaps(bytes, operations)) {
+    const std::string_view text(reinterpret_cast<const char*>(bytes.data()) + start, end - start);
+    if (!spells_bytes(text, forms, needles)) {
+      continue;
+    }
+    found = true;
+    if (scrubbed != nullptr) {
+      scrubbed->insert(scrubbed->end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                       bytes.begin() + static_cast<std::ptrdiff_t>(start));
+      cursor = end;
+    }
+  }
+  if (scrubbed != nullptr) {
+    scrubbed->insert(scrubbed->end(), bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                     bytes.end());
+  }
+  return found;
 }
 
 // Whether a string operand of operation spells one of the needles' byte
@@ -398,11 +453,15 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
   if (needles.empty()) {
     return;
   }
-  std::vector<std::vector<std::string>> forms;
-  for (const MatchFinder::Match& needle : needles) {
-    forms.push_back(MatchFinder::byte_forms(needle));
-  }
+  const std::vector<std::vector<std::string>> forms = forms_of(needles);
   const text::PageContent& content = page.content;
+  for (std::size_t walk = 0; walk < content.streams.size(); ++walk) {
+    const text::ContentStream& stream = content.streams[walk];
+    if (stream.bytes != nullptr &&
+        comments_spell(*stream.bytes, stream.operations, forms, needles, nullptr)) {
+      target_of(work, content, walk).comments = true;
+    }
+  }
   std::set<std::pair<std::size_t, std::size_t>> shown;
   for (const GlyphRecord& record : content.glyphs) {
     shown.insert({record.stream, record.operation});
@@ -417,7 +476,7 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
       // but its string operands stay in the bytes (a damaged stream lexes so).
       const bool unknown = !text && !syntax::ContentLexer::is_operator(op);
       if ((!text && !unknown) || shown.contains({walk, index}) ||
-          !spells(operation, forms, needles)) {
+          (!spells(operation, forms, needles) && !(unknown && spells_bytes(op, forms, needles)))) {
         continue;
       }
       std::string replacement;
@@ -523,7 +582,9 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
 }
 
 [[nodiscard]] std::vector<std::byte> rewrite(const text::ContentStream& stream,
-                                             const TextPlan::Target& target) {
+                                             const TextPlan::Target& target,
+                                             const std::vector<MatchFinder::Match>& needles,
+                                             syntax::Document& document) {
   std::vector<GlyphRecord> records;
   std::set<std::size_t> removed;
   for (const auto& [index, list] : target.operations) {
@@ -561,7 +622,15 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
     }
     edits[index] += text;
   }
-  return text::ContentSerialiser::write(stream, 0, {}, edits).bytes;
+  std::vector<std::byte> written = text::ContentSerialiser::write(stream, 0, {}, edits).bytes;
+  if (!target.comments) {
+    return written;
+  }
+  const std::vector<std::vector<std::byte>> pieces{written};
+  const text::ContentStream again = lex(pieces, document, "a rewritten stream");
+  std::vector<std::byte> scrubbed;
+  (void)comments_spell(*again.bytes, again.operations, forms_of(needles), needles, &scrubbed);
+  return scrubbed;
 }
 
 // resources with faces named in its /Font and properties set in its
@@ -861,7 +930,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
         add_piece(contents);
       }
       const text::ContentStream stream = lex(pieces, document, "page " + std::to_string(number));
-      const std::vector<std::byte> bytes = rewrite(stream, work.content);
+      const std::vector<std::byte> bytes = rewrite(stream, work.content, state.needles, document);
       page.set("Contents", Object::make_reference(graph.add(Object::make_stream(
                                writer::StreamCopier::compress(Dictionary(), bytes)))));
     }
@@ -932,7 +1001,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     }
     const std::vector<std::vector<std::byte>> pieces{document.decode(*stream).bytes};
     const text::ContentStream walk = lex(pieces, document, "form " + std::to_string(form));
-    const std::vector<std::byte> bytes = rewrite(walk, target->second);
+    const std::vector<std::byte> bytes = rewrite(walk, target->second, state.needles, document);
     for (const std::string_view key : {"Filter", "DecodeParms", "Length", "DL"}) {
       dictionary.erase(key);
     }

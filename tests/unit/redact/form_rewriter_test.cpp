@@ -73,7 +73,7 @@ TEST_CASE("a glyph range inside a form reaches every page that draws it") {
   const pdfkit::test::Redaction probe =
       pdfkit::test::redact(file, pdfkit::test::search("Zebulon Quarterfield"));
   REQUIRE(probe.match_status == PDFKIT_OK);
-  const std::size_t at = probe.matches.find("\"fingerprint\":\"");
+  const std::size_t at = probe.matches.find(R"("fingerprint":")");
   REQUIRE(at != std::string::npos);
   const std::string fingerprint = probe.matches.substr(at + 15, 64);
   const std::size_t range = probe.matches.find("\"glyphs\":[");

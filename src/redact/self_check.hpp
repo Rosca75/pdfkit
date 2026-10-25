@@ -18,8 +18,10 @@
 //   - the decoded bytes of every stream, scanned raw for the string's UTF-8,
 //     PDFDocEncoding and UTF-16BE forms ("stream"): a content stream (a
 //     page's contents, a form, a pattern, a Type 3 glyph) by the bytes of its
-//     string operands, because its operator names, resource names and
-//     marked-content tags are the producer's vocabulary, not the document's;
+//     string operands, its comments, the bytes its lexer skipped and the
+//     operators Annex A does not know, because its operator names, resource
+//     names and marked-content tags are the producer's vocabulary, not the
+//     document's;
 //     every other stream whole, except a font program or a font's CMap,
 //     image samples, an ICC profile, a function, and the XMP packet, which is
 //     searched as text above.

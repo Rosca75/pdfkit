@@ -294,7 +294,8 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_codes(const Match& match,
           }
         }
         std::ranges::sort(positions);
-        positions.erase(std::unique(positions.begin(), positions.end()), positions.end());
+        const auto repeated = std::ranges::unique(positions);
+        positions.erase(repeated.begin(), repeated.end());
         for (std::size_t i = 0; i < positions.size();) {
           std::size_t j = i + 1;
           while (j < positions.size() && positions[j] == positions[j - 1] + 1) {

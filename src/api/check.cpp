@@ -45,7 +45,7 @@ MatchFinder::Match read_string(const JsonValue& item, std::size_t index) {
   const std::string where = "string " + std::to_string(index);
   if (item.kind() != JsonValue::Kind::object) {
     refuse(where + " is " + std::string(JsonValue::kind_name(item.kind())),
-           "write each string as {\"text\": \"...\"}");
+           R"(write each string as {"text": "..."})");
   }
   MatchFinder::Match match;
   bool text = false;
@@ -56,9 +56,10 @@ MatchFinder::Match read_string(const JsonValue& item, std::size_t index) {
     } else if (name == "folding" && value.kind() == JsonValue::Kind::object) {
       for (const auto& [key, setting] : value.as_object()) {
         if (setting.kind() != JsonValue::Kind::boolean) {
-          refuse(where + " gives the folding \"" + key + "\" as " +
-                     std::string(JsonValue::kind_name(setting.kind())),
-                 "write each folding flag as true or false");
+          std::string failed = where;
+          failed += " gives the folding \"" + key + "\" as ";
+          failed += JsonValue::kind_name(setting.kind());
+          refuse(failed, "write each folding flag as true or false");
         }
         if (key == "case") {
           match.folding.text.case_fold = setting.as_bool();
@@ -69,14 +70,16 @@ MatchFinder::Match read_string(const JsonValue& item, std::size_t index) {
         } else if (key == "hyphenation") {
           match.folding.hyphenation = setting.as_bool();
         } else {
-          refuse(where + " names the unknown folding \"" + key + "\"",
-                 "use only case, diacritics, whitespace and hyphenation");
+          std::string failed = where;
+          failed += " names the unknown folding \"" + key + "\"";
+          refuse(failed, "use only case, diacritics, whitespace and hyphenation");
         }
       }
     } else {
-      refuse(
-          where + " gives \"" + name + "\" as " + std::string(JsonValue::kind_name(value.kind())),
-          "give \"text\" as a string and \"folding\" as an object, nothing else");
+      std::string failed = where;
+      failed += " gives \"" + name + "\" as ";
+      failed += JsonValue::kind_name(value.kind());
+      refuse(failed, R"(give "text" as a string and "folding" as an object, nothing else)");
     }
   }
   if (!text) {
@@ -104,6 +107,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_check(const std::uint8_t* bytes, std:
       refuse("has no \"strings\" array", "list the strings as {\"strings\": [...]}");
     }
     std::vector<MatchFinder::Match> needles;
+    needles.reserve(list->as_array().size());
     for (std::size_t i = 0; i < list->as_array().size(); ++i) {
       needles.push_back(read_string(list->as_array()[i], i));
     }

@@ -4,20 +4,27 @@
 # The second extractor's leak check of a text redaction run (build-8.md
 # section 3.3): for every outcome whose redact_text output was written, each
 # redacted string is searched for
-#   - in PDFium's text of every output page, under the default folding (case
-#     folded, combining marks stripped after a compatibility decomposition,
-#     white space collapsed), with every placeholder cut out first, so a word
-#     inside "[REDACTED]" is not a leak; and
+#   - in PDFium's text of every output page, under the default folding of
+#     docs/DESIGN.md section 11 (canonical decomposition with the combining
+#     marks stripped, lower case, white space collapsed; no compatibility
+#     folding, so a full-width letter or a sharp s is another character), with
+#     every placeholder cut out first, so a word inside "[REDACTED]" is not a
+#     leak; and
 #   - in the output's bytes, stream by stream decoded by the dataset tools'
 #     own scanner (autotag.py, which shares no code with pdfkit), in Latin-1,
-#     UTF-16BE and UTF-8, case folded for ASCII, and in the font's own codes
-#     where pdfkit reported them (binary and hexadecimal); font programs are
-#     left out by the key that names them (/FontFile, /FontFile2, /FontFile3),
-#     as are image samples and ICC profiles, which hold no text, and an
-#     occurrence inside a PDF name token (a resource name, a marked-content
-#     tag) is not text either.
-# A hit is a leak: build-8.md section 5 stops the line on one. The report
-# goes to <run>/pdfium-leak.json.
+#     UTF-16BE and UTF-8, case folded for ASCII; the font streams are left out
+#     by the key or the type that names them (/FontFile, /FontFile2,
+#     /FontFile3, /ToUnicode, a CMap, a Type0 /Encoding), as are image samples
+#     and ICC profiles, which hold no text; an occurrence inside a PDF name
+#     token (a resource name, a marked-content tag) is not text, nor are an
+#     inline image's samples, and an XMP packet is read without its element
+#     and attribute names.
+# The removed codes pdfkit reports are searched too (binary and
+# hexadecimal) and reported as `codes`, not counted: a code means a glyph
+# only in its own font, and the same codes in another font's string draw
+# other text, which the two searches above judge.
+# A counted hit is a leak: build-8.md section 5 stops the line on one. The
+# report goes to <run>/pdfium-leak.json.
 """Search a redaction run's outputs for the redacted strings: python tests/pdfium/leak.py --run <id>."""
 
 from __future__ import annotations
@@ -40,15 +47,19 @@ import pdfium  # noqa: E402
 
 PLACEHOLDER = "[REDACTED]"
 NAME_CHARS = re.compile(rb"[^\s/\[\]<>(){}%]")
-FONT_PROGRAM = re.compile(rb"/FontFile[23]?\s+(\d+)\s+\d+\s+R")
+FONT_PROGRAM = re.compile(rb"/(?:FontFile[23]?|ToUnicode)\s+(\d+)\s+\d+\s+R")
+TYPE0_ENCODING = re.compile(rb"/Subtype\s*/Type0\b.*?/Encoding\s+(\d+)\s+\d+\s+R", re.S)
+# An inline image's data, which holds samples, not text.
+INLINE_IMAGE = re.compile(rb"\bBI\b.*?\bID\s.*?\sEI\b", re.S)
+XML_NAMES = re.compile(rb"</?[?!]?[A-Za-z_:][-\w:.]*|[A-Za-z_:][-\w:.]*\s*=")
 ICC = re.compile(rb"/(?:ICCBased|DestOutputProfile)\s+(\d+)\s+\d+\s+R")
 
 
 def fold(text: str) -> str:
-    """The default folding: compatibility decomposition, marks stripped, case folded, spaces collapsed."""
-    text = unicodedata.normalize("NFKD", text)
+    """The default folding: canonical decomposition, marks stripped, lower case, spaces collapsed."""
+    text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) not in ("Mn", "Me"))
-    return " ".join(text.casefold().split())
+    return " ".join(text.lower().split())
 
 
 def text_hits(page_texts: list[str], strings: list[str]) -> list[dict]:
@@ -88,11 +99,18 @@ def byte_hits(path: Path, strings: list[str], codes: list[str]) -> list[dict]:
     for obj in scan.objects:
         skipped.update(int(n) for n in FONT_PROGRAM.findall(obj.head))
         skipped.update(int(n) for n in ICC.findall(obj.head))
+        skipped.update(int(n) for n in TYPE0_ENCODING.findall(obj.head))
     blobs = []
     for obj in scan.objects:
-        if obj.data is None or obj.num in skipped or obj.has(rb"/Subtype\s*/Image\b"):
+        if (obj.data is None or obj.num in skipped or obj.has(rb"/Subtype\s*/Image\b")
+                or obj.has(rb"/Type\s*/CMap\b")):
             continue
-        blobs.append((obj.num, scan.decoded(obj) or b""))
+        blob = scan.decoded(obj) or b""
+        if obj.has(rb"/Type\s*/Metadata\b"):
+            blob = XML_NAMES.sub(b" ", blob)
+        elif b"BI" in blob:
+            blob = INLINE_IMAGE.sub(b" ", blob)
+        blobs.append((obj.num, blob))
     hits = []
     for original in strings:
         text = " ".join(unicodedata.normalize("NFC", original).split())
@@ -111,7 +129,7 @@ def byte_hits(path: Path, strings: list[str], codes: list[str]) -> list[dict]:
         for form in (binary, code.encode(), code.upper().encode()):
             where = [num for num, blob in blobs if form in blob]
             if where:
-                hits.append({"string": code, "surface": "bytes:codes", "objects": where[:5]})
+                hits.append({"string": code, "surface": "codes", "objects": where[:5]})
                 break
     return hits
 
@@ -156,13 +174,18 @@ def main() -> int:
         futures = {row["id"]: threads.submit(check_file, pool, row, run_dir, part) for row, part in jobs}
         for row_id, future in futures.items():
             results[row_id] = future.result()
-    leaking = {k: v["hits"] for k, v in results.items() if v["hits"]}
+    codes = {k: [h for h in v["hits"] if h["surface"] == "codes"] for k, v in results.items()}
+    codes = {k: v for k, v in codes.items() if v}
+    leaking = {k: [h for h in v["hits"] if h["surface"] != "codes"] for k, v in results.items()}
+    leaking = {k: v for k, v in leaking.items() if v}
     text_words = sum(1 for v in leaking.values() for h in v if h["surface"] == "pdfium_text")
     byte_words = sum(1 for v in leaking.values() for h in v if h["surface"].startswith("bytes"))
     summary = {"files": len(results), "leaking_files": len(leaking), "pdfium_text_hits": text_words,
-               "byte_hits": byte_words, "unopened": sorted(k for k, v in results.items() if not v["opens"])}
+               "byte_hits": byte_words, "code_matches": sum(len(v) for v in codes.values()),
+               "unopened": sorted(k for k, v in results.items() if not v["opens"])}
     (run_dir / "pdfium-leak.json").write_text(
-        json.dumps({"summary": summary, "leaks": dict(sorted(leaking.items()))}, indent=1), encoding="utf-8")
+        json.dumps({"summary": summary, "leaks": dict(sorted(leaking.items())),
+                    "codes": dict(sorted(codes.items()))}, indent=1), encoding="utf-8")
     print(json.dumps(summary | {"leaking": sorted(leaking)[:50]}, indent=1))
     if not results:
         print("SKIPPED leak check: no outcome of this run carries a redact_text output", file=sys.stderr)

@@ -72,8 +72,8 @@ std::size_t count_member(const JsonValue& glyphs, std::size_t index, const std::
       value != nullptr && value->kind() == JsonValue::Kind::number ? value->as_int64()
                                                                    : std::nullopt;
   if (!number || *number < 0) {
-    refuse(where(index) + " has no whole number \"" + name + "\" in \"glyphs\"",
-           "give \"page\" (from 1), \"first\" and \"last\" (positions in the page's glyph list "
+    refuse(where(index) + " has no whole number \"" + name + R"(" in "glyphs")",
+           R"(give "page" (from 1), "first" and "last" (positions in the page's glyph list )"
            "of pdfkit_text) as whole numbers");
   }
   return static_cast<std::size_t>(*number);
@@ -121,11 +121,11 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index) {
       if (value.kind() != JsonValue::Kind::object) {
         refuse(where(index) + " gives \"glyphs\" as " +
                    std::string(JsonValue::kind_name(value.kind())),
-               "write the range as {\"page\": 1, \"first\": 0, \"last\": 5}");
+               R"(write the range as {"page": 1, "first": 0, "last": 5})");
       }
       for (const auto& [key, unused] : value.as_object()) {
         if (key != "page" && key != "first" && key != "last") {
-          refuse(where(index) + " names \"" + key + "\" in \"glyphs\"",
+          refuse(where(index) + " names \"" + key + R"(" in "glyphs")",
                  "give only page, first and last");
         }
       }
@@ -140,8 +140,8 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index) {
     }
   }
   if (search == glyphs) {
-    refuse(where(index) + (search ? " has both \"search\" and \"glyphs\""
-                                  : " has neither \"search\" nor \"glyphs\""),
+    refuse(where(index) + (search ? R"( has both "search" and "glyphs")"
+                                  : R"( has neither "search" nor "glyphs")"),
            "give a match either a search string or a glyph range");
   }
   return match;
@@ -174,6 +174,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       refuse("has no \"matches\" array", "list the matches as {\"matches\": [...]}");
     }
     std::vector<MatchFinder::Match> matches;
+    matches.reserve(list->as_array().size());
     for (std::size_t i = 0; i < list->as_array().size(); ++i) {
       matches.push_back(read_match(list->as_array()[i], i));
     }

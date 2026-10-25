@@ -675,7 +675,10 @@ A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
   where the text does not read it (a code no rung reads, a font whose
   `/Differences` name other glyphs, letters spread out of reading order),
   because an extractor reading the codes and the self-check's byte scan both
-  find it there.
+  find it there. For the same reason a text operator that shows no glyph (no
+  font is current), an operator Annex A does not know, a comment and the bytes
+  a lexer recovery skipped go from a content stream when they spell the
+  string.
 
 A match spans operators, fonts, `TJ` adjustments, lines and a hyphen, and is one
 match. It removes its glyphs, every duplicate folded into one of them (§7), and
@@ -951,10 +954,18 @@ extracted is the string):
   PDFDocEncoding and the UTF-16BE forms of the string (ASCII letters folded
   when the string folds case), because a channel the table missed shows here
   first: a content stream (page contents, a form, a pattern, a Type 3 glyph)
-  by the bytes of its string operands, because its operator names, resource
-  names and marked-content tags are the producer's vocabulary; every other
+  by the bytes of its string operands, its comments, the bytes its lexer
+  skipped and the operators Annex A does not know, because its operator
+  names, resource names and marked-content tags are the producer's
+  vocabulary; every other
   stream whole, except font programs and a font's CMaps, image samples, ICC
   profiles, functions and the XMP packet (searched as text above).
+
+For a plan of search strings alone, whose strings were searched on every
+page by the same reader when the matches were added, the page text is read
+again on the pages the redaction changed (an edit, or an edited form drawn);
+an unchanged page reads as it did. Every other surface is searched on every
+page, and a plan with a glyph range reads every page's text.
 
 Before a surface is searched every placeholder of the plan is cut out of it,
 so a placeholder holding a redacted string is not a survivor. For a glyph

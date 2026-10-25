@@ -6,6 +6,7 @@
 
 #include "redact/content_syntax.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -48,9 +49,10 @@ std::string ContentSyntax::literal(std::string_view bytes) {
       out += value;
     } else {
       out += '\\';
-      out += octal[(byte >> 6U) & 7U];
-      out += octal[(byte >> 3U) & 7U];
-      out += octal[byte & 7U];
+      const unsigned code = byte;
+      out += octal[(code >> 6U) & 7U];
+      out += octal[(code >> 3U) & 7U];
+      out += octal[code & 7U];
     }
   }
   out += ')';
@@ -66,6 +68,35 @@ std::string ContentSyntax::hex(std::string_view bytes) {
     out += digits[byte & 0x0FU];
   }
   out += '>';
+  return out;
+}
+
+std::vector<std::pair<std::size_t, std::size_t>> ContentSyntax::gaps(
+    std::span<const std::byte> bytes, std::span<const syntax::ContentLexer::Operation> operations) {
+  std::vector<std::pair<std::size_t, std::size_t>> out;
+  // The white space of ISO 32000-1 table 1 (read).
+  const auto white = [&bytes](std::size_t at) {
+    const auto value = std::to_integer<unsigned>(bytes[at]);
+    return value == 0 || value == 9 || value == 10 || value == 12 || value == 13 || value == 32;
+  };
+  const auto gap = [&](std::size_t from, std::size_t to) {
+    to = std::min(to, bytes.size());
+    while (from < to && white(from)) {
+      ++from;
+    }
+    while (to > from && white(to - 1)) {
+      --to;
+    }
+    if (from < to) {
+      out.emplace_back(from, to);
+    }
+  };
+  std::size_t cursor = 0;
+  for (const syntax::ContentLexer::Operation& operation : operations) {
+    gap(cursor, operation.start);
+    cursor = std::max(cursor, operation.end);
+  }
+  gap(cursor, bytes.size());
   return out;
 }
 

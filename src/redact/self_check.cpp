@@ -12,6 +12,7 @@
 #include "redact/self_check.hpp"
 
 #include "platform/unicode/folding.hpp"
+#include "redact/content_syntax.hpp"
 #include "syntax/content_lexer.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
@@ -110,40 +111,69 @@ enum class Kind : std::uint8_t { scan, content, skip };
   return std::make_pair(TextFolding::encode(std::u32string(1, code)), end);
 }
 
-// The character data and attribute values of an XML packet, entities read.
+[[nodiscard]] bool name_start(char value) noexcept {
+  return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') || value == '_' ||
+         value == ':';
+}
+
+[[nodiscard]] bool name_char(char value) noexcept {
+  return name_start(value) || (value >= '0' && value <= '9') || value == '-' || value == '.';
+}
+
+// The text of an XML packet with its markup's names left out: every element
+// name and every attribute name goes, every character datum and attribute
+// value stays, entities read. It does not track quotes, so a packet whose
+// quotes do not balance (a byte-order mark that lost its closing quote) loses
+// no value.
 [[nodiscard]] std::string xml_text(std::string_view xml) {
   std::string out;
-  bool tag = false;
-  char quote = 0;
-  for (std::size_t i = 0; i < xml.size(); ++i) {
+  std::size_t i = 0;
+  while (i < xml.size()) {
     const char value = xml[i];
-    const bool content = !tag || quote != 0;
-    if (content && value == '&') {
+    if (value == '<') {
+      ++i;
+      while (i < xml.size() && (xml[i] == '/' || xml[i] == '?' || xml[i] == '!')) {
+        ++i;
+      }
+      while (i < xml.size() && name_char(xml[i])) {
+        ++i;
+      }
+      out += ' ';
+      continue;
+    }
+    if (name_start(value)) {
+      std::size_t end = i;
+      while (end < xml.size() && name_char(xml[end])) {
+        ++end;
+      }
+      std::size_t next = end;
+      while (next < xml.size() &&
+             (xml[next] == ' ' || xml[next] == '\t' || xml[next] == '\n' || xml[next] == '\r')) {
+        ++next;
+      }
+      if (next < xml.size() && xml[next] == '=') {
+        out += ' ';
+        i = next + 1;
+      } else {
+        out.append(xml.substr(i, end - i));
+        i = end;
+      }
+      continue;
+    }
+    if (value == '&') {
       if (const auto entity = entity_at(xml, i)) {
         out += entity->first;
-        i = entity->second;
+        i = entity->second + 1;
         continue;
       }
     }
-    if (tag) {
-      if (quote != 0) {
-        if (value == quote) {
-          quote = 0;
-          out += ' ';
-        } else {
-          out += value;
-        }
-      } else if (value == '"' || value == '\'') {
-        quote = value;
-      } else if (value == '>') {
-        tag = false;
-        out += ' ';
-      }
-    } else if (value == '<') {
-      tag = true;
+    if (value == '>' || value == '"' || value == '\'' || value == '=' || value == '/' ||
+        value == '?') {
+      out += ' ';
     } else {
       out += value;
     }
+    ++i;
   }
   return out;
 }
@@ -367,9 +397,8 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     if (dictionary == nullptr) {
       continue;
     }
-    for (const std::string_view key :
-         {"FontFile", "FontFile2", "FontFile3", "ToUnicode", "CIDSet", "CIDToGIDMap",
-          "DestOutputProfile"}) {
+    for (const std::string_view key : {"FontFile", "FontFile2", "FontFile3", "ToUnicode", "CIDSet",
+                                       "CIDToGIDMap", "DestOutputProfile"}) {
       skip(dictionary->get(key));
     }
     if (dictionary->get("Type").is_name("Font") || dictionary->get("Subtype").is_name("Type0")) {
@@ -449,10 +478,26 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     const std::vector<std::vector<std::byte>> pieces{decoded.bytes};
     syntax::ContentLexer lexer(pieces, document->limits(), "object " + std::to_string(number));
     std::string operands;
+    std::vector<syntax::ContentLexer::Operation> operations;
     while (std::optional<syntax::ContentLexer::Operation> operation = lexer.next()) {
       for (const Object& operand : operation->operands) {
         operand_strings(operand, 0, operands);
       }
+      operations.push_back(std::move(*operation));
+    }
+    // The comments and skipped bytes too: a producer's note in a content
+    // stream is in its bytes; and an operator Annex A does not know is read
+    // as a word of the stream.
+    const platform::ByteSpan joined = lexer.bytes();
+    for (const syntax::ContentLexer::Operation& operation : operations) {
+      if (!syntax::ContentLexer::is_operator(operation.op)) {
+        operands += operation.op;
+        operands += '\n';
+      }
+    }
+    for (const auto& [start, end] : ContentSyntax::gaps(joined, operations)) {
+      operands.append(reinterpret_cast<const char*>(joined.data()) + start, end - start);
+      operands += '\n';
     }
     search.raw(operands, page, number);
   }

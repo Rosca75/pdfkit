@@ -165,3 +165,23 @@ TEST_CASE("pdfkit_check answers every survivor by page and surface") {
   pdfkit_buffer_free(&out);
   CHECK(refused == PDFKIT_E_REFUSED);
 }
+
+TEST_CASE("an XMP packet whose quotes do not balance is still searched") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (x) Tj ET");
+  const std::uint32_t xmp = fixture.add_stream(
+      "/Type /Metadata /Subtype /XML",
+      "<?xpacket begin=\"\xEF\xBB? id=\"W5M0\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\" "
+      "x:xmptk=\"Zebulon Core\"><rdf:Description/></x:xmpmeta>");
+  fixture.catalog_entries("/Metadata " + std::to_string(xmp) + " 0 R");
+  CHECK(found(check(fixture.bytes(), "zebulon core"), "xmp"));
+  // Element and attribute names are markup, not text.
+  CHECK_FALSE(found(check(fixture.bytes(), "Description"), "xmp"));
+  CHECK_FALSE(found(check(fixture.bytes(), "xmptk"), "xmp"));
+}
+
+TEST_CASE("a comment of a content stream is a surface") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("% a note on Zebulon\nBT /F1 10 Tf 72 700 Td (x) Tj ET");
+  CHECK(found(check(fixture.bytes(), "zebulon"), "stream", 1));
+}

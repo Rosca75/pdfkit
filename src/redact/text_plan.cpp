@@ -23,6 +23,7 @@ void TextPlan::Target::merge(const Target& other) {
   for (const auto& [index, bytes] : other.replaced) {
     replaced.try_emplace(index, bytes);
   }
+  comments = comments || other.comments;
 }
 
 }  // namespace pdfkit::redact
