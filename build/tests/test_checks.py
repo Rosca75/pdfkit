@@ -161,10 +161,10 @@ class ThirdPartyTest(CheckTest):
         self.assert_fails("check_third_party.py", "third_party/inventory.tsv", "GPL-3.0-only")
 
     def test_a_folder_without_a_row(self) -> None:
-        folder = self.tree / "third_party/zlib"
+        folder = self.tree / "third_party/planted"
         folder.mkdir()
-        (folder / "LICENSE").write_text("zlib licence\n", encoding="utf-8")
-        self.assert_fails("check_third_party.py", "third_party/zlib")
+        (folder / "LICENSE").write_text("planted licence\n", encoding="utf-8")
+        self.assert_fails("check_third_party.py", "third_party/planted")
 
 
 class NetworkTest(CheckTest):
@@ -190,6 +190,7 @@ class NetworkTest(CheckTest):
         lines = pending.read_text(encoding="utf-8").split("\n")
         lines = [line for line in lines if not line.startswith("tests/pdfium/fetch.py\t")]
         pending.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        (self.tree / "tests/pdfium/fetch.py").unlink(missing_ok=True)
         self.assert_fails("check_network.py", "tests/pdfium/fetch.py")
 
 
