@@ -90,6 +90,10 @@ class TextPlan {
   // text of each glyph range as the extraction read it.
   std::vector<MatchFinder::Match> needles;
   std::map<std::uint32_t, PageWork> pages;
+  // The forms each page read draws, by object number.
+  std::map<std::uint32_t, std::set<std::uint32_t>> forms_drawn;
+  // Whether a glyph range was given: its text was searched on no other page.
+  bool glyph_ranges = false;
 };
 
 }  // namespace pdfkit::redact

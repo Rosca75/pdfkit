@@ -654,9 +654,9 @@ are not numbered.
 A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
 
 - **Glyph ranges** from an earlier extraction: page and half-open glyph-index
-  range, with the document fingerprint (the SHA-256 of the input bytes) the
-  extraction reported; a range from another document or out of range is refused,
-  because a stale range redacts the wrong glyphs.
+  range, with the document fingerprint (the SHA-256 of the file from its
+  `%PDF-` header on) the extraction reported; a range from another document or
+  out of range is refused, because a stale range redacts the wrong glyphs.
 - **Search strings** with the caller's folding options, matched over each page's
   reading-order text, hidden blocks included:
   - `case`: Unicode simple case folding (CaseFolding.txt status C and S);
@@ -667,10 +667,20 @@ A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
   - `hyphenation`: a joined hyphenation (§7) matches the word without its hyphen;
   - ligatures are already decomposed (§5.5).
   Folding builds a folded string with a map back to glyph indices, so a match in
-  folded text is a glyph range.
+  folded text is a glyph range. Every folding is on unless the caller turns it
+  off. A search matches inside words ("Smith" is found in "Smithson"), because
+  a redaction that misses a string inside a longer word leaks it; each page is
+  searched on its own. A search also finds the glyphs whose code bytes spell
+  the string (its UTF-8, Latin-1 or UTF-16BE form) inside one string operand
+  where the text does not read it (a code no rung reads, a font whose
+  `/Differences` name other glyphs, letters spread out of reading order),
+  because an extractor reading the codes and the self-check's byte scan both
+  find it there.
 
 A match spans operators, fonts, `TJ` adjustments, lines and a hyphen, and is one
-match. Overlapping or adjacent matches with the same placeholder are merged;
+match. It removes its glyphs, every duplicate folded into one of them (§7), and
+every glyph of an `/ActualText` span one of them belongs to, because the span's
+text is read as one unit. Overlapping or adjacent matches with the same placeholder are merged;
 with different placeholders, the earlier-starting one wins the overlap.
 A string that matches nothing is reported with a count of zero, never as a
 failure.
@@ -684,14 +694,16 @@ position the original gave it (CLAUDE.md §5).
   becomes a number equal to the removed advance in thousandths of text space,
   `-(Σ tx) / (Tfs × Th) × 1000` with each `tx` from §6.1 (so `Tc`, `Tw` and the
   removed codes' own adjustments are included), merged with adjacent numbers.
-- **Inside `Tj`, `'` and `"`**: the operand is cut at code boundaries; the codes
-  before the match stay in the original operator; the codes after it are
-  re-anchored by a `Tm` (or `Td` when the matrix is a pure translation) computed
-  by the state machine at the first kept code, so they land where they were;
-  `'` keeps its line advance and `"` keeps its `Tw` and `Tc` setting on the
-  first piece. An operator whose codes are all removed is removed with its
-  operands, except that `'` and `"` become `T*` (and `Tw`, `Tc`) so the line
-  matrix still advances.
+- **Inside `Tj`, `'` and `"`**: the operand is cut at code boundaries and the
+  operator rebuilt as the `TJ` of its kept pieces and the holes' numbers, so
+  the codes after the match land where they were without a `Td` or `Tm`, which
+  would also move the line matrix a later `T*`, `'` or `"` reads; `'` becomes
+  `T*` and the `TJ`, and `"` becomes `Tw`, `Tc`, `T*` and the `TJ`, so the line
+  advance and the spacing survive. An operator whose codes are all removed
+  becomes the `TJ` of one number, which keeps the text position the operators
+  after it start from. An operator whose codes cannot be placed on their
+  operand's bytes loses every glyph it shows, because a glyph kept by mistake
+  is a leak and one removed by mistake is not.
 - Multi-byte codes are cut at code boundaries the font's codespace defines,
   never inside a code.
 - **Forms**: text inside a form XObject is rewritten inside the form, once, and
@@ -699,11 +711,15 @@ position the original gave it (CLAUDE.md §5).
   to the form and a match is a property of those glyphs; MuPDF's
   filtered-copy-per-use leaves the original form in the file, which the
   reachable-object sweep exists to prevent.
-- **Marked content**: an `/ActualText`, `/Alt` or `/E` value on a span covering
-  a removed glyph is replaced by the placeholder text when the span is wholly
-  removed and otherwise rebuilt from the span's remaining decoded text with the
-  placeholder in the removed part, because these strings are what an extractor
-  copies instead of the glyphs.
+- **Marked content**: on a span whose glyphs are all removed the `/ActualText`
+  goes with them (the placeholder drawn for them is then read once) and an
+  `/Alt` or `/E` becomes the placeholder; on any other span every occurrence of
+  a redacted string inside an `/ActualText`, `/Alt` or `/E` is replaced by its
+  placeholder, because these strings are what an extractor copies instead of
+  the glyphs. Every other string of every `BDC` and `DP` property list (an
+  artifact's `/Contents`, a producer's own key) has the redacted strings
+  replaced too. The property list is rewritten inline in its operator or in
+  the `/Properties` resource that names it.
 - Type 3 glyphs, render-mode-3 text and every hidden class are removed the same
   way; a duplicate's both operators are edited.
 - **Width side channel**: the following glyphs keep their positions, which
@@ -728,13 +744,20 @@ position the original gave it (CLAUDE.md §5).
   a placeholder's width is close to what the same letters took in a common
   business face. It is embedded once per output file, only when a placeholder is
   drawn, the bold face only when a bold placeholder is drawn.
-- **Drawing**: the placeholder is drawn in its own `BT`/`ET` inside `q`/`Q`, at
-  the removed run's first glyph origin, font size, text matrix rotation, `Ts`
-  and `Tz`, in its fill colour (an invisible run's placeholder is drawn in
-  render mode 3); in bold when the removed font's descriptor has the force-bold
-  flag, a `/FontWeight` of 600 or more, or a name containing `Bold`.
+- **Drawing**: the placeholder is drawn in its own `BT`/`ET` inside `q`/`Q`,
+  placed after the `ET` that closes the text object holding the removed run's
+  first glyph, in the same stream, so it is under the same CTM and clip; at
+  that glyph's text matrix (origin and rotation), font size, `Ts` and `Tz`, with
+  `Tc` and `Tw` zero, in its fill colour when that is a device colour (else the
+  colour in force there), an invisible run's placeholder in render mode 3; in
+  bold when the removed font's descriptor has the force-bold flag, a
+  `/FontWeight` of 600 or more, or a name containing `Bold`, `Black` or `Heavy`.
+  The face is named in the resources the stream reads under `PdfkitPH` and the
+  first eight hexadecimal digits of its program's hash; a form without
+  resources of its own has the face named in every kept page that draws it.
 - **Fitting**: the hole is the removed glyphs' advance plus the white space up to
-  the next kept glyph on the same line (to the line's end when none follows).
+  the next kept glyph on the same line that is not a space (to the run's end
+  when none follows), measured in device space along the run's direction.
   The placeholder is drawn at its natural width when it fits (`natural`); else
   scaled horizontally with `Tz` down to a floor of 60 percent (`scaled`); else
   at the floor, overflowing to the right (`overflow`), because an overflow is
@@ -811,6 +834,7 @@ channel added later must be a row with a test, not a sentence. The rows:
 | `/Encrypt` | removed: output unencrypted (§2) | the original's restrictions were set for the original |
 | `/URI` base dictionary | removed | a base URL names a site |
 | search indexes (`/PageMode` embedded index, `/SearchIndex` and similar private keys) | removed | an index holds every word of the document |
+| private keys of form and image XObjects | removed: a form keeps only the keys of ISO 32000-1 tables 5 and 95, an image those of tables 5, 89 and 146 (`/Ref`, `/OPI`, a web-capture `/ID` and the external-file keys go too) | a producer's own key on a form or an image (a pdfTeX source file name, an editor's private copy of an annotation's text) is a channel nobody listed; the text redaction's self-check found both in the dataset |
 | fonts, output intents, colour spaces, ExtGState, shadings, patterns | kept as they are | they draw the page and name no text (a removed glyph's width and ToUnicode entries name no text either) |
 
 Catalog keys not named here are kept only from an allow-list (`/Type`,
@@ -915,13 +939,27 @@ reader and searches every text surface for every redacted string, under each
 string's folding options (for glyph-range matches, the matched text as
 extracted is the string):
 
-- the glyph text of every page in reading order, hidden blocks included;
+- the glyph text of every page in reading order, hidden blocks included (an
+  occurrence drawn wholly in the placeholder font is the placeholder);
 - every `/ActualText`, `/Alt` and `/E` in marked content;
-- the Info dictionary and the XMP packet;
-- every string object reachable in the file;
+- the Info dictionary's strings and the XMP packet's text (its character data
+  and attribute values, entities read);
+- every string object reachable in the file, less the strings of font
+  dictionaries (a CIDSystemInfo's registry and ordering), which are the font
+  format's vocabulary;
 - the decompressed bytes of every stream, as a raw byte scan of the UTF-8, the
-  PDFDocEncoding and the UTF-16BE forms of the string, because a channel the
-  table missed shows here first.
+  PDFDocEncoding and the UTF-16BE forms of the string (ASCII letters folded
+  when the string folds case), because a channel the table missed shows here
+  first: a content stream (page contents, a form, a pattern, a Type 3 glyph)
+  by the bytes of its string operands, because its operator names, resource
+  names and marked-content tags are the producer's vocabulary; every other
+  stream whole, except font programs and a font's CMaps, image samples, ICC
+  profiles, functions and the XMP packet (searched as text above).
+
+Before a surface is searched every placeholder of the plan is cut out of it,
+so a placeholder holding a redacted string is not a survivor. For a glyph
+range the string is the range's text as the extraction reads it, under the
+default folding.
 
 A survivor is a refusal (exit code 3 in the CLI) naming the page and the surface
 for each occurrence; no output is handed back. The re-read is bounded by the

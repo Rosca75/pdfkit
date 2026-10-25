@@ -15,6 +15,7 @@
 #include "writer/file_writer.hpp"
 #include "writer/page_selector.hpp"
 
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -108,8 +109,40 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
     unique.insert(match.placeholder);
   }
   const std::vector<std::string> placeholders(unique.begin(), unique.end());
+  // With search strings alone, every source page was searched with every
+  // string when the matches were added, so a page the redaction left as it
+  // was (no edit, no edited form drawn) reads as it did then and holds no
+  // occurrence; its text is not read again. The page text of every changed
+  // page and every other surface of every page is.
+  std::optional<std::set<std::uint32_t>> changed;
+  if (!text.glyph_ranges) {
+    std::set<std::uint32_t> forms;
+    for (const auto& [number, work] : text.pages) {
+      for (const auto& [form, target] : work.forms) {
+        if (!target.empty()) {
+          forms.insert(form);
+        }
+      }
+    }
+    changed.emplace();
+    for (std::size_t i = 0; i < report.pages.size(); ++i) {
+      const std::uint32_t source = report.pages[i];
+      bool touched = text.pages.contains(source);
+      if (const auto drawn = text.forms_drawn.find(source); drawn != text.forms_drawn.end()) {
+        for (const std::uint32_t form : drawn->second) {
+          touched = touched || forms.contains(form);
+        }
+      } else {
+        touched = true;
+      }
+      if (touched) {
+        changed->insert(static_cast<std::uint32_t>(i + 1));
+      }
+    }
+  }
   const SelfCheck::Result result =
-      SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(), text.needles, placeholders);
+      SelfCheck::run(platform::as_bytes(pdf), plan.document().limits(), text.needles, placeholders,
+                     changed ? &*changed : nullptr);
   report.self_check_strings = result.strings;
   if (!result.survivors.empty()) {
     throw SelfCheck::refusal(result);

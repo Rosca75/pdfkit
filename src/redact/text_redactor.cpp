@@ -16,6 +16,7 @@
 #include "redact/text_redactor.hpp"
 
 #include "platform/error.hpp"
+#include "redact/content_syntax.hpp"
 #include "redact/marked_content_rewriter.hpp"
 #include "redact/placeholder_drawing.hpp"
 #include "redact/text_surgery.hpp"
@@ -355,6 +356,83 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
   }
 }
 
+// Whether a string operand of operation spells one of the needles' byte
+// forms.
+[[nodiscard]] bool spells(const syntax::ContentLexer::Operation& operation,
+                          const std::vector<std::vector<std::string>>& forms,
+                          const std::vector<MatchFinder::Match>& needles) {
+  std::vector<const syntax::Object::String*> strings;
+  for (const Object& operand : operation.operands) {
+    if (const syntax::Object::String* string = operand.string()) {
+      strings.push_back(string);
+    } else if (const Object::Array* items = operand.array()) {
+      for (const Object& item : *items) {
+        if (const syntax::Object::String* text = item.string()) {
+          strings.push_back(text);
+        }
+      }
+    }
+  }
+  for (const syntax::Object::String* string : strings) {
+    for (std::size_t i = 0; i < needles.size(); ++i) {
+      const std::string bytes = needles[i].folding.text.case_fold
+                                    ? MatchFinder::lower_ascii(string->bytes)
+                                    : string->bytes;
+      for (const std::string& form : forms[i]) {
+        if (bytes.find(form) != std::string::npos) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// A text-showing operator that shows no glyph (no font is current), or an
+// operator Annex A does not know, whose string spells a redacted string: the
+// reader drew nothing from it, a viewer with a fallback font may, and its
+// bytes hold the string, so it goes, ' and " keeping their line advance and
+// spacing.
+void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>& needles,
+                    TextPlan::PageWork& work) {
+  if (needles.empty()) {
+    return;
+  }
+  std::vector<std::vector<std::string>> forms;
+  for (const MatchFinder::Match& needle : needles) {
+    forms.push_back(MatchFinder::byte_forms(needle));
+  }
+  const text::PageContent& content = page.content;
+  std::set<std::pair<std::size_t, std::size_t>> shown;
+  for (const GlyphRecord& record : content.glyphs) {
+    shown.insert({record.stream, record.operation});
+  }
+  for (std::size_t walk = 0; walk < content.streams.size(); ++walk) {
+    const text::ContentStream& stream = content.streams[walk];
+    for (std::size_t index = 0; index < stream.operations.size(); ++index) {
+      const syntax::ContentLexer::Operation& operation = stream.operations[index];
+      const std::string& op = operation.op;
+      const bool text = op == "Tj" || op == "TJ" || op == "'" || op == "\"";
+      // An operator outside ISO 32000-1 Annex A does nothing a reader draws,
+      // but its string operands stay in the bytes (a damaged stream lexes so).
+      const bool unknown = !text && !syntax::ContentLexer::is_operator(op);
+      if ((!text && !unknown) || shown.contains({walk, index}) ||
+          !spells(operation, forms, needles)) {
+        continue;
+      }
+      std::string replacement;
+      if (op == "\"" && operation.operands.size() >= 2) {
+        replacement = ContentSyntax::number(operation.operands[0].number().value_or(0.0)) + " Tw " +
+                      ContentSyntax::number(operation.operands[1].number().value_or(0.0)) +
+                      " Tc T*";
+      } else if (op == "'" || op == "\"") {
+        replacement = "T*";
+      }
+      target_of(work, content, walk).replaced[index] = replacement;
+    }
+  }
+}
+
 // The page's work over its merged occurrences.
 [[nodiscard]] TextPlan::PageWork build_work(syntax::Document& document, const PageText& page,
                                             const std::vector<MatchFinder::Occurrence>& merged,
@@ -401,6 +479,7 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
     ++work.placeholders;
   }
   rewrite_properties(document, page, page_removed, placeholder_of, needles, work);
+  remove_unshown(page, needles, work);
   return work;
 }
 
@@ -560,9 +639,16 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
   std::vector<MatchReport> reports(matches.size());
   std::map<std::uint32_t, std::vector<MatchFinder::Occurrence>> found_pages;
   std::map<std::uint32_t, std::optional<TextPlan::PageWork>> works;
+  std::map<std::uint32_t, std::set<std::uint32_t>> forms_drawn;
   text::TextReader reader(document);
   for (const std::uint32_t number : pages) {
     const PageText page = reader.read(number);
+    std::set<std::uint32_t>& drawn_forms = forms_drawn[number];
+    for (const text::ContentStream& walk : page.content.streams) {
+      if (walk.form != 0) {
+        drawn_forms.insert(walk.form);
+      }
+    }
     MatchFinder finder(page);
     std::vector<MatchFinder::Occurrence> found;
     for (std::size_t i = 0; i < matches.size(); ++i) {
@@ -641,6 +727,13 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
     state.matches.push_back(std::move(match));
   }
   state.needles = std::move(needles);
+  for (auto& [number, forms] : forms_drawn) {
+    state.forms_drawn[number] = std::move(forms);
+  }
+  state.glyph_ranges =
+      state.glyph_ranges || std::ranges::any_of(state.matches, [](const MatchFinder::Match& match) {
+        return match.kind == MatchFinder::Match::Kind::glyphs;
+      });
   for (auto& [number, found] : found_pages) {
     std::vector<MatchFinder::Occurrence>& list = state.occurrences[number];
     list.insert(list.end(), found.begin(), found.end());

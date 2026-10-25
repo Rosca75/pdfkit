@@ -205,3 +205,27 @@ TEST_CASE("malformed matches are refused") {
     CHECK(redact(file, bad).match_status == PDFKIT_E_INVALID_ARGUMENT);
   }
 }
+
+TEST_CASE("a string no glyph shows goes when it spells the redacted string") {
+  pdfkit::test::TextDocument fixture;
+  // A Tj before any font, and an operator Annex A does not know, as a
+  // damaged stream lexes them.
+  fixture.page(
+      "BT 72 700 Td (Zebulon unshown) Tj ET q (Zebulon unknown) frob Q "
+      "BT /F1 10 Tf 72 600 Td (kept text) Tj ET");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), search("zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.report);
+  CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
+  CHECK(page_text(result.pdf) == "kept text");
+}
+
+TEST_CASE("the self-check reads the changed pages of a search again and every surface") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (Zebulon here) Tj ET");
+  fixture.page("BT /F1 10 Tf 72 700 Td (nothing to see) Tj ET /Figure << /Alt (plain) >> BDC EMC");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), search("zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
+  CHECK(page_text(result.pdf, 2) == "nothing to see");
+}

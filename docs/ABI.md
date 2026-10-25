@@ -258,7 +258,9 @@ structure elements; `ch_optional_content` the groups of `/OCGs`;
 `ch_page_labels` the label ranges; `ch_xmp_history` 1 when the catalog's
 packet holds `xmpMM:History`; `ch_threads` the threads; the catalog keys
 (`ch_portfolio`, `ch_perms_legal`, `ch_uri_base`, `ch_search_index`) 1 per key
-present; `ch_encrypt` 1 for an encrypted input. A structure that is present
+present; `ch_encrypt` 1 for an encrypted input; `ch_xobject_private` the keys
+outside the allow-lists of `docs/DESIGN.md` §15 over every form and image
+XObject. A structure that is present
 but empty counts 1. `pending_redactions` counts the `/Redact` annotations
 never applied, and each page holding one has a `pending_redactions` warning.
 
@@ -302,6 +304,14 @@ bytes.
 }
 ```
 
+With a text redaction in the plan, `rectangles` and `self_check` read:
+
+```json
+  "rectangles": [{"page": 1, "source_page": 3, "placeholders": 1,
+                  "boxes": [[70.17, 697.9, 129.6, 711.2], [70.17, 696.4, 131.2, 712.1]]}],
+  "self_check": {"status": "passed", "strings": 2},
+```
+
 | Key | Holds |
 |---|---|
 | `page_count`, `pages` | the output's pages and, in output order, the source page each one is |
@@ -311,8 +321,8 @@ bytes.
 | `pending_redactions` | the source's `/Redact` annotations never applied; the output drops them with every annotation |
 | `missing_references` | the distinct object numbers referenced but missing, written as `null` |
 | `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
-| `rectangles` | the rectangles a redaction changed, per page; empty when nothing was redacted |
-| `self_check` | `{"status": "not_run", "reason": ...}` when the plan redacts no text; the self-check's verdict otherwise (`docs/DESIGN.md` §18) |
+| `rectangles` | per output page a text redaction changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line and each placeholder drawn, widened by a sixth of the glyph size) and the `placeholders` drawn there; empty when nothing was redacted |
+| `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match; `{"status": "passed", "strings": n}` when the output was re-read and none of the n redacted strings survives (`docs/DESIGN.md` §18); a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface and page, and no PDF is returned |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode and was dropped |
 
 ### 4.8 pdfkit_image_data (catalogue 3.2)
@@ -399,7 +409,8 @@ Options, each optional; any other key, or a value of another type, is
               "marked_content": null, "actual_text": null,
               "optional_content": {"groups": [], "off": false}, "clip": null, "hidden": [],
               "duplicate_of": null, "duplicates": []}]
-}]}
+}],
+ "fingerprint": "83ce7cec117fa30dbe1a3a3dc1d454be02cf1c463c8c69dcc8d69ce41f19c89f"}
 ```
 
 | Key | Holds |
@@ -414,6 +425,7 @@ Options, each optional; any other key, or a value of another type, is
 | `reserialisation` | the walks of the page's content (its `/Contents` and each form draw), those that write back to their own bytes, those read only up to a fault, the undamaged walks that do not (`failed`, always 0 for a sound reader), and the first mismatch of each failing walk |
 | `glyphs` | the glyph list in reading order (the visible blocks' glyphs, then the hidden blocks'), each record with every field of `CLAUDE.md` §4: `draw` (its place in draw order), `stream` (the walk: its index, the form object or `null` for the page, the form path), `operator` and `operand` (the operator's index in its walk and the operand holding the code, for `TJ` the index inside the array), `bytes` (the half-open byte range of the code as written in the walk's bytes) and `hex`, `font`, `code` and `code_length`, `text` and `rung`, `decomposed` (a ligature's letters), `width` (thousandths of text space), `adjustment` (the `TJ` number before it), `advance` (text space, `Tc` and `Tw` included), `vertical`, the text state (`text_matrix` before the glyph, `ctm`, `char_spacing`, `word_spacing`, `horizontal_scaling`, `leading`, `rise`, `font_size`, `render_mode`), the device geometry (`origin`, `advance_end`, `box`, `size`, `angle`), `fill`, `marked_content` (innermost tag and MCID), `actual_text` (the span and whether the span's text went to an earlier glyph), `optional_content`, `clip` (`null` when nothing clips), `hidden`, `duplicate_of` and `duplicates` (draw indices) |
 | `spans` | per marked-content span with replacement text, in the order met: its tag, `/ActualText`, `/Alt` and `/E`, and the walk and operator of its `BDC` |
+| `fingerprint` | after the pages: the document fingerprint, the SHA-256 (lower-case hexadecimal) of the file from its `%PDF-` header on, which a glyph range given to `pdfkit_redact_text` carries back so a range of another document is refused |
 
 Every key is written in the order shown and every geometric number rounded to
 0.01 pt, so two calls give the same bytes. Failures: `invalid_argument` for a
@@ -478,6 +490,68 @@ an unknown option is `invalid_argument`; a limit met while reading a content
 stream is the document's refusal (`limit_exceeded`); a limit met while
 probing one image is that image's `undecodable_image` warning.
 
+### 4.11 pdfkit_redact_text (catalogue 5)
+
+`pdfkit_redact_text(edit, matches_json, out)` adds text matches to the edit
+plan (`docs/DESIGN.md` §11 to §13); the text is removed when the plan is
+written. `matches_json` is `{"matches": [...]}`, each match one of:
+
+| Form | Keys |
+|---|---|
+| search | `search` (the string, UTF-8), optional `folding` (`case`, `diacritics`, `whitespace`, `hyphenation`, each `true` by default: simple case folding, marks stripped after canonical decomposition, any run of white space or an inferred word gap as one space, a joined hyphenation read without its hyphen), optional `placeholder` |
+| glyph range | `glyphs` (`{"page": n, "first": i, "last": j}`, a half-open range of positions in the page's glyph list of `pdfkit_text`), `fingerprint` (the one `pdfkit_text` reported), optional `placeholder` |
+
+The placeholder defaults to `[REDACTED]`, holds only the characters `[`, `]`,
+`_`, `0` to `9` and `A` to `Z`, and may be empty, which removes the text and
+draws nothing. A search runs over every page's text as `pdfkit_text` writes it,
+hidden blocks included, and matches inside words. Every match is checked
+before any is recorded, so a refused call leaves the plan as it was. Calls add
+up; occurrences that overlap across matches follow the overlap rule of
+`docs/DESIGN.md` §11 when the plan is written.
+
+```json
+{"fingerprint": "83ce7c...",
+ "matches": [{"match": 0, "kind": "search", "search": "Jane Doe", "placeholder": "[REDACTED]",
+              "count": 1,
+              "occurrences": [{"page": 1, "glyphs": [10, 18], "text": "Jane Doe",
+                               "rectangles": [[70.17, 696.26, 109.8, 708.85]],
+                               "placeholder_drawn": true, "fitting": "scaled", "scale": 0.762,
+                               "codes": ["4a616e6520446f65"]}]}]}
+```
+
+| Key | Holds |
+|---|---|
+| `fingerprint` | the document fingerprint |
+| `match` | the match's index in this call; `kind` `search` (with `search`) or `glyphs` |
+| `count`, `occurrences` | per occurrence found (zero is an answer, not a failure): `page`, `glyphs` (its range in the page's glyph list), `text` (as the extraction reads it), `rectangles` (the device boxes it changes), `placeholder_drawn`, `fitting` (`natural`, `scaled` or `overflow`, `null` when nothing is drawn) and `scale` (the share of the run's horizontal scaling the placeholder is drawn at), `codes` (the removed codes per font run, hexadecimal) |
+
+| Failure | Status | `code` |
+|---|---|---|
+| a null `edit` or `out`, malformed JSON, no `matches` array, an unknown key, a match with both or neither of `search` and `glyphs`, a non-boolean folding | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a placeholder with a character outside the alphabet (the message names it) | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a glyph range whose fingerprint is not this document's, a page outside the document, a range empty or past the page's glyphs | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a limit met while a page is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
+
+### 4.12 pdfkit_check (catalogue 10.2)
+
+`pdfkit_check(bytes, size, strings_json, out)` runs the search of the
+self-check (`docs/DESIGN.md` §18) over any PDF bytes, opened with the default
+limits. `strings_json` is `{"strings": [{"text": "...", "folding": {...}}]}`,
+the folding as in §4.11. Finding a string is the answer:
+
+```json
+{"strings": 2, "pages": 1, "count": 1,
+ "survivors": [{"string": "zebulon", "page": 1, "surface": "text", "object": null}]}
+```
+
+`surface` is `text` (a page's text, hidden text included), `actual_text`,
+`alt`, `expansion`, `info`, `xmp`, `string` (a string object, `object` naming
+it) or `stream` (the decoded bytes of a stream or of a content stream's string
+operands, `object` naming it); `page` is null for a surface outside the pages.
+Failures: `invalid_argument` for a null `out`, malformed or unknown keys, a
+string without `text`; the open's refusal (`not_pdf`, `password_required` and
+the rest) under `PDFKIT_E_REFUSED` when the bytes do not open.
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -512,7 +586,11 @@ The redact job file is a JSON object: `input` and `output` (paths), an optional
 `metadata` and `pages`, each handed byte for byte to its function
 (`pdfkit_redact_text`, `pdfkit_redact_images`, `pdfkit_set_metadata`,
 `pdfkit_select_pages`) on one edit plan. An output file is written only when
-`pdfkit_write` succeeds.
+`pdfkit_write` succeeds. The `text` section is the argument of
+`pdfkit_redact_text` (`{"matches": [...]}`, §4.11); a self-check refusal exits
+3 and writes no file. While a build lacks `pdfkit_redact_images` or
+`pdfkit_set_metadata`, a job with an `images` or `metadata` section is refused
+as a usage error naming the section, before the input is read.
 
 The dataset verb writes one outcome per file into `<folder>/outcomes/<id>.json`,
 a folder the caller creates (the harness does), in the shape

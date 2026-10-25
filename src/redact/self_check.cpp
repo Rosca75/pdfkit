@@ -250,7 +250,8 @@ void operand_strings(const Object& value, int depth, std::string& out) {
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                  std::span<const MatchFinder::Match> needles,
-                                 std::span<const std::string> placeholders) {
+                                 std::span<const std::string> placeholders,
+                                 const std::set<std::uint32_t>* pages) {
   Result result;
   result.strings = needles.size();
   std::unique_ptr<syntax::Document> document = syntax::Document::open(pdf, limits);
@@ -266,6 +267,10 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   text::TextReader reader(*document);
   result.pages = document->pages().size();
   for (const syntax::Page& source : document->pages()) {
+    if (pages != nullptr && !pages->contains(source.number)) {
+      continue;
+    }
+    ++result.pages_read;
     const text::PageText page = reader.read(source.number);
     MatchFinder finder(page);
     for (const MatchFinder::Match& needle : needles) {

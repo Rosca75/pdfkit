@@ -39,6 +39,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -61,13 +62,21 @@ class SelfCheck {
     std::vector<Survivor> survivors;
     std::size_t strings = 0;
     std::size_t pages = 0;
+    // The pages whose text was read.
+    std::size_t pages_read = 0;
   };
 
   // Searches pdf for needles; placeholders are cut out of every surface
   // first. Throws the document's refusal when pdf does not open.
+  // pages, when given, names the output pages whose text is read; the
+  // others are known to read as their input did, which the redaction
+  // already searched with every needle (the write pipeline gives it only
+  // for a plan of search strings alone). Every other surface is searched in
+  // full.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                   std::span<const MatchFinder::Match> needles,
-                                  std::span<const std::string> placeholders);
+                                  std::span<const std::string> placeholders,
+                                  const std::set<std::uint32_t>* pages = nullptr);
 
   // The self_check refusal naming the survivors' pages and surfaces.
   [[nodiscard]] static platform::Error refusal(const Result& result);
