@@ -347,6 +347,13 @@ to their phase-1 stubs. Nothing persisted changes shape.
 
 ### Deviations of earlier phases that affect this one
 
+From `build-5.md` §9 (the listing step reads these):
+
+- The occurrences come from `pdfkit::text::TextReader` (`src/text/text_reader.hpp`): construct one per document (`TextReader reader(document)`) and call `reader.interpret(page_number)`, which returns a `text::PageContent` (`src/text/page_content.hpp`) without the layout. `PageContent::images` holds one `text::ImageOccurrence` (`src/text/image_occurrence.hpp`) per image draw on the page, already in draw order through forms: `images[i].ordinal == i`, numbered from 0 per page. An image inside a pattern or a soft mask is not walked and so is not among them (list it from the resources with `image_in_pattern`).
+- Each occurrence has `page` (1-based), `ordinal`, `kind` (`xobject` or `inline_image`), `ctm` (the image is the unit square under it), `box` (that square's device bound), `clip` (the clip bound in force; `Rect::is_infinite()` when nothing clips), `form_path` (the form XObjects it was reached through by object number, outermost first; empty in the page's own content), `optional_content_off`, and `stream` and `operation` (the walk in `PageContent::streams` and the index of the `Do` or `BI` among its operations, which a removal deletes through `text::ContentSerialiser::write` with an edit). An XObject occurrence carries `reference` (number 0 for a direct stream), `resource_name` and `image`, the resolved stream `syntax::Object`, whose `stream()` gives `Document::decode`'s input; an inline occurrence carries `dictionary` (as written, abbreviated keys kept), `data` (its bytes, copied) and `data_start`/`data_end` in the walk's bytes.
+- One image drawn twice gives two occurrences; one form drawn twice is walked twice (two `PageContent::streams` entries with the same `form`), so its images are numbered twice, as `docs/DESIGN.md` §9.2 wants. Identity is the image layer's: group occurrences by identity, not by `reference`.
+- The text layer charges `Document::decode` once per form per `TextReader` (it caches decoded forms), and decodes no image data.
+
 From `build-1.md` §9:
 
 - `cli/verbs/images.cpp` takes `--out <folder>` without checking it first; the first image write reports a folder that cannot be written, and `std::filesystem` stays out of the CLI because it alone tripled `pdfkit.exe` (item 7).

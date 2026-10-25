@@ -247,6 +247,15 @@ inventory rows and their notices.
 
 ### Deviations of earlier phases that affect this one
 
+From `build-5.md` §9:
+
+- The text model: `text::TextReader reader(document)`; `reader.read(page)` gives a `text::PageText` (the interpreted `content`, the reading `order` of draw indices, `blocks` and `hidden_blocks` of `text::TextLayout`, counts, warnings); `reader.interpret(page)` the `text::PageContent` alone. `pdfkit_text`'s glyph list is `order` mapped to `content.glyphs`, so a glyph range of an extraction is a range of positions in `order` (visible blocks first, then hidden blocks) and `content.glyphs[order[i]]` is the record (items 3, 11).
+- A `text::GlyphRecord` names its bytes as `stream` (index into `PageContent::streams`, each a `text::ContentStream` walk with `form`, `form_path`, `bytes`, `operations`), `operation`, `operand` (for `TJ` the array index), `code_start`/`code_end` (the code as written, `hex_string` saying which form) and `code`/`code_length`; it carries the text state before the glyph (`text_matrix`, `ctm`, `char_spacing`, `word_spacing`, `horizontal_scaling`, `leading`, `rise`, `font_size`, `render_mode`), `width` (thousandths), `adjustment` (the `TJ` number before it), `advance` (text space, `Tc` and `Tw` in), `origin`, `advance_end`, `box`, `font` (shared `fonts::PdfFont`), `fill`, marked content (`tag`, `mcid`, `actual_text`, `actual_text_covered`), `optional_content`, `clip`, `hidden`, `duplicate_of`, `duplicates`.
+- A form drawn twice is two walks with the same `ContentStream::form`; rewrite the form once (`docs/DESIGN.md` §12) by grouping walks by `form` and editing one walk's bytes, which are the form's decoded bytes.
+- `text::ContentSerialiser::write(stream, index, records, edits)` writes a walk back, `edits` mapping an operation index to the bytes that replace that whole operation (empty removes it); every other byte is copied by the code the re-serialisation identity proves (100 % of 12,072 walks on the dataset).
+- An `/ActualText` span: the replaced text sits on the span's first glyph (rung `actual_text`), the others are `actual_text_covered` with empty text; `PageContent::spans` lists each span with its `BDC` (`stream`, `operation`) for the rewrite of §12. A duplicate copy is its own record in the hidden set; edit both the kept record and every index in its `duplicates` (item 5). A hyphenated word is two words, the first `hyphenated` (item 4).
+- The page's `text` (and so the self-check's reading) reads a duplicate-only word once and the hidden blocks after the visible ones.
+
 From `build-1.md` §9:
 
 - `platform::ErrorCode::self_check` maps to `PDFKIT_E_SELF_CHECK` and CLI exit 3 (item 5).
