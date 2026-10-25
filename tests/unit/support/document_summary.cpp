@@ -9,6 +9,7 @@
 #include "syntax/dictionary.hpp"
 #include "syntax/page.hpp"
 
+#include <array>
 #include <charconv>
 
 namespace pdfkit::test {

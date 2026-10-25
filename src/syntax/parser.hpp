@@ -47,8 +47,9 @@ class Parser {
   };
 
   // Containers nested deeper than this end there, so a hostile file cannot
-  // exhaust the stack.
-  static constexpr int max_depth = 256;
+  // exhaust the stack: 64 is PDFium's parser recursion limit (recalled), and
+  // 64 frames fit the 1 MiB main-thread stack even under AddressSanitizer.
+  static constexpr int max_depth = 64;
 
   explicit Parser(platform::ByteSpan bytes) noexcept : bytes_(bytes) {}
 

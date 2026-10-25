@@ -306,7 +306,8 @@ after they merge reverts them too.
    inside a literal inflates without any other sign (the `damaged_flate`
    mutation does exactly that). A missing checksum is not a fault. The plan's
    "`damaged_flate`" warning is DESIGN.md §19's `damaged_stream`.
-8. **Bounds chosen here**: containers nest at most 256 deep; object streams
+8. **Bounds chosen here**: containers nest at most 64 deep (PDFium's
+   parser recursion limit; 256 overflowed the 1 MiB stack under ASan); object streams
    open at most 8 deep; a reference chain resolves at most 32 hops; the page
    walk visits at most 4 × the page ceiling + 100,000 nodes; a content stream
    keeps at most 65,536 operands before an operator; an inline image wider or
@@ -351,6 +352,24 @@ after they merge reverts them too.
     kid) it says 3 where the walk finds 1, and on `pikepdf-0012` (the one page
     object lies in a corrupt object stream) it says 1 where pdfkit refuses
     `no_page`. Both stay as they are: a page that has no object cannot be read.
+16. **Manifest corrections, proposed and not applied**: the team lead's rule
+    keeps this branch out of `dataset/`, so the `expect_open` values the run
+    of §4 proves wrong are listed here for phase 2's owner to apply. `opens`
+    (read as written; the `xref_wrong_offsets` tag is a false positive, every
+    offset lands): dccc-0006, dccc-0021, dccc-0134, nicar25-0007, pdfium-0047,
+    pdfjs-0008, pdfjs-0039, pdfminer-0038. `repaired` (PDFium opens them in
+    silence, but each needs a named recovery: a wrong `/Length`, a missing
+    `endobj`, an off-by-one table, offsets or a `/Prev` that do not land, an
+    unknown filter on a cross-reference stream, a malformed object stream):
+    dccc-0019, dccc-0039, pdfdiff-0020, pdfdiff-0021, pdfdiff-0031,
+    pdfdiff-0033, pdfdiff-0034, pdfdiff-0035, pdfium-0013, pdfium-0020,
+    pdfium-0036, pdfium-0037, pdfjs-0029, pdfminer-0046, qpdf-0030,
+    qpdf-0031, qpdf-0032, qpdf-0054, qpdf-0060, safedocs-0002. Refused, as
+    PDFium refuses them: `refused:no_page` for pdfium-0008, pdfium-0010,
+    pdfium-0011, pdfminer-0014, qpdf-0035 and pikepdf-0012 (PDFium's one page
+    there comes from `/Count`, item 15); `refused:not_pdf` for qpdf-0029 and
+    qpdf-0039; `refused:unsupported_security_handler` for qpdf-0002 (a
+    `/CFM /AESV1`, which no revision defines).
 
 ### Deviations of earlier phases that affect this one
 
