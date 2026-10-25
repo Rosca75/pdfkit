@@ -10,7 +10,11 @@
 # tier itself before pdfkit reads anything: PDFium against PDFium must score 1.0
 # on every file it opens, a copy with one word in ten dropped must score
 # 0.947 +- 0.01, and PDFium must open 95 % of the rows that carry no damage,
-# password or unsafe tag.
+# password or unsafe tag. `--check write,select,text` judges the writer: it
+# renders every page of a run's identity-write and page-selection outputs against
+# their inputs (render.py, exact pixels, annotations off) and compares PDFium's
+# text of an identity write with its text of the input, writing
+# pdfium-write.json, pdfium-select.json and pdfium-write-text.json into the run.
 
 from __future__ import annotations
 
@@ -28,6 +32,7 @@ sys.path.insert(0, str(HERE.parents[1] / "dataset" / "tools"))
 
 import common  # noqa: E402
 import pdfium  # noqa: E402
+import render  # noqa: E402
 import words  # noqa: E402
 
 AGREE = 0.90
@@ -257,8 +262,155 @@ def redaction_run(run_id: str, rows: list[dict], workers: int, render: bool, lea
     return 1 if unstable or leaking else 0
 
 
+CHECKS = ("write", "select", "text")
+
+
+def load_outcomes(run_id: str, rows: list[dict]) -> tuple[Path, list[tuple[dict, dict]]]:
+    """The run folder and the (row, outcome) pairs the run wrote, in manifest order."""
+    run_dir = common.reports_dir() / run_id
+    outcomes = run_dir / "outcomes"
+    if not outcomes.exists():
+        raise common.ToolError(f"{outcomes} does not exist", "a dataset run's outcomes",
+                               "run `python tests/dataset/run.py` first and pass its run id")
+    found = []
+    for row in rows:
+        path = outcomes / f"{row['id']}.json"
+        if path.exists():
+            found.append((row, json.loads(path.read_text(encoding="utf-8"))))
+    return run_dir, found
+
+
+def pixel_entry(pool, before: Path, after: Path, pairs_for) -> dict:
+    """Renders and compares the page pairs of one file.
+
+    `pairs_for(before_pages)` gives the [before_index, after_index] pairs. The entry
+    holds input_opens, output_opens, pages (the pairs asked for), output_pages,
+    identical and differing: one {page, source_page, pixels, cause} per pair that is
+    not identical, where `page` is the output page, `cause` names a mechanical
+    failure (a timeout, a crash, a page-count or size difference, a file that does
+    not open) and is null for a plain pixel difference, which the analyst classifies."""
+    before_pages, after_pages = render.page_counts(pool, before), render.page_counts(pool, after)
+    entry = {"input_opens": before_pages is not None, "output_opens": after_pages is not None,
+             "pages": 0, "output_pages": after_pages, "identical": 0, "differing": []}
+    if before_pages is None:
+        return entry
+    pairs = pairs_for(before_pages)
+    entry["pages"] = len(pairs)
+    if after_pages is None:
+        entry["differing"] = [{"page": p[1] + 1, "source_page": p[0] + 1, "pixels": None,
+                               "cause": "output_open"} for p in pairs]
+        return entry
+    comparable = [p for p in pairs if p[1] < after_pages]
+    entry["differing"] = [{"page": p[1] + 1, "source_page": p[0] + 1, "pixels": None,
+                           "cause": "page_count"} for p in pairs if p[1] >= after_pages]
+    result = render.compare_pages(pool, before, after, comparable) if comparable else {"pairs": []}
+    for pair, answer in zip(comparable, result["pairs"]):
+        if answer["identical"]:
+            entry["identical"] += 1
+            continue
+        cause = answer["error"] or ("size_differs" if answer["size_differs"] else None)
+        entry["differing"].append({"page": pair[1] + 1, "source_page": pair[0] + 1,
+                                   "pixels": answer["differing_pixels"], "cause": cause})
+    entry["differing"].sort(key=lambda d: d["page"])
+    return entry
+
+
+def pixel_summary(entries: dict) -> dict:
+    """The totals of a pixel check: the files PDFium opens as input, of those the outputs it opens, the pages."""
+    opened = [e for e in entries.values() if e["input_opens"]]
+    outputs = [e for e in opened if e["output_opens"]]
+    pages = sum(e["pages"] for e in opened)
+    identical = sum(e["identical"] for e in opened)
+    return {"files": len(entries), "input_opens": len(opened), "output_opens": len(outputs),
+            "output_open_share": round(len(outputs) / len(opened), 6) if opened else None,
+            "pages_compared": pages, "pages_identical": identical,
+            "share": round(identical / pages, 6) if pages else None}
+
+
+def write_pairs(count: int) -> list:
+    return [[i, i] for i in range(count)]
+
+
+def pixel_check(run_id: str, rows: list[dict], workers: int, kind: str) -> int:
+    """`write`: every page of an identity write against the input page; `select`: output page i
+    against source page select.pages[i-1]. Outputs are named relative to the run folder."""
+    run_dir, found = load_outcomes(run_id, rows)
+    jobs = []
+    for row, outcome in found:
+        part = outcome.get(kind) or {}
+        if part.get("status") == "ok" and part.get("output"):
+            jobs.append((row, part))
+    entries = {}
+    with render.render_pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
+        futures = {}
+        for row, part in jobs:
+            before, after = common.file_path(row), run_dir / part["output"]
+            kept = []
+            if kind == "write":
+                pairs_for = write_pairs
+            else:
+                kept = [int(p) for p in part.get("pages") or []]
+
+                def pairs_for(count, kept=kept):
+                    return [[page - 1, i] for i, page in enumerate(kept)]
+            futures[row["id"]] = (kept, threads.submit(pixel_entry, pool, before, after, pairs_for))
+        for row_id, (kept, future) in futures.items():
+            entry = future.result()
+            if kind == "select":
+                entry["pages_right"] = entry["output_pages"] == len(kept)
+            entries[row_id] = entry
+    summary = pixel_summary(entries)
+    if kind == "select":
+        opened = [e for e in entries.values() if e["input_opens"]]
+        summary["page_count_files"] = len(opened)
+        summary["page_count_right"] = sum(1 for e in opened if e["pages_right"])
+    (run_dir / f"pdfium-{kind}.json").write_text(
+        json.dumps({"files": dict(sorted(entries.items())), "summary": summary}, indent=1), encoding="utf-8")
+    print(json.dumps({"check": kind} | summary, indent=1))
+    if not entries:
+        print(f"SKIPPED {kind} check: no outcome of this run carries a {kind} output", file=sys.stderr)
+    return 0
+
+
+def write_text_check(run_id: str, rows: list[dict], workers: int) -> int:
+    """PDFium's text of each identity-write output against its text of the input (word-bag F1)."""
+    run_dir, found = load_outcomes(run_id, rows)
+    jobs = [(row, outcome) for row, outcome in found
+            if (outcome.get("write") or {}).get("status") == "ok" and outcome["write"].get("output")]
+    entries = {}
+    with pdfium.Pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
+        futures = {}
+        for row, outcome in jobs:
+            futures[row["id"]] = (threads.submit(pool.probe, common.file_path(row), ["text"]),
+                                  threads.submit(pool.probe, run_dir / outcome["write"]["output"], ["text"]))
+        for row_id, (before, after) in futures.items():
+            a, b = before.result(), after.result()
+            entry = {"input_opens": bool(a.get("ok")), "output_opens": bool(b.get("ok")), "f1": None}
+            if a.get("ok"):
+                entry["f1"] = (round(words.f1("\n".join(page_texts(a)), "\n".join(page_texts(b))), 6)
+                               if b.get("ok") else 0.0)
+            entries[row_id] = entry
+    scored = [e for e in entries.values() if e["input_opens"]]
+    perfect = sum(1 for e in scored if e["f1"] == 1.0)
+    summary = {"files": len(scored), "f1_one": perfect,
+               "share": round(perfect / len(scored), 6) if scored else None,
+               "under_one": sorted(k for k, e in entries.items() if e["input_opens"] and e["f1"] != 1.0)}
+    (run_dir / "pdfium-write-text.json").write_text(
+        json.dumps({"files": dict(sorted(entries.items())), "summary": summary}, indent=1), encoding="utf-8")
+    print(json.dumps({"check": "text"} | summary | {"under_one": len(summary["under_one"])}, indent=1))
+    implemented = any((outcome.get("text") or {}).get("status") == "ok" for _, outcome in found)
+    if not implemented:
+        print("SKIPPED pdfkit text half: pdfkit_text is not implemented in this build")
+    else:
+        print("SKIPPED pdfkit text half: an outcome holds pdfkit's text of the input only; "
+              "the output's text needs the dataset verb to report it")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare pdfkit with PDFium over the dataset.")
+    parser.add_argument("--check", help="the writer checks to run on --run: a comma-separated subset of "
+                        + ", ".join(CHECKS))
     parser.add_argument("--run", help="the dataset run id to compare")
     parser.add_argument("--self-test", action="store_true", help="prove the tier with PDFium alone")
     parser.add_argument("--render", action="store_true", help="pixel stability of the run's redactions")
@@ -281,6 +433,18 @@ def main() -> int:
     if not args.run:
         raise common.ToolError("no --run and no --self-test", "one of them",
                                "pass --run <run-id> of a dataset run, or --self-test")
+    if args.check:
+        checks = [c.strip() for c in args.check.split(",") if c.strip()]
+        unknown = [c for c in checks if c not in CHECKS]
+        if unknown or not checks:
+            raise common.ToolError(f"--check names {unknown or 'nothing'}", "a subset of " + ", ".join(CHECKS),
+                                   "pass --check write,select,text")
+        for check in checks:
+            if check == "text":
+                write_text_check(args.run, rows, args.workers)
+            else:
+                pixel_check(args.run, rows, args.workers, check)
+        return 0
     if args.render or args.leak:
         return redaction_run(args.run, rows, args.workers, args.render, args.leak)
     return text_run(args.run, rows, args.workers)

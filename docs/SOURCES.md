@@ -147,6 +147,9 @@ to find it.
 | Acrobat's "Examine Document" / "Remove Hidden Information" items | https://www.michbar.org/file/pmrc/articles/0000149.pdf | read |
 | Text outside content streams: XFA placeholders, AcroForm `/V` against `/AP` | the design research's secondary accounts | recalled |
 | The corkami proofs of concept: overlapped and hidden text, deniable removal | https://github.com/corkami/pocs/tree/master/pdf | read |
+| The keys each planted-marker specimen writes (`dataset/tools/synth/channels/rows.py`): catalog entries (`/Names`, `/Dests`, `/PageLabels`, `/Threads`, `/SpiderInfo`, `/Collection`, `/Perms`, `/Legal`, `/URI`, `/OCProperties`, `/StructTreeRoot`, `/MarkInfo`, `/AF`), page entries (`/Thumb`, `/PieceInfo`, `/LastModified`, `/Annots`, `/AA`, `/B`, `/ID`, `/StructParents`, `/Metadata`), annotation, form-field, outline, structure-element, optional-content, signature-reference and file-specification keys | ISO 32000-1 (PDF 1.7) §7.7.2, §7.7.3, §12.3, §12.4, §12.5, §12.6, §12.7, §12.8, §14.6 to §14.10, §8.11, §7.11 and Adobe's PDF Reference 1.7 table of catalog entries, https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf | recalled; every specimen is opened and rendered by PDFium and its markers are found by `verify` in `dataset/tools/synth/channels/kit.py` |
+| Strings and streams inside the /Encrypt dictionary are not encrypted, so a vendor key's string there stays in clear | ISO 32000-1 §7.6.1 (encryption dictionary) | recalled; `dataset/tools/synth/channels/rows.py` writes a vendor key and the marker scan finds it in the raw bytes of the encrypted file |
+| `/SearchIndex` and a non-standard `/PageMode` value as a private index channel: an author decision, not a specification rule; the key and the value are inventions of the specimen | `docs/DESIGN.md` §15 (search indexes row) | author decision |
 
 ## 9. CLAUDE.md §6: vendored components
 
@@ -202,6 +205,7 @@ to find it.
 | Liberation fonts 2.1.5 TTF archive URL (in the release notes; the release has no asset) | https://github.com/liberationfonts/liberation-fonts/releases/tag/2.1.5 | SIL OFL 1.1 | read |
 | fontTools 4.67.0 wheel and its hash | https://pypi.org/project/fonttools/4.67.0/ | MIT | read |
 | PDFium's C API signatures used by `tests/pdfium/pdfium.py` | public/fpdfview.h, fpdf_text.h and fpdf_edit.h under https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/ | | recalled; exercised by `tests/pdfium/compare.py` with `--self-test` |
+| `FPDF_RenderPageBitmap(bitmap, page, start_x, start_y, size_x, size_y, rotate, flags)` and its flags (`FPDF_ANNOT` 0x01 draws annotations, so the pixel comparison passes flags 0) | https://raw.githubusercontent.com/chromium/pdfium/main/public/fpdfview.h | | read; exercised by `tests/pdfium/render.py` |
 | AES (FIPS-197) and its appendix C test vectors | https://csrc.nist.gov/pubs/fips/197/final | | recalled; the vectors pass in `dataset/tools/tests/test_pdfcrypt.py` |
 | The security handler algorithms the mutator writes (1 to 5, 2.A, 2.B, 8 to 10) | ISO 32000-1 §7.6.3.3; ISO 32000-2 §7.6.4 | | read in the design record; PDFium opens every mutated file encrypted with the empty user password and refuses the others |
 | Word `ExportAsFixedFormat` and `PrintOut`, Excel `ExportAsFixedFormat` and `PrintOut`, PowerPoint `SaveAs` (32) and `PrintOut`, Edge `--headless --print-to-pdf` | https://learn.microsoft.com/en-us/office/vba/api/overview/ | | recalled; each outcome is recorded in the generation log the script writes |
