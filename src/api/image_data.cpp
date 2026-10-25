@@ -60,7 +60,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_image_data(pdfkit_document* doc, cons
       if (key != "mask" && key != "decode_jpeg") {
         throw Error(ErrorCode::invalid_argument,
                     "pdfkit_image_data options_json names the unknown option \"" + key + "\"",
-                    "the options \"mask\" and \"decode_jpeg\", each true or false",
+                    R"(the options "mask" and "decode_jpeg", each true or false)",
                     "remove \"" + key + "\" from options_json");
       }
     }

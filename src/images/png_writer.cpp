@@ -12,6 +12,7 @@
 
 #include <zlib.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdlib>
@@ -58,18 +59,32 @@ std::vector<std::uint8_t> deflate_all(const std::vector<std::uint8_t>& data) {
   if (deflateInit(&stream, 6) != Z_OK) {
     throw std::runtime_error("zlib's deflateInit failed");
   }
-  std::vector<std::uint8_t> out(deflateBound(&stream, static_cast<uLong>(data.size())) + 16);
-  stream.next_in = const_cast<Bytef*>(data.data());
-  stream.avail_in = static_cast<uInt>(data.size());
-  stream.next_out = out.data();
-  stream.avail_out = static_cast<uInt>(out.size());
-  const int status = deflate(&stream, Z_FINISH);
-  const std::size_t written = stream.total_out;
-  deflateEnd(&stream);
-  if (status != Z_STREAM_END) {
-    throw std::runtime_error("zlib's deflate did not finish");
+  // zlib counts in 32-bit units, so the rows go in and the stream comes out
+  // in pieces of at most 1 MiB.
+  constexpr std::size_t piece = std::size_t{1} << 20U;
+  std::vector<std::uint8_t> out;
+  std::vector<std::uint8_t> buffer(piece);
+  std::size_t offset = 0;
+  int status = Z_OK;
+  while (status != Z_STREAM_END) {
+    const std::size_t take = std::min(piece, data.size() - offset);
+    stream.next_in = const_cast<Bytef*>(data.data() + offset);
+    stream.avail_in = static_cast<uInt>(take);
+    offset += take;
+    const int flush = offset == data.size() ? Z_FINISH : Z_NO_FLUSH;
+    do {
+      stream.next_out = buffer.data();
+      stream.avail_out = static_cast<uInt>(buffer.size());
+      status = deflate(&stream, flush);
+      if (status == Z_STREAM_ERROR) {
+        deflateEnd(&stream);
+        throw std::runtime_error("zlib's deflate failed");
+      }
+      out.insert(out.end(), buffer.begin(),
+                 buffer.begin() + static_cast<std::ptrdiff_t>(buffer.size() - stream.avail_out));
+    } while (stream.avail_out == 0);
   }
-  out.resize(written);
+  deflateEnd(&stream);
   return out;
 }
 

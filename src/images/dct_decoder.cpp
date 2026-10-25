@@ -36,9 +36,9 @@ struct Context {
 unsigned char* reserve_samples(void* opaque, unsigned width, unsigned height, unsigned components) {
   auto* context = static_cast<Context*>(opaque);
   try {
-    const std::uint64_t pixels =
+    const auto pixels =
         platform::checked_mul<std::uint64_t>(width, height, "the pixel count of a JPEG");
-    const std::uint64_t bytes =
+    const auto bytes =
         platform::checked_mul<std::uint64_t>(pixels, components, "the samples of a JPEG");
     context->budget->check_claim(bytes,
                                  "the samples of the JPEG in " + std::string(context->object));

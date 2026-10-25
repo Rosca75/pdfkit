@@ -4,7 +4,7 @@
 # The image agreement: the decoder gate of the images layer. It runs
 # pdfkit_image_census (tests/dataset/image_census.cpp)
 # over every manifest file whose open expectation is opens or repaired, each
-# file in its own child process with a 30 s limit, and asks PDFium for the
+# file in its own child process with a 120 s limit, and asks PDFium for the
 # bitmap of the same images: PDFium's image objects (pages and the forms they
 # draw, walked through FPDFFormObj_GetObject) are aligned with pdfkit's images
 # by the SHA-256 of their encoded data (FPDFImageObj_GetImageDataRaw), and

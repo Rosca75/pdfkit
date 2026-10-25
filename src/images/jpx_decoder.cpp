@@ -98,12 +98,15 @@ bool starts_with(platform::ByteSpan data, std::initializer_list<unsigned> bytes)
 std::uint32_t scale(std::int32_t value, const opj_image_comp_t& component, std::uint32_t bits,
                     bool raw) {
   std::int64_t v = value;
+  const auto power = [](std::uint32_t exponent) {
+    return static_cast<std::int64_t>(std::uint64_t{1} << exponent);
+  };
   if (component.sgnd != 0) {
-    v += std::int64_t{1} << (component.prec - 1);
+    v += power(component.prec - 1);
   }
-  const std::int64_t max_in = (std::int64_t{1} << component.prec) - 1;
+  const std::int64_t max_in = power(component.prec) - 1;
   v = std::clamp<std::int64_t>(v, 0, max_in);
-  const std::int64_t max_out = (std::int64_t{1} << bits) - 1;
+  const std::int64_t max_out = power(bits) - 1;
   if (raw) {
     return static_cast<std::uint32_t>(std::min(v, max_out));
   }
@@ -172,7 +175,7 @@ JpxDecoder::Result JpxDecoder::decode(platform::ByteSpan data, const Options& op
   }
   const std::uint32_t width = image->x1 - image->x0;
   const std::uint32_t height = image->y1 - image->y0;
-  const std::uint64_t pixels =
+  const auto pixels =
       platform::checked_mul<std::uint64_t>(width, height, "the area of a JPEG 2000 image");
   budget.check_claim(
       platform::checked_mul<std::uint64_t>(pixels, std::uint64_t{image->numcomps} * 4U,
@@ -214,8 +217,8 @@ JpxDecoder::Result JpxDecoder::decode(platform::ByteSpan data, const Options& op
   }
   const std::uint32_t bits = precision > 8 && !options.raw ? 16U : 8U;
   const std::size_t bytes = bits / 8U;
-  const std::uint64_t total = platform::checked_mul<std::uint64_t>(
-      pixels, std::uint64_t{colour} * bytes, "the samples of a JPEG 2000 image");
+  const auto total = platform::checked_mul<std::uint64_t>(pixels, std::uint64_t{colour} * bytes,
+                                                          "the samples of a JPEG 2000 image");
   std::uint64_t used = 0;
   budget.charge(total, used, object);
   result.samples.assign(static_cast<std::size_t>(total), 0);

@@ -21,6 +21,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -32,8 +33,11 @@ using pdfkit::test::bytes_of;
 using pdfkit::test::ImageFixture;
 using pdfkit::test::require_value;
 
-const std::string rgb_entries = "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8";
-const std::string rgb_pixels = bytes_of({255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255});
+constexpr const char* rgb_entries = "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8";
+
+std::string rgb_pixels() {
+  return bytes_of({255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255});
+}
 
 ImageDecoder::Result run(ImageFixture& fixture, std::uint32_t number,
                          ImageDecoder::Part part = ImageDecoder::Part::base) {
@@ -57,13 +61,15 @@ TEST_CASE("an SMask of the image's size is its mask, the base untouched") {
       "/Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceGray "
       "/BitsPerComponent 8",
       bytes_of({0, 85, 170, 255}));
-  const std::uint32_t image = fixture.image(rgb_entries + " /SMask" + ref(smask), rgb_pixels);
+  const std::uint32_t image =
+      fixture.image(std::string(rgb_entries) + " /SMask" + ref(smask), rgb_pixels());
   fixture.open();
   CHECK(Masks::kind(fixture.document(), fixture.stream_of(image).dictionary(), false) ==
         Masks::Kind::soft);
   const PixelImage base = decoded(fixture, image);
   CHECK(base.channels == 3U);
-  CHECK(base.samples == std::vector<std::uint8_t>(rgb_pixels.begin(), rgb_pixels.end()));
+  const std::string pixels = rgb_pixels();
+  CHECK(base.samples == std::vector<std::uint8_t>(pixels.begin(), pixels.end()));
   const PixelImage mask = decoded(fixture, image, ImageDecoder::Part::mask);
   CHECK(mask.channels == 1U);
   CHECK(mask.bits == 8U);
@@ -76,7 +82,8 @@ TEST_CASE("an SMask of another size is kept at its own size") {
       "/Type /XObject /Subtype /Image /Width 4 /Height 1 /ColorSpace /DeviceGray "
       "/BitsPerComponent 8",
       bytes_of({1, 2, 3, 4}));
-  const std::uint32_t image = fixture.image(rgb_entries + " /SMask" + ref(smask), rgb_pixels);
+  const std::uint32_t image =
+      fixture.image(std::string(rgb_entries) + " /SMask" + ref(smask), rgb_pixels());
   fixture.open();
   const PixelImage mask = decoded(fixture, image, ImageDecoder::Part::mask);
   CHECK(mask.width == 4U);
@@ -101,7 +108,8 @@ TEST_CASE("a Matte is undone where the soft mask covers the image") {
 
 TEST_CASE("a colour-key Mask masks the pixels inside its ranges") {
   ImageFixture fixture;
-  const std::uint32_t image = fixture.image(rgb_entries + " /Mask [250 255 0 10 0 10]", rgb_pixels);
+  const std::uint32_t image =
+      fixture.image(std::string(rgb_entries) + " /Mask [250 255 0 10 0 10]", rgb_pixels());
   fixture.open();
   CHECK(Masks::kind(fixture.document(), fixture.stream_of(image).dictionary(), false) ==
         Masks::Kind::colour_key);
@@ -120,7 +128,8 @@ TEST_CASE("a stencil Mask stream is an alpha where its samples paint") {
   ImageFixture fixture;
   const std::uint32_t stencil = fixture.stream(
       "/Type /XObject /Subtype /Image /Width 2 /Height 2 /ImageMask true", bytes_of({0x40, 0x80}));
-  const std::uint32_t image = fixture.image(rgb_entries + " /Mask" + ref(stencil), rgb_pixels);
+  const std::uint32_t image =
+      fixture.image(std::string(rgb_entries) + " /Mask" + ref(stencil), rgb_pixels());
   fixture.open();
   const PixelImage mask = decoded(fixture, image, ImageDecoder::Part::mask);
   CHECK(mask.bits == 1U);
@@ -143,7 +152,7 @@ TEST_CASE("an ImageMask image is painted black on transparency") {
 
 TEST_CASE("an image without a mask says so") {
   ImageFixture fixture;
-  const std::uint32_t image = fixture.image(rgb_entries, rgb_pixels);
+  const std::uint32_t image = fixture.image(std::string(rgb_entries), rgb_pixels());
   fixture.open();
   const ImageDecoder::Result result = run(fixture, image, ImageDecoder::Part::mask);
   CHECK_FALSE(result.image.has_value());

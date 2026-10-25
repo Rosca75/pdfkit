@@ -25,8 +25,8 @@ ImageExtractor::Output ImageExtractor::extract(syntax::Document& document,
         syntax::Filters::full_name(decoded.remaining.front()) == "DCTDecode" &&
         !decoded.bytes.empty()) {
       output.bytes.resize(decoded.bytes.size());
-      std::transform(decoded.bytes.begin(), decoded.bytes.end(), output.bytes.begin(),
-                     [](std::byte b) { return std::to_integer<std::uint8_t>(b); });
+      std::ranges::transform(decoded.bytes, output.bytes.begin(),
+                             [](std::byte b) { return std::to_integer<std::uint8_t>(b); });
       output.format = "jpeg";
       return output;
     }

@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -159,7 +160,7 @@ class Compiler {
         push({Instruction::Kind::number, value, 0, 0});
         continue;
       }
-      const auto* found = std::find(operator_names.begin(), operator_names.end(), token);
+      const auto* found = std::ranges::find(operator_names, token);
       if (found == operator_names.end()) {
         fault("program names the unknown operator '" + std::string(token.substr(0, 32)) + "'");
       }
@@ -275,14 +276,14 @@ std::shared_ptr<const PdfFunction> PdfFunction::parse(Document& document, const 
       const double scale = std::ldexp(1.0, static_cast<int>(bit_count)) - 1.0;
       function->samples_.resize(static_cast<std::size_t>(count), 0.0);
       std::uint64_t bit = 0;
-      for (std::size_t i = 0; i < function->samples_.size(); ++i) {
+      for (double& sample : function->samples_) {
         std::uint64_t value = 0;
         for (std::uint64_t b = 0; b < bit_count; ++b, ++bit) {
-          const std::size_t byte = static_cast<std::size_t>(bit / 8);
+          const auto byte = static_cast<std::size_t>(bit / 8);
           const unsigned v = byte < data.size() ? std::to_integer<unsigned>(data[byte]) : 0U;
           value = (value << 1U) | ((v >> (7U - static_cast<unsigned>(bit % 8))) & 1U);
         }
-        function->samples_[i] = static_cast<double>(value) / scale;
+        sample = static_cast<double>(value) / scale;
       }
       break;
     }
@@ -371,7 +372,7 @@ void PdfFunction::evaluate(std::span<const double> in, std::span<double> out) co
     clipped[i] = clip(value, domain_[2 * i], domain_[2 * i + 1]);
   }
   const std::span<const double> x(clipped.data(), std::min(m, clipped.size()));
-  std::fill(out.begin(), out.end(), 0.0);
+  std::ranges::fill(out, 0.0);
   switch (type_) {
     case Type::sampled:
       evaluate_sampled(x, out);
@@ -534,7 +535,7 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
     } else if (name == "atan") {
       const double den = pop().number;
       const double num = pop().number;
-      double angle = std::atan2(num, den) * 180.0 / 3.14159265358979323846;
+      double angle = std::atan2(num, den) * 180.0 / std::numbers::pi;
       if (angle < 0) {
         angle += 360.0;
       }
@@ -542,8 +543,8 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
     } else if (name == "ceiling") {
       push({std::ceil(pop().number), false});
     } else if (name == "cos") {
-      push({std::cos(pop().number * 3.14159265358979323846 / 180.0), false});
-    } else if (name == "cvi") {
+      push({std::cos(pop().number * std::numbers::pi / 180.0), false});
+    } else if (name == "cvi" || name == "truncate") {
       push({std::trunc(pop().number), false});
     } else if (name == "cvr") {
       push({pop().number, false});
@@ -559,7 +560,9 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
     } else if (name == "idiv") {
       const std::int64_t b = pop_int();
       const std::int64_t a = pop_int();
-      push({b == 0 ? 0.0 : static_cast<double>(a / b), false});
+      // An integer quotient, as idiv defines it.
+      const std::int64_t quotient = b == 0 ? 0 : a / b;
+      push({static_cast<double>(quotient), false});
     } else if (name == "ln") {
       push({std::log(pop().number), false});
     } else if (name == "log") {
@@ -576,14 +579,12 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
     } else if (name == "round") {
       push({std::floor(pop().number + 0.5), false});
     } else if (name == "sin") {
-      push({std::sin(pop().number * 3.14159265358979323846 / 180.0), false});
+      push({std::sin(pop().number * std::numbers::pi / 180.0), false});
     } else if (name == "sqrt") {
       push({std::sqrt(pop().number), false});
     } else if (name == "sub") {
       const double b = pop().number;
       push({pop().number - b, false});
-    } else if (name == "truncate") {
-      push({std::trunc(pop().number), false});
     } else if (name == "and" || name == "or" || name == "xor") {
       const Value b = pop();
       const Value a = pop();
@@ -593,10 +594,12 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
         const bool r = name == "and" ? (x && y) : name == "or" ? (x || y) : (x != y);
         push({r ? 1.0 : 0.0, true});
       } else {
-        const auto x = static_cast<std::int64_t>(a.number);
-        const auto y = static_cast<std::int64_t>(b.number);
-        const std::int64_t r = name == "and" ? (x & y) : name == "or" ? (x | y) : (x ^ y);
-        push({static_cast<double>(r), false});
+        // The bitwise operators work on the two's complement of 32-bit
+        // integers, as PostScript's do.
+        const auto x = static_cast<std::uint32_t>(static_cast<std::int64_t>(a.number));
+        const auto y = static_cast<std::uint32_t>(static_cast<std::int64_t>(b.number));
+        const std::uint32_t r = name == "and" ? (x & y) : name == "or" ? (x | y) : (x ^ y);
+        push({static_cast<double>(static_cast<std::int32_t>(r)), false});
       }
     } else if (name == "bitshift") {
       const std::int64_t shift = pop_int();
@@ -637,15 +640,16 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
       if (a.boolean) {
         push({a.number != 0.0 ? 0.0 : 1.0, true});
       } else {
-        push({static_cast<double>(~static_cast<std::int64_t>(a.number)), false});
+        const auto bits = static_cast<std::uint32_t>(static_cast<std::int64_t>(a.number));
+        push({static_cast<double>(static_cast<std::int32_t>(~bits)), false});
       }
     } else if (name == "copy") {
       const std::int64_t n = pop_int();
-      if (n < 0 || static_cast<std::size_t>(n) > top) {
+      if (n < 0 || std::cmp_greater(n, top)) {
         fault("program copies more values than its stack holds");
       }
       const std::size_t start = top - static_cast<std::size_t>(n);
-      for (std::size_t i = 0; i < static_cast<std::size_t>(n); ++i) {
+      for (std::size_t i = 0; std::cmp_less(i, n); ++i) {
         push(stack[start + i]);
       }
     } else if (name == "dup") {
@@ -659,7 +663,7 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
       push(a);
     } else if (name == "index") {
       const std::int64_t n = pop_int();
-      if (n < 0 || static_cast<std::size_t>(n) >= top) {
+      if (n < 0 || std::cmp_greater_equal(n, top)) {
         fault("program indexes past its stack");
       }
       push(stack[top - 1 - static_cast<std::size_t>(n)]);
@@ -668,7 +672,7 @@ void PdfFunction::evaluate_calculator(std::span<const double> in, std::span<doub
     } else if (name == "roll") {
       const std::int64_t j = pop_int();
       const std::int64_t n = pop_int();
-      if (n < 0 || static_cast<std::size_t>(n) > top) {
+      if (n < 0 || std::cmp_greater(n, top)) {
         fault("program rolls more values than its stack holds");
       }
       if (n > 0) {

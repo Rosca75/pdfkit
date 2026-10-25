@@ -115,7 +115,7 @@ std::vector<std::uint8_t> encode(OPJ_CODEC_FORMAT format, int width, int height,
 
 std::vector<std::vector<int>> planes(int width, int height, int components, int precision) {
   std::vector<std::vector<int>> out(static_cast<std::size_t>(components));
-  const int max = (1 << precision) - 1;
+  const int max = static_cast<int>((1U << static_cast<unsigned>(precision)) - 1U);
   for (int c = 0; c < components; ++c) {
     for (int i = 0; i < width * height; ++i) {
       out[static_cast<std::size_t>(c)].push_back((i * 37 + c * 91) % (max + 1));
@@ -177,7 +177,7 @@ TEST_CASE("a 12-bit codestream widens to 16-bit samples") {
   const JpxDecoder::Result result = decode(data);
   REQUIRE(result.fault.empty());
   CHECK(result.bits == 16U);
-  const int value = (result.samples[2] << 8) | result.samples[3];
+  const int value = (result.samples[2] * 256) + result.samples[3];
   CHECK(value == (source[0][1] * 65535 + 2047) / 4095);
 }
 

@@ -19,6 +19,7 @@
 #include <doctest.h>
 
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -27,19 +28,21 @@ using pdfkit::syntax::Dictionary;
 using pdfkit::syntax::Object;
 using pdfkit::test::ImageFixture;
 
-const std::string pixels = "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c";
+std::string pixels() {
+  return pdfkit::test::bytes_of({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+}
 
 TEST_CASE("one picture stored twice shares one identity") {
   ImageFixture fixture;
   const std::uint32_t a = fixture.image(
-      "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8", pixels.substr(0, 12));
+      "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8", pixels().substr(0, 12));
   const std::uint32_t b = fixture.image(
-      "/BitsPerComponent 8.0 /ColorSpace /DeviceRGB /Height 2 /Width 2 /Name /Other", pixels);
+      "/BitsPerComponent 8.0 /ColorSpace /DeviceRGB /Height 2 /Width 2 /Name /Other", pixels());
   const std::uint32_t decode = fixture.image(
       "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Decode [1 0 1 0 1 0]",
-      pixels);
+      pixels());
   const std::uint32_t bytes = fixture.image(
-      "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8", pixels.substr(1) + "X");
+      "/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8", pixels().substr(1) + "X");
   auto& document = fixture.open();
   const std::string first = ImageIdentity::of_stream(document, fixture.stream_of(a));
   CHECK(first.starts_with("img:"));
@@ -75,7 +78,7 @@ TEST_CASE("an identity survives encryption and renumbering") {
     const std::uint32_t image = builder.add_stream(
         "/Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB "
         "/BitsPerComponent 8",
-        pixels);
+        pixels());
     builder.add_page("", "/Resources << /XObject << /Im0 " + std::to_string(image) + " 0 R >> >>");
     if (encrypted) {
       pdfkit::test::PdfEncryptor::Spec spec;
@@ -103,7 +106,7 @@ TEST_CASE("a mask counts by its own identity") {
     const std::uint32_t image =
         fixture.image("/Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask " +
                           std::to_string(mask) + " 0 R",
-                      pixels);
+                      pixels());
     auto& document = fixture.open();
     return ImageIdentity::of_stream(document, fixture.stream_of(image));
   };

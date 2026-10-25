@@ -228,7 +228,7 @@ std::shared_ptr<const ColourSpace> ColourSpace::parse(Document& document, const 
         fault("DeviceN has no usable list of colorant names");
       }
       space->components_ = list->size();
-      space->none_ = std::all_of(list->begin(), list->end(), [&](const Object& colorant) {
+      space->none_ = std::ranges::all_of(*list, [&](const Object& colorant) {
         return document.resolve(colorant).is_name("None");
       });
     }
@@ -281,7 +281,7 @@ void ColourSpace::convert(std::span<const double> in, std::span<double> out) con
       return;
     case Family::device_cmyk: {
       const std::array<double, 3> rgb = AdobeCmyk::to_rgb(c(0), c(1), c(2), c(3));
-      std::copy(rgb.begin(), rgb.end(), out.begin());
+      std::ranges::copy(rgb, out.begin());
       return;
     }
     case Family::lab: {
@@ -313,7 +313,7 @@ void ColourSpace::convert(std::span<const double> in, std::span<double> out) con
     case Family::separation:
     case Family::device_n: {
       if (none_) {
-        std::fill(out.begin(), out.end(), 1.0);
+        std::ranges::fill(out, 1.0);
         return;
       }
       std::array<double, 32> alternate{};

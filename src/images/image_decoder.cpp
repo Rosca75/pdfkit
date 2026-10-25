@@ -125,7 +125,7 @@ std::vector<std::uint8_t> fit_rows(const std::vector<std::byte>& data, std::size
                                    std::uint32_t height, std::uint8_t pad, Document& document,
                                    std::string_view object) {
   const std::size_t stride = (static_cast<std::size_t>(width) + 7) / 8;
-  const std::uint64_t size =
+  const auto size =
       platform::checked_mul<std::uint64_t>(stride, height, "the rows of a bitonal image");
   document.budget().check_claim(size, "the rows of the bitonal image in " + std::string(object));
   std::vector<std::uint8_t> out(static_cast<std::size_t>(size), pad);
@@ -157,7 +157,7 @@ class Pipeline {
     }
     Samples samples = encoded(result);
     std::vector<double> decode = numbers(document_, entry(document_, dictionary, "Decode"));
-    if (decode.size() < 2 * samples.components) {
+    if (decode.size() < std::size_t{2} * samples.components) {
       decode =
           image_mask_ ? std::vector<double>{0.0, 1.0} : samples.space->default_decode(samples.bits);
     }
@@ -353,14 +353,14 @@ class Pipeline {
         samples.bits = static_cast<std::uint32_t>(bits);
       }
       samples.components = image_mask_ ? 1U : static_cast<std::uint32_t>(space->components());
-      const std::uint64_t row_bits = platform::checked_mul<std::uint64_t>(
+      const auto row_bits = platform::checked_mul<std::uint64_t>(
           std::uint64_t{samples.width} * samples.components, samples.bits, "an image row");
       samples.stride = static_cast<std::size_t>((row_bits + 7) / 8);
-      const std::uint64_t needed = platform::checked_mul<std::uint64_t>(
-          samples.stride, samples.height, "the samples of an image");
+      const auto needed = platform::checked_mul<std::uint64_t>(samples.stride, samples.height,
+                                                               "the samples of an image");
       document_.budget().check_claim(needed, "the samples of the image in " + source_.object);
       samples.bytes.resize(decoded.bytes.size());
-      std::transform(decoded.bytes.begin(), decoded.bytes.end(), samples.bytes.begin(), to_byte);
+      std::ranges::transform(decoded.bytes, samples.bytes.begin(), to_byte);
       if (samples.bytes.size() < needed) {
         if (samples.bytes.empty()) {
           throw DecodeFault("the image's data is empty");
@@ -396,9 +396,9 @@ class Pipeline {
     } else {
       image.bits = 8;
     }
-    const std::uint64_t pixels = platform::checked_mul<std::uint64_t>(samples.width, samples.height,
-                                                                      "the pixels of an image");
-    const std::uint64_t out_bytes = platform::checked_mul<std::uint64_t>(
+    const auto pixels = platform::checked_mul<std::uint64_t>(samples.width, samples.height,
+                                                             "the pixels of an image");
+    const auto out_bytes = platform::checked_mul<std::uint64_t>(
         pixels, std::uint64_t{image.channels} * image.bytes_per_sample(), "the pixels of an image");
     document_.budget().check_claim(out_bytes, "the pixels of the image in " + source_.object);
     std::uint64_t used = 0;
@@ -444,7 +444,8 @@ class Pipeline {
       unpacker.unpack(row, raw);
       for (std::uint32_t x = 0; x < samples.width; ++x) {
         const std::size_t pixel = static_cast<std::size_t>(y) * samples.width + x;
-        const std::span<const std::uint16_t> values(raw.data() + x * components, components);
+        const std::span<const std::uint16_t> values(
+            raw.data() + (static_cast<std::size_t>(x) * components), components);
         if (!key.empty() && Masks::keyed(values, key)) {
           image.alpha[pixel] = 0;
         }

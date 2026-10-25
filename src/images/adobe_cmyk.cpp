@@ -24,7 +24,7 @@ struct Rgb {
 };
 
 // clang-format off
-constexpr std::array<Rgb, 9 * 9 * 9 * 9> samples{{
+constexpr std::array<Rgb, std::size_t{6561}> samples{{
     {255, 255, 255}, {225, 226, 228}, {199, 200, 202}, {173, 174, 178}, {147, 149, 152}, {123, 125, 128},
     {99, 99, 102}, {69, 70, 71}, {34, 30, 31}, {255, 253, 229}, {226, 224, 203}, {200, 199, 182},
     {173, 173, 158}, {149, 148, 135}, {125, 124, 113}, {99, 99, 90}, {70, 69, 63}, {33, 29, 24},
@@ -1122,13 +1122,17 @@ constexpr std::array<Rgb, 9 * 9 * 9 * 9> samples{{
 }};
 // clang-format on
 
+// The table's index of the grid point (c, m, y, k), each 0 to 8.
 constexpr std::size_t index_of(int c, int m, int y, int k) {
-  return static_cast<std::size_t>((9 * 9 * 9 * c) + (9 * 9 * m) + (9 * y) + k);
+  const auto at = [](int value) {
+    return static_cast<std::size_t>(value);
+  };
+  return (at(c) * 729) + (at(m) * 81) + (at(y) * 9) + at(k);
 }
 
 // The neighbouring index of an axis: the next one, or the one before at the end.
 int neighbour(int fixed, int index) {
-  int other = fixed >> 13;
+  int other = fixed / 8192;
   if (other == index) {
     other = other == 8 ? other - 1 : other + 1;
   }
@@ -1139,18 +1143,20 @@ int neighbour(int fixed, int index) {
 
 std::array<std::uint8_t, 3> AdobeCmyk::to_rgb(std::uint8_t c, std::uint8_t m, std::uint8_t y,
                                               std::uint8_t k) noexcept {
-  const int fix_c = c << 8;
-  const int fix_m = m << 8;
-  const int fix_y = y << 8;
-  const int fix_k = k << 8;
-  const int c_index = (fix_c + 4096) >> 13;
-  const int m_index = (fix_m + 4096) >> 13;
-  const int y_index = (fix_y + 4096) >> 13;
-  const int k_index = (fix_k + 4096) >> 13;
+  // PDFium shifts; every shifted value here is non-negative, so the
+  // multiplications and divisions by powers of two below are the same.
+  const int fix_c = c * 256;
+  const int fix_m = m * 256;
+  const int fix_y = y * 256;
+  const int fix_k = k * 256;
+  const int c_index = (fix_c + 4096) / 8192;
+  const int m_index = (fix_m + 4096) / 8192;
+  const int y_index = (fix_y + 4096) / 8192;
+  const int k_index = (fix_k + 4096) / 8192;
   const Rgb& start = samples[index_of(c_index, m_index, y_index, k_index)];
-  int red = start.red << 8;
-  int green = start.green << 8;
-  int blue = start.blue << 8;
+  int red = start.red * 256;
+  int green = start.green * 256;
+  int blue = start.blue * 256;
   const auto step = [&](const Rgb& other, int rate) {
     red += (start.red - other.red) * rate / 32;
     green += (start.green - other.green) * rate / 32;
@@ -1158,19 +1164,19 @@ std::array<std::uint8_t, 3> AdobeCmyk::to_rgb(std::uint8_t c, std::uint8_t m, st
   };
   const int c1 = neighbour(fix_c, c_index);
   step(samples[index_of(c1, m_index, y_index, k_index)],
-       (fix_c - (c_index << 13)) * (c_index - c1));
+       (fix_c - (c_index * 8192)) * (c_index - c1));
   const int m1 = neighbour(fix_m, m_index);
   step(samples[index_of(c_index, m1, y_index, k_index)],
-       (fix_m - (m_index << 13)) * (m_index - m1));
+       (fix_m - (m_index * 8192)) * (m_index - m1));
   const int y1 = neighbour(fix_y, y_index);
   step(samples[index_of(c_index, m_index, y1, k_index)],
-       (fix_y - (y_index << 13)) * (y_index - y1));
+       (fix_y - (y_index * 8192)) * (y_index - y1));
   const int k1 = neighbour(fix_k, k_index);
   step(samples[index_of(c_index, m_index, y_index, k1)],
-       (fix_k - (k_index << 13)) * (k_index - k1));
-  return {static_cast<std::uint8_t>(std::max(red, 0) >> 8),
-          static_cast<std::uint8_t>(std::max(green, 0) >> 8),
-          static_cast<std::uint8_t>(std::max(blue, 0) >> 8)};
+       (fix_k - (k_index * 8192)) * (k_index - k1));
+  return {static_cast<std::uint8_t>(std::max(red, 0) / 256),
+          static_cast<std::uint8_t>(std::max(green, 0) / 256),
+          static_cast<std::uint8_t>(std::max(blue, 0) / 256)};
 }
 
 std::array<double, 3> AdobeCmyk::to_rgb(double c, double m, double y, double k) noexcept {

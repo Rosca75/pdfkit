@@ -91,13 +91,12 @@ void canonical_dictionary(Document& document, const Dictionary& dictionary, std:
     }
     entries.emplace_back(full, &value);
   }
-  std::stable_sort(entries.begin(), entries.end(),
-                   [](const auto& a, const auto& b) { return a.first < b.first; });
+  std::ranges::stable_sort(entries, [](const auto& a, const auto& b) { return a.first < b.first; });
   out += "<<";
   for (const auto& [key, value] : entries) {
     out += "/" + key + " ";
     canonical(document, *value, out, depth + 1);
-    out += " ";
+    out += ' ';
   }
   out += ">>";
 }
@@ -114,7 +113,7 @@ void canonical(Document& document, const Object& object, std::string& out, int d
       out += "null";
       return;
     case Object::Kind::boolean:
-      out += *value.boolean() ? "true" : "false";
+      out += value.boolean().value_or(false) ? "true" : "false";
       return;
     case Object::Kind::number:
       number(out, *value.number_value());
@@ -122,8 +121,7 @@ void canonical(Document& document, const Object& object, std::string& out, int d
     case Object::Kind::string: {
       const std::string& bytes = value.string()->bytes;
       std::vector<std::byte> raw(bytes.size());
-      std::transform(bytes.begin(), bytes.end(), raw.begin(),
-                     [](char c) { return static_cast<std::byte>(c); });
+      std::ranges::transform(bytes, raw.begin(), [](char c) { return static_cast<std::byte>(c); });
       out += "<" + hex(raw, raw.size()) + ">";
       return;
     }
@@ -131,12 +129,12 @@ void canonical(Document& document, const Object& object, std::string& out, int d
       out += "/" + full_name(*value.name());
       return;
     case Object::Kind::array:
-      out += "[";
+      out += '[';
       for (const Object& item : *value.array()) {
         canonical(document, item, out, depth + 1);
-        out += " ";
+        out += ' ';
       }
-      out += "]";
+      out += ']';
       return;
     case Object::Kind::dictionary:
       canonical_dictionary(document, *value.dictionary(), out, depth, false);
@@ -146,7 +144,7 @@ void canonical(Document& document, const Object& object, std::string& out, int d
       const std::vector<std::byte> bytes = ImageIdentity::encoded_bytes(document, stream);
       out += "stream(" + hex(Sha2::digest(Sha2::Variant::sha256, bytes), 32) + " ";
       canonical_dictionary(document, stream.dictionary(), out, depth, true);
-      out += ")";
+      out += ')';
       return;
     }
   }
@@ -175,7 +173,7 @@ std::string identity(Document& document, const Dictionary& dictionary, platform:
     } else {
       canonical(document, resolved, text, 1);
     }
-    text += "\n";
+    text += '\n';
   }
   Sha2 hash(Sha2::Variant::sha256);
   hash.update(platform::as_bytes(text));

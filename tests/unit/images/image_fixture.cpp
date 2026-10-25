@@ -82,7 +82,7 @@ std::string encode_jpeg(int width, int height, int components,
                                        static_cast<std::size_t>(components) * 4 +
                                    4096);
   unsigned char* target = buffer.data();
-  unsigned long size = static_cast<unsigned long>(buffer.size());
+  auto size = static_cast<unsigned long>(buffer.size());
   jpeg_mem_dest(&info, &target, &size);
   info.image_width = static_cast<JDIMENSION>(width);
   info.image_height = static_cast<JDIMENSION>(height);

@@ -15,6 +15,7 @@
 #include <doctest.h>
 
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -22,7 +23,7 @@ using pdfkit::images::ImageCatalogue;
 using pdfkit::test::open_document;
 using pdfkit::test::PdfBuilder;
 
-const std::string image_entries =
+const char* const image_entries =
     "/Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray "
     "/BitsPerComponent 8";
 

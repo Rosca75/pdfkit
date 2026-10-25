@@ -191,7 +191,7 @@ void census(pdfkit::syntax::Document& document, JsonWriter& json, const std::str
       json.key("extracted").string(extracted.format);
       json.key("extracted_sha256").string(extracted.fault.empty() ? sha256(extracted.bytes) : "");
     } catch (const pdfkit::platform::Error& error) {
-      json.key("extracted").string(std::string(pdfkit::platform::error_code_name(error.code())));
+      json.key("extracted").string(pdfkit::platform::error_code_name(error.code()));
     }
     json.end_object();
   }
@@ -250,7 +250,7 @@ bool read_raster(const std::string& path, bool pdfium, Raster& raster) {
   raster.rgb.assign(static_cast<std::size_t>(width * height * 3), 0);
   for (std::uint64_t y = 0; y < height; ++y) {
     for (std::uint64_t x = 0; x < width; ++x) {
-      const std::size_t from = static_cast<std::size_t>(y * stride + x * channels);
+      const auto from = static_cast<std::size_t>(y * stride + x * channels);
       const auto at = [&](std::size_t i) {
         return static_cast<std::uint8_t>(data[from + i]);
       };
