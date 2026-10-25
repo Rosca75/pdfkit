@@ -255,7 +255,7 @@ tag someone has fetched is a release someone may hold.
 From `build-5.md` §9:
 
 - The manifest's `expect_text` (`agree`, `known_gap:<pdfkit|pdfium|legitimate>`, `n/a`) and `expect_fonts` (`loads`, `unreadable:<count>`, `n/a`) are filled by `python tests/pdfium/text_agreement.py --run <id> --write-manifest` from a dataset run; a row added later starts `n/a` until that runs, and a file below 0.90 needs its cause line in `tests/pdfium/text_causes.tsv` (item 13).
-- The reading gate's question is `OPEN-QUESTIONS.md` §2.7 (item 16).
+- The reading gate's question is `OPEN-QUESTIONS.md` §2.10 (item 16).
 
 From `build-1.md` §9:
 

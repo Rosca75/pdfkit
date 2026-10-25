@@ -309,7 +309,7 @@ the `text` column of the manifest is reverted with the merge.
     `--check text` is phase 7's writer check).
 16. **The gate failed on its share below 0.90** (6.4 % against 5 %, median
     1.0); every other item passed. The question with the evidence is
-    `OPEN-QUESTIONS.md` §2.7; its recommended answer (b) stands.
+    `OPEN-QUESTIONS.md` §2.10; its recommended answer (b) stands.
 17. **Speed**: the largest file (dccc-0135, 910 pages, 3.6 million glyphs)
     reads in 6 to 10 s alone in the release build, most of it the
     interpreter; under the laptop's load from other sessions the dataset

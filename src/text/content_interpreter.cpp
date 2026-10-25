@@ -411,7 +411,9 @@ class ContentInterpreter::Walk {
     if (items == nullptr || items->empty()) {
       return;
     }
-    const std::string* family = document_.resolve(items->front()).name();
+    // The resolved objects are held while a pointer into them is read.
+    const syntax::Object family_value = document_.resolve(items->front());
+    const std::string* family = family_value.name();
     if (family == nullptr) {
       return;
     }
@@ -424,7 +426,8 @@ class ContentInterpreter::Walk {
             static_cast<int>(document_.resolve_entry(*entries, "N").integer().value_or(0));
       }
     } else if (*family == "DeviceN" && items->size() > 1) {
-      if (const syntax::Object::Array* names = document_.resolve((*items)[1]).array()) {
+      const syntax::Object names_value = document_.resolve((*items)[1]);
+      if (const syntax::Object::Array* names = names_value.array()) {
         colour.count = static_cast<int>(names->size());
       }
     } else if (!device_family(*family).empty()) {
