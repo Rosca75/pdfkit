@@ -337,8 +337,11 @@ to their phase-1 stubs. Nothing persisted changes shape.
     is at or above its minimum (`python dataset/tools/report.py`).
 15. **The manifest's `expect_images` column** is written by
     `tests/pdfium/image_agreement.py --write-manifest` from the census, over
-    resource-reached images: `decoded`, `partial:<encodings>` or `n/a`. The
-    listing step re-derives it from occurrences.
+    resource-reached images: six files become `partial:<encoding>` (the six
+    undecoded images of item 4) and `qpdf-0029`, refused at open, `n/a`; a
+    file whose resources reach no image keeps phase 2's value, because inline
+    images are not reached that way. The listing step re-derives the column
+    from occurrences.
 
 ### Deviations of earlier phases that affect this one
 

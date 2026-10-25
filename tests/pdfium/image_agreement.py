@@ -422,14 +422,17 @@ def main() -> int:
         values = {row["id"]: expectation(records[row["id"]]["census"]) for row in rows}
         if args.write_manifest:
             for row in all_rows:
-                if row["id"] in values:
+                # A file whose resources reach no image keeps its value: an
+                # inline image or an image drawn only by an annotation is not
+                # reached through resources.
+                if row["id"] in values and values[row["id"]] != "n/a":
                     row["expect_images"] = values[row["id"]]
                 elif row["expect_open"] not in ("opens", "repaired"):
                     row["expect_images"] = "n/a"
             common.write_manifest(all_rows)
         else:
-            differing = [(i, v) for i, v in values.items()
-                         if next(r for r in all_rows if r["id"] == i)["expect_images"] != v]
+            differing = [(i, v) for i, v in values.items() if v != "n/a"
+                         and next(r for r in all_rows if r["id"] == i)["expect_images"] != v]
             for ident, value in differing:
                 print(f"{ident}: expect_images differs; the run gives {value}")
             status = 1 if differing else 0
