@@ -281,3 +281,11 @@ From `build-7.md` §9:
 - Test helpers: `tests/unit/writer/output_scan.hpp` (`identity_write`, `select_write`, `write_report`, `everything` = raw bytes plus every stream decoded, `contains_marker`, `reopen` without repair) and `tests/unit/support/pdf_builder_channels.hpp` (planted markers per channel, the four-page leak fixture); `tests/pdfium/render.py` compares pages exactly or outside a rectangle set with a one-pixel dilation (`compare_bitmaps`).
 - The dataset outcome gains `channels`, `write` and `select`; outputs go to `<run>/outputs/`, named relative to the run folder (`tests/dataset/outcome.md`).
 - The metadata stage runs before the channel strip, and the strip removes the whole `xmpMM` namespace of the catalog's packet afterwards: regenerate `xmpMM:DocumentID` and `xmpMM:InstanceID` after the strip (for instance as a step of the serialisation stage, once the output's hash is known), or narrow the strip to `xmpMM:History` in the same change. The Info dictionary is copied as it is until this stage rewrites it.
+
+From `build-8.md` §9:
+
+- The self-check already searches the Info dictionary's strings (`info`) and the XMP packet's text (`xmp`, entities read) for every redacted string, and refuses the output on a survivor; 85 manifest rows are `known_gap:metadata_holds_word` because the seeded job's words are also in their metadata. When `pdfkit_set_metadata` lands, either make the dataset job rewrite the fields that hold a redacted word and re-derive those rows to `clean`, or keep them as gaps (`OPEN-QUESTIONS.md` §2.11 item 5); `tests/dataset/outcome.md` describes the job (items 8, 10).
+- Search folding is `platform::unicode::Folding` (`src/platform/unicode/folding.hpp`, Unicode 18.0.0 tables); `redact::MatchFinder::ranges_in` finds a search string in any UTF-8 value and `MatchFinder::byte_forms` gives its byte forms, for a metadata surface of your own (items 5, 11).
+- An indirect string referenced from the Info dictionary is reported as a `string` surface, not `info` (pdfminer-0038); the metadata surface of the self-check is yours to refine.
+- `tests/pdfium/leak.py`'s `--metadata` flag is yours to add; it reads `redact_text.strings` today.
+- The channel table has 24 rows (`ch_xobject_private` added); `docs/ABI.md` §4.5 lists it (item 9).

@@ -177,17 +177,20 @@ TEST_CASE("channel ch_uri_base") {
 TEST_CASE("channel ch_search_index") {
   check_row("ch_search_index");
 }
+TEST_CASE("channel ch_xobject_private") {
+  check_row("ch_xobject_private");
+}
 
 TEST_CASE("every row above has its test case") {
   // One TEST_CASE per row: the list here is the rows tested above, so a row
   // added to the table without a test case of its own fails this count.
-  constexpr std::array<std::string_view, 23> tested{
-      "ch_revisions",     "ch_unreferenced",     "ch_thumbnail",   "ch_pieceinfo",
-      "ch_last_modified", "ch_object_metadata",  "ch_javascript",  "ch_embedded_file",
-      "ch_annotation",    "ch_acroform",         "ch_outline",     "ch_named_dest",
-      "ch_struct_tree",   "ch_optional_content", "ch_page_labels", "ch_xmp_history",
-      "ch_threads",       "ch_web_capture",      "ch_portfolio",   "ch_perms_legal",
-      "ch_encrypt",       "ch_uri_base",         "ch_search_index"};
+  constexpr std::array<std::string_view, 24> tested{
+      "ch_revisions",     "ch_unreferenced",     "ch_thumbnail",    "ch_pieceinfo",
+      "ch_last_modified", "ch_object_metadata",  "ch_javascript",   "ch_embedded_file",
+      "ch_annotation",    "ch_acroform",         "ch_outline",      "ch_named_dest",
+      "ch_struct_tree",   "ch_optional_content", "ch_page_labels",  "ch_xmp_history",
+      "ch_threads",       "ch_web_capture",      "ch_portfolio",    "ch_perms_legal",
+      "ch_encrypt",       "ch_uri_base",         "ch_search_index", "ch_xobject_private"};
   CHECK(pdfkit::writer::ChannelTable::rows().size() == tested.size());
 }
 

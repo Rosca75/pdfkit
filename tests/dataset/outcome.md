@@ -38,8 +38,8 @@ write the same bytes: an output it writes is named in the outcome relative to
 UTF-8 JSON, LF, no byte-order mark, keys in exactly the order shown, two-space
 indentation, one key per catalogue function in the order of the catalogue
 (`open`, `inspect`, `text`, `images`, `metadata`, `channels`, `redact`), then
-`write` and `select`, each present always: a function the verb did not run is
-`null`.
+`write`, `select` and `redact_text`, each present always: a function the verb
+did not run is `null`.
 
 ```json
 {
@@ -104,6 +104,23 @@ indentation, one key per catalogue function in the order of the catalogue
     "sha256": "<hex of the output>",
     "bytes": 7311,
     "reopen": {"status": "ok", "code": null, "pages": 2, "repairs": []}
+  },
+  "redact_text": {
+    "status": "ok",
+    "code": null,
+    "strings": ["Account", "Sample", "held", "IBAN", "Carl", "Zebulon Quarterfield"],
+    "counts": [1, 2, 1, 1, 2, 0],
+    "occurrences": 7,
+    "output": "outputs/qpdf-0001.redact.pdf",
+    "sha256": "<hex of the output>",
+    "bytes": 5511,
+    "pages": 1,
+    "self_check": "passed",
+    "rectangles": [[1, 70.0, 715.52, 117.36, 730.62]],
+    "placeholders": [[1, 6]],
+    "geometry": [[1, 0, 0, 612, 792, 0]],
+    "codes": ["4163636f756e74"],
+    "reopen": {"status": "ok", "code": null, "pages": 1, "repairs": []}
   }
 }
 ```
@@ -122,6 +139,28 @@ draw keeps page 1 and a full draw drops the last page; the kept pages are then
 shuffled by Fisher-Yates from the last index down, each swap index the next
 number modulo the remaining count. `select` is `null` for a file of one page.
 Neither runs when `open` did not succeed (their `status` is `skipped`).
+
+`redact_text` is the seeded text redaction: the words of four or more letters
+(maximal runs of ASCII letters or of code points from U+00C0 up outside the
+punctuation, symbol, private-use and specials blocks) of the `text` member's
+text, each once and sorted by their UTF-8 bytes, five of them drawn without
+replacement by a SplitMix64 generator seeded with the first eight bytes of the
+SHA-256 of `8:<id>` (each draw the next number modulo the words left), then
+the marker `Zebulon Quarterfield` the synthesised redaction traps draw; each is
+a search with the default folding and the placeholder `[REDACTED]`, given in
+one `pdfkit_redact_text` call and written with `pdfkit_write` to
+`<dir>/outputs/<id>.redact.pdf`. `counts` holds the occurrences found per
+string, `rectangles` the write report's boxes as `[page, left, bottom, right,
+top]`, `placeholders` the placeholders drawn per page as `[page, count]`,
+`geometry` each such page's crop box and rotation as `[page, left, bottom,
+right, top, rotate]` (from `pdfkit_inspect`; a renderer draws the crop box
+turned by the rotation, so `compare.py --check redact` places the rectangles
+through it),
+`codes` the removed codes of four bytes or more (hexadecimal, per font run),
+and `reopen` the output opened again. A self-check refusal is `status`
+`error` with `code` `PDFKIT_E_SELF_CHECK`, the `message` naming the surfaces,
+and the `strings` that were asked; no output is written. It is `skipped` when
+`open` did not succeed.
 
 `text` is `pdfkit_text` with `{"blocks": false, "reserialisation": true}`: each
 page's text as the function writes it (visible blocks, then hidden blocks, a
@@ -169,6 +208,8 @@ checks independently.
 | `expect_write` = `known_gap:<reason>` | `write.status` | `ok` (counted apart) |
 | `expect_select` = `ok` | `select.status`, `select.reopen`, `select.pages` | `ok`, and `reopen.status` `ok` with no repairs and as many pages as `select.pages` names |
 | `expect_select` = `known_gap:<reason>` | `select.status` | `ok` (counted apart) |
+| `expect_redact_text` = `clean` | `redact_text.status`, `redact_text.self_check`, `redact_text.reopen`, `redact_text.pages` | `ok`, `self_check` `passed`, and `reopen.status` `ok` with no repairs and the input's page count; the leak and pixel measures are `tests/pdfium/leak.py` and `compare.py --check redact` |
+| `expect_redact_text` = `known_gap:<reason>` | none | passes apart, a refusal included |
 | any column = `n/a` | none | not checked |
 
 A function whose status is `not_implemented` makes its column **skipped** for

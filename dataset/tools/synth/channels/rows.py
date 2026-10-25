@@ -268,6 +268,17 @@ def plant_search_index(ctx: Ctx) -> None:
     ctx.catalog["PageMode"] = Name("UseSearchIndex")
 
 
+def plant_xobject_private(ctx: Ctx) -> None:
+    shape = ctx.pdf.add(Stream(b"0 0 1 1 re f", {
+        "Type": Name("XObject"), "Subtype": Name("Form"), "BBox": [0, 0, 1, 1],
+        "PTEX.FileName": ctx.mark(1)}))
+    picture = ctx.pdf.add(Stream(bytes([128] * 16), {
+        "Type": Name("XObject"), "Subtype": Name("Image"), "Width": 4, "Height": 4,
+        "ColorSpace": Name("DeviceGray"), "BitsPerComponent": 8, "PrivateNote": ctx.mark(2)}))
+    ctx.resources.setdefault("XObject", {}).update({"Fx": shape, "Ix": picture})
+    ctx.content.append(b"q 20 0 0 20 300 300 cm /Fx Do Q q 20 0 0 20 340 300 cm /Ix Do Q")
+
+
 # row -> list of (plant, extra tags, cross-reference form, note)
 VARIANTS = {
     1: [(plant_revisions, (), "table", "an incremental update replaces the page content")],
@@ -295,6 +306,7 @@ VARIANTS = {
          (plant_encrypt(4, 2), ("aesv2",), "table", "AESV2, empty user password, vendor key in /Encrypt")],
     22: [(plant_uri_base, (), None, "a catalog /URI dictionary with /Base")],
     23: [(plant_search_index, (), None, "a catalog /SearchIndex stream and a non-standard /PageMode")],
+    24: [(plant_xobject_private, (), None, "private keys on a form and an image XObject")],
 }
 
 

@@ -38,6 +38,16 @@ struct DatasetWrite {
 [[nodiscard]] std::vector<std::uint64_t> dataset_selection(std::string_view id,
                                                            std::uint64_t pages);
 
+// The outcome of opening an output again: status, code, pages, repairs.
+[[nodiscard]] std::string dataset_reopen(const std::string& pdf);
+
+// The "status", "code" (and "message") members of a call that did not
+// succeed, as tests/dataset/outcome.md section 2.1 names them.
+[[nodiscard]] std::string dataset_failure(pdfkit_status status, const std::string& text);
+
+// SplitMix64's next value of state.
+[[nodiscard]] std::uint64_t dataset_splitmix(std::uint64_t& state);
+
 }  // namespace pdfkit::cli::verbs
 
 #endif  // PDFKIT_CLI_VERBS_DATASET_WRITE_HPP

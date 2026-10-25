@@ -64,6 +64,8 @@ class ChannelTable {
     bool object_metadata = false;
     bool optional_content = false;
     bool xmp_history = false;
+    // The keys of form and image XObjects outside their allow-lists go.
+    bool xobject_private = false;
   };
 
   struct Row {

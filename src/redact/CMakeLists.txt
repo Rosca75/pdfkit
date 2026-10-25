@@ -5,5 +5,14 @@
 # layer is one line in this list and touches no other layer's list.
 
 target_sources(pdfkit_core PRIVATE
+  content_syntax.cpp
   edit_plan.cpp
+  marked_content_rewriter.cpp
+  match_finder.cpp
+  placeholder_drawing.cpp
+  placeholder_fitting.cpp
+  self_check.cpp
+  text_plan.cpp
+  text_redactor.cpp
+  text_surgery.cpp
   write_pipeline.cpp)

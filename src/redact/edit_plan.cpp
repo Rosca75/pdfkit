@@ -7,6 +7,7 @@
 
 #include "redact/edit_plan.hpp"
 
+#include "platform/crypto/sha2.hpp"
 #include "platform/error.hpp"
 
 #include <set>
@@ -45,6 +46,20 @@ void EditPlan::select_pages(const std::vector<std::int64_t>& pages) {
     kept.push_back(static_cast<std::uint32_t>(page));
   }
   pages_ = std::move(kept);
+}
+
+const std::string& EditPlan::fingerprint() {
+  if (fingerprint_.empty()) {
+    const auto digest =
+        platform::crypto::Sha2::digest(platform::crypto::Sha2::Variant::sha256, document_->bytes());
+    constexpr std::string_view hex = "0123456789abcdef";
+    for (const std::byte value : digest) {
+      const auto byte = std::to_integer<unsigned>(value);
+      fingerprint_ += hex[byte >> 4U];
+      fingerprint_ += hex[byte & 0x0FU];
+    }
+  }
+  return fingerprint_;
 }
 
 }  // namespace pdfkit::redact

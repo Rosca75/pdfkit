@@ -194,6 +194,18 @@ std::vector<std::uint64_t> dataset_selection(std::string_view id, std::uint64_t 
   return kept;
 }
 
+std::string dataset_reopen(const std::string& pdf) {
+  return reopen(pdf);
+}
+
+std::string dataset_failure(pdfkit_status status, const std::string& text) {
+  return failure(Call{status, text});
+}
+
+std::uint64_t dataset_splitmix(std::uint64_t& state) {
+  return splitmix(state);
+}
+
 DatasetWrite dataset_write_skipped() {
   const std::string skipped = R"({"status": "skipped", "code": null})";
   return {skipped, skipped, skipped};

@@ -22,7 +22,8 @@ from pathlib import Path
 MANIFEST_COLUMNS = (
     "id", "set", "source", "licence", "sha256", "bytes", "pages", "producer",
     "tags", "expect_open", "expect_text", "expect_images", "expect_redact",
-    "expect_metadata", "expect_fonts", "expect_write", "expect_select", "notes",
+    "expect_metadata", "expect_fonts", "expect_write", "expect_select", "expect_redact_text",
+    "notes",
 )
 TAXONOMY_COLUMNS = ("tag", "group", "minimum", "description", "detector")
 SOURCES_COLUMNS = (
@@ -43,6 +44,8 @@ EXPECTATIONS = {
     "expect_fonts": ("text", ("loads", "unreadable:", "n/a")),
     "expect_write": ("write", ("identical", "known_gap:", "n/a")),
     "expect_select": ("select", ("ok", "known_gap:", "n/a")),
+    # The seeded text redaction of every readable file (tests/dataset/outcome.md).
+    "expect_redact_text": ("redact_text", ("clean", "known_gap:", "n/a")),
 }
 
 # The refusal codes of docs/DESIGN.md chapter 19 an `expect_open` may name.
@@ -254,6 +257,11 @@ def default_expect_select(expect_open: str, pages: str) -> str:
     """`ok` for a readable file of two or more pages (PDFium's count), else `n/a`."""
     count = int(pages) if pages.isdigit() else 0
     return "ok" if expect_open in ("opens", "repaired") and count >= 2 else "n/a"
+
+
+def default_expect_redact_text(expect_open: str) -> str:
+    """`clean` for a file the open expectation lets pdfkit read, else `n/a`."""
+    return "clean" if expect_open in ("opens", "repaired") else "n/a"
 
 
 def check_expectation(column: str, value: str) -> bool:

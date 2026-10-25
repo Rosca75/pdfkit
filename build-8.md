@@ -243,7 +243,183 @@ inventory rows and their notices.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **The base was green**: `python build/check.py` and the unit tier passed
+   on `main` before any change; no repair commit. The branch was rebased once
+   onto `origin/main` when phase 6's listing step merged (no conflict).
+2. **Files beyond §2**, each for one class or one concern:
+   `src/redact/content_syntax.*` (`ContentSyntax`, the number, string and
+   matrix operands the surgery and the placeholder write),
+   `src/redact/text_plan.*` (`TextPlan`, the text part of the edit plan: the
+   matches, the occurrences, the self-check's strings and each page's work),
+   `src/redact/text_redactor.*` (`TextRedactor`: `add()` behind
+   `pdfkit_redact_text`, `apply()` the text surgery stage),
+   `tests/unit/redact/support/redaction.*` (redaction through the C ABI and
+   the output read back), `tests/unit/redact/redact_text_test.cpp` (end to
+   end: positions after a write, two `/Contents` pieces, two-byte codes,
+   hidden text, a fake bold, page selection, the refusals),
+   `cli/verbs/dataset_redact.*` (the dataset verb's `redact_text` member).
+   Additive edits outside the owned paths: `src/api/text.cpp` (the
+   `fingerprint` key), `src/writer/write_report.*` (the rectangles and the
+   self-check's string count), `src/writer/channel_table.*` (item 9),
+   `cli/support.*` (`is_implemented`), `cli/verbs/dataset_write.*` (three
+   helpers exported for the redact member), `cli/verbs/dataset.cpp` (the
+   member written after `select`), `tests/unit/text/support/text_document.hpp`
+   (`info()`), `tests/unit/text/text_json_test.cpp` and
+   `tests/unit/writer/api_edit_test.cpp` (the fingerprint and the 24th
+   channel row), `dataset/tools/synth/run.py` (the `synth.redaction`
+   package), `dataset/tools/common.py`, `add.py` and their test (the column),
+   `tests/dataset/run.py` and its test, `tests/pdfium/compare.py`
+   (`--check redact`).
+3. **No `FormRewriter` class and no `build/fonts/check_regenerated.py`.** A
+   form's changes are a `TextPlan::Target` per form object, merged over every
+   page that reaches the form and written once by `TextRedactor::apply`
+   (`form_rewriter_test.cpp` tests the behaviour of §3.1); the two generators
+   are rows of `build/check_generated.py`'s `GENERATORS`, as `build-4.md` §9
+   item 1 asks. `build/fonts/subset.py` runs under any interpreter whose
+   fontTools is the pinned 4.67.0 (the laptop's is), else under
+   `<main checkout>/build/cache/fonts-venv/`, else fails with the commands
+   that make that environment.
+4. **`Tj`, `'` and `"` become `TJ`, not a re-anchoring `Td`/`Tm`.** A `Td` or
+   `Tm` also sets the line matrix that a later `T*`, `'` or `"` reads, so the
+   operator is rebuilt as the `TJ` of its kept pieces and the holes' numbers;
+   an operator whose codes are all removed becomes the `TJ` of one number
+   rather than disappearing, so the operators after it keep their position;
+   an operator whose codes cannot be placed loses every glyph it shows.
+   `docs/DESIGN.md` §12 says so now.
+5. **Matching as built** (`docs/DESIGN.md` §11 updated): every folding is on
+   by default; a search matches inside words; a match takes the duplicates
+   folded into its glyphs and every glyph of an `/ActualText` span it
+   touches; a search also removes the glyphs whose code bytes spell the
+   string inside one operand where the text does not read it (found by the
+   gate: a font whose codes read as other text, letters spread out of reading
+   order); a text-showing operator that shows no glyph (no font is current),
+   an operator Annex A does not know (a damaged stream lexes into them), a
+   content stream's comment and the bytes a lexer recovery skipped go when
+   they spell the string (the gate found a producer's `% ... "Hello World"`
+   comment, an `/Artifact` note, garbage of a damaged stream); the fingerprint of a glyph range is the SHA-256 of the file from
+   its `%PDF-` header (`syntax::Document::bytes()`), reported by `pdfkit_text`
+   (a new `fingerprint` key, which `docs/ABI.md` §4.9 lists) and
+   `pdfkit_redact_text`; each page is searched alone, so a hyphenation across
+   a page break is not joined.
+6. **Marked content**: a span whose glyphs are all removed loses its
+   `/ActualText` (the placeholder drawn for it is then read once) and its
+   `/Alt` and `/E` become the placeholder; every other string of every `BDC`
+   and `DP` property list has the redacted strings replaced (found by the
+   gate: Acrobat's header and footer artifacts carry their text as
+   `/Contents`).
+7. **The placeholder** is drawn after the `ET` closing the text object of the
+   run's first glyph (`q`, `cm` and paths are not allowed inside a text
+   object), with `Tc` and `Tw` zero, its colour only when the glyph's is a
+   device colour; the hole runs over kept spaces to the next kept glyph that
+   is not a space; the face is named `/PdfkitPH` plus eight hexadecimal digits
+   of its hash in the resources the stream reads, and a form without
+   resources of its own has the face named in every kept page that draws it.
+   A rectangle is a removed run's box per reading line, extended over the
+   glyphs the same stream draws after the hole on that line, or the
+   placeholder's, widened by a sixth of the glyph size, because ink leaves
+   the box the font metrics give and because the glyphs after a hole are
+   placed from another sequence of advances, which PDFium sums in its own
+   floating point and can round to a neighbouring sub-pixel (the first gate
+   runs showed such lines re-rasterised with no glyph moved by pdfkit's
+   reckoning). The dataset outcome records each rectangle page's crop box
+   and rotation, which `compare.py --check redact` applies before comparing
+   (the first runs compared rotated and cropped pages in the wrong space). Known limit: a glyph range inside a form drawn on several
+   pages changes all of them, and the rectangles name only the page of the
+   range.
+8. **The self-check's surfaces as built** (`docs/DESIGN.md` §18 updated): a
+   content stream's raw scan reads its string operands, its comments, the
+   bytes a lexer recovery skipped and the operators Annex A does not know,
+   not the names of operators and resources nor marked-content tags,
+   because those are the producer's
+   vocabulary (a tagged page's `/Table` and `/Figure` would otherwise refuse
+   any redaction of those words); font programs and CMaps, image samples, ICC
+   profiles (of a colour space or an output intent), functions and the XMP
+   packet (searched as text) are not scanned raw; the strings of font
+   dictionaries are not searched; every placeholder is cut out of a surface
+   first; an occurrence in page text drawn wholly in the placeholder font is
+   the placeholder. For a plan of search strings alone the page text is read
+   again only on the output pages the redaction changed (an edit, or an
+   edited form drawn), because every other page was searched with every
+   string by the same reader and reads as it did; every other surface of
+   every page is searched as before, and a plan with a glyph range reads every
+   page. The 910-page dccc-0135 went from 22 s to 14 s in the dataset verb
+   alone, and to 11 to 12 s once the code search built each operand's bytes
+   once per page instead of once per string (the fifth gate run still timed
+   it out once under four workers and other sessions' load). The XMP packet is read with its
+   element and attribute names left out rather than by tracking quotes (a
+   packet whose byte-order-mark attribute lost its closing quote hid every
+   value from the first scanner). `tests/pdfium/leak.py` applies the same
+   rules: it folds PDFium's text with the default folding of `docs/DESIGN.md`
+   §11 (canonical decomposition, marks stripped, lower case), not a
+   compatibility folding, so a full-width "ＨＤＣＰ" or a "meßbar" is not an
+   occurrence of "HDCP" or "essbar" (three PDFium "leaks" of the first run
+   were these, `OPEN-QUESTIONS.md` §2.11 asks); it leaves out font streams
+   (programs, `/ToUnicode`, CMaps), image samples and inline image data, ICC
+   profiles and name tokens, and reads XMP without its markup's names; the
+   removed codes pdfkit reports are listed as `codes` and not counted, because
+   a code draws a glyph only in its own font and the same code sequence in
+   another subset font is other text; and it cuts `[REDACTED]` out of
+   PDFium's text before searching it.
+9. **A new channel row, `ch_xobject_private`** (24th, in `channel_table.cpp`,
+   with its unit test, the taxonomy tag of minimum 1 and the planted-marker
+   specimen `synth-0262`): form and image XObjects keep only the keys of ISO
+   32000-1 tables 5, 89, 95 and 146. The gate's self-check found a pdfTeX
+   `/PTEX.FileName` and PDFpen's private copy of an annotation's text on forms
+   that every write kept. `tests/dataset/gates/phase7.py` counts rows 01 to
+   24; `docs/DESIGN.md` §15 and `docs/ABI.md` §4.5 list the row.
+10. **The dataset column is `expect_redact_text`** (`clean`,
+    `known_gap:<reason>`, `n/a`), placed before `notes` like phase 7's
+    columns (the test of `common.py` holds `notes` last), the outcome member
+    `redact_text` after `select`; phase 2's `expect_redact` (pixel stability)
+    stays `n/a` for phase 9 to use or retire. The seeded job's marker is the
+    constant `Zebulon Quarterfield`, added to every file's job (it matches
+    nothing outside the twelve traps). The traps' tags are `redact_<case>`
+    in the group `traps`, rows `synth-0250` to `synth-0261`; the manifest
+    holds 950 rows. 85 rows are `known_gap:metadata_holds_word`: a word the
+    seeded job draws from the page text is also in the Info dictionary or the
+    XMP packet (a title, a producer, a keyword), the self-check refuses the
+    output there as it must, and the job writes no metadata until phase 10.
+11. **Unicode 18.0.0**, the latest on 2026-10-25, not a "pinned version"
+    named earlier; the files are pinned by hash in `build/unicode/unicode.lock`
+    and fetched one by one (the inventory's archive columns are `-`). The
+    marks a diacritic folding strips are General_Category Mn and Me, so no
+    combining-class table is generated.
+12. **The redact verb** refuses an `images` or `metadata` section as a usage
+    error naming the section while this build lacks the function
+    (`is_implemented` in `cli/support.cpp`), before reading the input.
+13. **The gate as run** (run `p8-gate6`, release build of commit `2c90b4d`):
+    `python tests/dataset/run.py --checks open,redact_text --runs 2
+    --workers 4 --run-id p8-gate6`, `python tests/pdfium/leak.py --run
+    p8-gate6 --workers 4`, `python tests/pdfium/compare.py --run p8-gate6
+    --check redact --workers 4`, `python tests/dataset/gates/phase8.py --run
+    p8-gate6`. Over 901 files that open and expect a redaction (85 known
+    gaps): self-check 816 / 816; PDFium's text 0 redacted words; decoded
+    bytes outside font programs 0 (16 removed-code sequences found in other
+    fonts' strings, informational); pages stable outside the rectangles
+    7,710 / 7,748 = 99.51 %; placeholders read back 8,152 / 8,187 = 99.57 %;
+    determinism 901 / 901; no crash, no hang. The 38 unstable pages are in
+    16 files: dccc-0046 is the non-embedded CJK font whose widths pdfkit and
+    PDFium disagree on (`build-5.md` §9), so its kept glyphs move in PDFium's
+    rendering; on the other pages examined, glyphs after a hole that PDFium
+    re-rasterises
+    a sub-pixel apart outside the line's rectangle (a neighbouring line's
+    descender or a glyph of another stream). The 35 placeholders PDFium does
+    not read back are on 14 pages of 13 files, among them the fake-bold traps
+    synth-0097 to synth-0099 (a line drawn twice, a placeholder drawn for each
+    copy) and the right-to-left synth-0214; they were not classified one by
+    one.
+    The checks before the last commit: `python build/check.py` (15 of 15
+    groups, clang-tidy included), `ctest --preset unit`, `ctest --preset
+    sanitize`, `ctest --preset clang-sanitize`, and the clang-sanitize
+    `pdfkit dataset` verb on each of the 950 manifest files, four at a time
+    with no time limit: no AddressSanitizer report and no undefined behaviour
+    in pdfkit's code; `redact_text` ok on 816 files, the 85 known gaps
+    refused, 49 skipped. Sixteen files that hold JPEG 2000 images report
+    UBSan's function-type check inside the vendored OpenJPEG (`openjpeg.c`
+    calls `opj_jp2_destroy`, `opj_j2k_end_decompress` and their kin through
+    pointers of type `void *` arguments), reached by the images listing of
+    phase 6, not by this phase's code; this phase leaves the vendored library
+    and its build flags to their owner.
 
 ### Deviations of earlier phases that affect this one
 

@@ -33,7 +33,7 @@ ROWS = {
     9: "ch_annotation", 10: "ch_acroform", 11: "ch_outline", 12: "ch_named_dest",
     13: "ch_struct_tree", 14: "ch_optional_content", 15: "ch_page_labels", 16: "ch_xmp_history",
     17: "ch_threads", 18: "ch_web_capture", 19: "ch_portfolio", 20: "ch_perms_legal",
-    21: "ch_encrypt", 22: "ch_uri_base", 23: "ch_search_index",
+    21: "ch_encrypt", 22: "ch_uri_base", 23: "ch_search_index", 24: "ch_xobject_private",
 }
 DRAWN_ROWS = (90, 91, 92, 93)
 

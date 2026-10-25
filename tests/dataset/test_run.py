@@ -95,7 +95,8 @@ class SummaryTest(unittest.TestCase):
     def rows_and_runs(self, body):
         rows = [{"id": "x", "set": "synth", "sha256": "h", "expect_open": "opens", "expect_text": "n/a",
                  "expect_images": "n/a", "expect_redact": "n/a", "expect_metadata": "n/a",
-                 "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a"}]
+                 "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a",
+                 "expect_redact_text": "n/a"}]
         written = {"x": {"id": "x", "result": "written", "bytes": json.dumps(body).encode(), "seconds": 0.1}}
         return rows, written
 
@@ -130,7 +131,34 @@ class SummaryTest(unittest.TestCase):
         # expect_fonts reads the text outcome's unreadable codes.
         self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
         self.assertEqual(run.COLUMNS["expect_fonts"], "text")
-        self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select"})
+        self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select",
+                                           "redact_text"})
+
+
+class RedactTextTest(unittest.TestCase):
+    def part(self, self_check="passed", repairs=(), pages=3):
+        return {"status": "ok", "code": None, "self_check": self_check, "pages": pages,
+                "reopen": {"status": "ok", "code": None, "pages": pages, "repairs": list(repairs)}}
+
+    def judge(self, part, expected="clean"):
+        return run.check("expect_redact_text", expected, {"open": {"status": "ok", "pages": 3},
+                                                          "redact_text": part})
+
+    def test_a_clean_redaction_passes(self):
+        self.assertEqual(self.judge(self.part())[0], "pass")
+
+    def test_a_refused_self_check_fails(self):
+        refused = {"status": "error", "code": "PDFKIT_E_SELF_CHECK", "message": "found"}
+        self.assertEqual(self.judge(refused)[0], "fail")
+        self.assertEqual(self.judge(self.part(self_check=None))[0], "fail")
+
+    def test_an_output_that_reopens_with_repairs_or_other_pages_fails(self):
+        self.assertEqual(self.judge(self.part(repairs=["x"]))[0], "fail")
+        self.assertEqual(self.judge(self.part(pages=2))[0], "fail")
+
+    def test_a_known_gap_passes_apart(self):
+        refused = {"status": "error", "code": "PDFKIT_E_SELF_CHECK", "message": "found"}
+        self.assertEqual(self.judge(refused, "known_gap:metadata"), ("pass", "known_gap"))
 
 
 if __name__ == "__main__":

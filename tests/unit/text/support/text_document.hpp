@@ -38,6 +38,8 @@ class TextDocument {
   std::uint32_t add_stream(std::string entries, std::string data);
   // Adds catalog entries (before open).
   void catalog_entries(std::string entries) { catalog_entries_ = std::move(entries); }
+  // Adds an information dictionary of body, named by the trailer (before open).
+  void info(std::string body) { builder_.set_info(builder_.add(std::move(body))); }
 
   // The fonts, each added once on first use; the value is its object number.
   std::uint32_t helvetica();

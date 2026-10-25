@@ -86,6 +86,20 @@ int run_redact(std::span<char* const> args) {
   if (needed.empty()) {
     return job_error("the job file has none of the sections text, images, metadata, pages");
   }
+  // The sections whose functions this build lacks are refused before the
+  // input is read, naming the section, so a job is never half applied.
+  for (const Section& section : sections) {
+    if ((section.key == "images" || section.key == "metadata") &&
+        job->member(job->root(), section.key) != nullptr && !is_implemented(section.symbol)) {
+      return print_usage_error(
+          "redact",
+          "the job file has an \"" + std::string(section.key) +
+              "\" section, and this build does not apply image treatments or metadata yet",
+          job_shape,
+          "remove the section from the job or use a build that does (pdfkit --version lists "
+          "what this build implements)");
+    }
+  }
   const std::optional<std::vector<std::uint8_t>> bytes = read_input_file("redact", input->text);
   if (!bytes) {
     return exit_usage;

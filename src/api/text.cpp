@@ -15,6 +15,7 @@
 #include "api/arguments.hpp"
 #include "api/guarded.hpp"
 #include "api/handles.hpp"
+#include "platform/crypto/sha2.hpp"
 #include "platform/error.hpp"
 #include "platform/export.hpp"
 #include "platform/json_value.hpp"
@@ -39,6 +40,19 @@ using pdfkit::platform::JsonValue;
 constexpr std::string_view shape =
     "an options object with any of \"pages\" (an array of page numbers from 1), \"blocks\", "
     "\"glyphs\" and \"reserialisation\" (each true or false)";
+
+std::string fingerprint(const pdfkit::syntax::Document& document) {
+  const auto digest = pdfkit::platform::crypto::Sha2::digest(
+      pdfkit::platform::crypto::Sha2::Variant::sha256, document.bytes());
+  constexpr std::string_view hex = "0123456789abcdef";
+  std::string out;
+  for (const std::byte value : digest) {
+    const auto byte = std::to_integer<unsigned>(value);
+    out += hex[byte >> 4U];
+    out += hex[byte & 0x0FU];
+  }
+  return out;
+}
 
 struct Options {
   std::vector<std::uint32_t> pages;
@@ -140,6 +154,9 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_text(pdfkit_document* doc, const char
       pdfkit::text::TextJson::write_page(writer, *held, options.json);
     }
     writer.end_array();
+    // The document fingerprint a glyph range of this extraction is given back
+    // with (docs/DESIGN.md section 11): the SHA-256 of the file from its header.
+    writer.key("fingerprint").string(fingerprint(document));
     writer.end_object();
     pdfkit::api::write_buffer(out, writer.take());
     return PDFKIT_OK;

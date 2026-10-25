@@ -10,6 +10,7 @@ target_sources(pdfkit_core PRIVATE
   file_writer.cpp
   object_graph.cpp
   page_selector.cpp
+  placeholder_font.cpp
   reachability.cpp
   renumbering.cpp
   resource_usage.cpp

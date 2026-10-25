@@ -14,6 +14,7 @@
 
 #include "writer/channel_table.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -23,6 +24,16 @@ namespace pdfkit::writer {
 
 class WriteReport {
  public:
+  // The device rectangles a text redaction changed on one output page
+  // ([left, bottom, right, top] in default user space), and the placeholders
+  // it drew there.
+  struct Rectangles {
+    std::uint32_t page = 0;
+    std::uint32_t source_page = 0;
+    std::vector<std::array<double, 4>> boxes;
+    std::size_t placeholders = 0;
+  };
+
   std::vector<std::uint32_t> pages;
   std::size_t bytes = 0;
   std::string sha256;
@@ -31,9 +42,12 @@ class WriteReport {
   std::size_t pending_redactions = 0;
   std::size_t missing_references = 0;
   std::size_t unpruned_resources = 0;
+  std::vector<Rectangles> rectangles;
   // "not_run", or the self-check's verdict once it has run.
   std::string self_check_status = "not_run";
   std::string self_check_reason;
+  // The strings the self-check searched for, when it ran.
+  std::size_t self_check_strings = 0;
   std::vector<ChannelTable::Warning> warnings;
 
   [[nodiscard]] std::string json() const;
