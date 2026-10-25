@@ -300,9 +300,14 @@ the loader, because one bad font must not lose a page.
 - **Symbolic TrueType** (flag 3 of `/Flags` set, or no usable encoding): the
   font program's `cmap` is tried in the order (3,0) with the code, then with the
   code plus `0xF000`, then (1,0) with the code, then (3,1) through the glyph name
-  of the encoding, which is pdf.js's and PDFBox's order; ISO 32000-1 §9.6.6.4
-  says these heuristics are "not described here", so this rung is the one the
-  agreement gate watches most closely.
+  of the encoding, which is pdf.js's and PDFBox's order, and last (3,1) with the
+  code itself, as pdf.js reads a symbolic font whose only cmap is Unicode; ISO
+  32000-1 §9.6.6.4 says these heuristics are "not described here", so this rung
+  is the one the agreement gate watches most closely. The glyph found reads as
+  text through the program's Unicode cmaps, then its `post` name.
+- A font resource that names no font dictionary (a missing object, an object
+  in an undecodable object stream) decodes every code as unreadable: no
+  encoding is known to guess from.
 
 ### 5.3 Composite fonts and CMaps
 
@@ -318,7 +323,15 @@ the loader, because one bad font must not lose a page.
   because one bad line is not a reason to lose the map.
 - A predefined CMap other than the identities ships no data, so a code of such a
   font with no `/ToUnicode` is unreadable and counted (CJK data is a later data
-  addition).
+  addition). Its codes are split by the codespace its name implies (the
+  Shift-JIS, EUC, GBK, Big5 and UHC lead bytes, else two bytes), so they are
+  counted as the encoding writes them. The Unicode CMaps (`Uni...-UCS2-`,
+  `-UTF16-`, `-UTF8-`, `-UTF32-`) are the exception: their codes are the
+  characters themselves and decode without data.
+- A `/ToUnicode` written as the name `Identity-H` or `Identity-V` reads each
+  two-byte code as its own UTF-16 value, as pdf.js reads it; a `bfrange` whose
+  bounds differ in more than their last byte is read as the numeric range, as
+  pdf.js reads it, because whole identity ranges are common.
 - `/CIDToGIDMap` is `Identity` or a stream of two-byte glyph ids; a CFF-keyed
   descendant maps CID to glyph through its charset.
 
@@ -362,7 +375,8 @@ as written; folding is the matcher's (§11).
 
 The advance of a code comes from, in order: `/Widths` with `/FirstChar` (a code
 outside the array takes `/MissingWidth` from the descriptor, default 0), or `/W`
-in both array forms with `/DW` (default 1000) for a CID font; then the font
+in both array forms with `/DW` (default 1000) for a CID font, which therefore
+never reaches the program; then, for a simple font without `/Widths`, the font
 program (a TrueType `hmtx` scaled by `head.unitsPerEm`, a CFF charstring's width
 from the first stack-clearing operator with `nominalWidthX` and `defaultWidthX`,
 a Type 1 charstring's `hsbw` or `sbw` after eexec and charstring decryption);

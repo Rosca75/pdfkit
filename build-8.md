@@ -254,3 +254,8 @@ From `build-1.md` §9:
 - `pdfkit_check(bytes, size, strings_json, out)` requires `strings_json`; the `check` verb takes it as `--strings <json>` (item 4).
 - `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
 - The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+
+From `build-4.md` §9:
+
+- The font a placeholder is read back with is `fonts::FontLoader(document).load(entry)`; `PdfFont::decode` splits a composite font's operand by its CMap and reports each code's `byte_length`, which is where a multi-byte code is cut; `PdfFont::is_bold()` reads `/FontWeight` 600 and above, the ForceBold flag, a Core 14 bold face or "Bold", "Black" or "Heavy" in the name; `width(code)` is in thousandths of text space (item 8).
+- `build/fonts/` holds the font-table generators (`glyph_list.py`, `core14.py`, the shared `cpp_table.py`), and `build/check_generated.py` regenerates every table its `GENERATORS` list names and fails on a difference: the placeholder subset generator adds its row there (item 1).
