@@ -506,7 +506,12 @@ written. `matches_json` is `{"matches": [...]}`, each match one of:
 The placeholder defaults to `[REDACTED]`, holds only the characters `[`, `]`,
 `_`, `0` to `9` and `A` to `Z`, and may be empty, which removes the text and
 draws nothing. A search runs over every page's text as `pdfkit_text` writes it,
-hidden blocks included, and matches inside words. Every match is checked
+hidden blocks included, and over the other orders a reader reads the page in
+(the glyphs as drawn, and each baseline of the page read from either end,
+`docs/DESIGN.md` §11), and matches inside words; an occurrence found only in
+another order is reported once per stretch of the glyph list it covers, the
+first drawing the placeholder. An Arabic presentation form matches its
+letters under every folding. Every match is checked
 before any is recorded, so a refused call leaves the plan as it was. Calls add
 up; occurrences that overlap across matches follow the overlap rule of
 `docs/DESIGN.md` §11 when the plan is written.

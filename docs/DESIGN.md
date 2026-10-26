@@ -688,7 +688,14 @@ A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
     space; a search space also matches the absence of a gap between two words
     on different lines;
   - `hyphenation`: a joined hyphenation (§7) matches the word without its hyphen;
-  - ligatures are already decomposed (§5.5).
+  - ligatures are already decomposed (§5.5);
+  - under every option a positional presentation form (a decomposition
+    UnicodeData.txt tags `<initial>`, `<medial>`, `<final>` or `<isolated>`:
+    the Arabic presentation forms and their ligatures) reads as its letters,
+    because it is the letter in the shape its place in the word takes and a
+    reader that undoes the shaping (PDFium does) writes the letters; the other
+    compatibility forms (a full-width letter, `ß`, a superscript digit) stay
+    what they are.
   Folding builds a folded string with a map back to glyph indices, so a match in
   folded text is a glyph range. Every folding is on unless the caller turns it
   off. A search matches inside words ("Smith" is found in "Smithson"), because
@@ -702,6 +709,43 @@ A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
   font is current), an operator Annex A does not know, a comment and the bytes
   a lexer recovery skipped go from a content stream when they spell the
   string.
+
+**Every reader's order.** A search also runs over the orders other readers put
+a page's words in, because a redaction whose phrase match depends on one
+reading order leaks the phrase to any reader that orders the words otherwise:
+two blocks whose lines interleave, a superscript set between two lines, a
+line that runs off the page into the hidden set, a word beside a right-to-left
+run or the TeX logo's lowered E all split a phrase in pdfkit's order that a
+reader of the drawing order reads whole, and a reader that keeps the page's
+rows reads two words side by side across a column gap. The orders, over every
+glyph of the page (the hidden ones included, a duplicate copy read with its
+partner):
+
+- the drawing order, the glyphs as the content streams show them;
+- the rows read forwards and backwards: the lines of every block whose
+  baselines agree within a fifth of the size (§7's rule for one line), in the
+  reading order of their first lines, each read along its baseline from
+  either end, so a right-to-left run reads in visual and in logical order.
+
+In these orders a word gap is read from the positions: a space glyph, or a
+glyph that starts more than 0.15 of the size past the end of the glyphs
+before it (the smallest gap §7 measured between words); in the drawing order
+also a glyph that starts more than 0.6 of the size back or more than half the
+size off the baseline of the glyph before (a kern back and a lowered letter
+stay in the word; a glyph drawn elsewhere starts one). Readers disagree on
+the gaps they infer, so under the whitespace folding a space of the string
+matches a word gap or none; inside a word of the string no gap is allowed,
+so "AnnualReport" is not read across a column gap. A match found only in
+another order removes the glyphs it covers: each stretch of them contiguous
+in reading order is an occurrence, the first draws the placeholder and the
+others are holes, and glyphs the reading order's matches cover are not found
+twice. The hyphenation join is the reading order's alone.
+
+A phrase is matched as a phrase: its words found one by one (each word of a
+phrase present on the page within the phrase's span, in no order a reader
+uses) are not a match, because over the dataset the orders above leave no
+phrase for PDFium to find, while the word-by-word rule would remove or refuse
+the common words of a title wherever they stand near each other.
 
 A match spans operators, fonts, `TJ` adjustments, lines and a hyphen, and is one
 match. It removes its glyphs, every duplicate folded into one of them (§7), and
@@ -1003,8 +1047,16 @@ values in the Info dictionary and the packet, an array's items included, under
 the default folding, when it holds three letters or digits or more, because a
 shorter one occurs in almost any text):
 
-- the glyph text of every page in reading order, hidden blocks included (an
-  occurrence drawn wholly in the placeholder font is the placeholder);
+- the glyph text of every page in reading order and in every other order a
+  reader uses (§11: the drawing order and the rows read from either end),
+  hidden blocks included, because an output proven clean in one order is
+  not clean for a reader that orders the words otherwise, and the redaction
+  removes what any of these orders reads, so a write never ends in a refusal
+  for a phrase the search could have matched (an occurrence drawn wholly in
+  the placeholder font is the placeholder, and the other orders leave the
+  placeholder font's glyphs out, because a placeholder squeezed into or
+  overflowing its hole lies among the kept glyphs along the baseline and its
+  letters are no text of the document);
 - every `/ActualText`, `/Alt` and `/E` in marked content;
 - the Info dictionary's strings (those of an array or dictionary value
   included) and the XMP packet's text (its character data and attribute
