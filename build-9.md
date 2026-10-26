@@ -266,7 +266,7 @@ no-op form.
    `/Decode` and colour conversion, nearest in RGB, never a colour-keyed
    value: one rule covers the inverse of `/Decode`, the Indexed palette entry
    and black in CMYK, Lab, ICC, Separation and DeviceN (`OPEN-QUESTIONS.md`
-   §2.12 item 3). The caption is white or black, whichever reads farther from
+   §2.13 item 3). The caption is white or black, whichever reads farther from
    the fill, upright as the image's first draw shows it (a flipped or turned
    CTM turns the caption back).
 6. **The mosaic grid starts at the image's top-left corner**, not the
@@ -274,8 +274,8 @@ no-op form.
    written without chroma subsampling. Together they keep every re-encoded
    JPEG block inside one mosaic block or one box, which is what lets PDFium's
    bitmap prove the treatment (`docs/DESIGN.md` §14 says so).
-7. **The ABI shapes** (`docs/ABI.md` §4.13, after `pdfkit_check`'s §4.12 so
-   no section is renumbered): `{"treatments": [{"identity", "treatment":
+7. **The ABI shapes** (`docs/ABI.md` §4.15, after phase 10's metadata
+   sections §4.13 and §4.14): `{"treatments": [{"identity", "treatment":
    "box" | "blur" | "remove" | "region", "rectangle", "space": "image" |
    "page", "page", "caption", "colour"}]}`; a region box accumulates beside a
    box or a blur, is refused on a removed image; the answer adds `width`,
@@ -291,7 +291,7 @@ no-op form.
 9. **A treated inline image is rewritten by the same walk** (`ImageRemover`
    holds both edits) as its samples under the one filter `/AHx`, a JPEG source
    included: hexadecimal data cannot hold the `EI` that ends it, and one
-   filter is the form every reader handles (`OPEN-QUESTIONS.md` §2.12 item
+   filter is the form every reader handles (`OPEN-QUESTIONS.md` §2.13 item
    4). PDFium gives no bitmap of two inline images of dccc-0108 (a named
    colour space), in the input as in the output, so those two are not
    compared.
@@ -302,19 +302,20 @@ no-op form.
 11. **A treatment that writes exactly an original's bytes is not a survivor**
     (dccc-0120, qpdf-0033: a blur of already block-constant images); the
     dataset member lists them as `unchanged`, and `images.py` and `leak.py
-    --images` leave them out (`OPEN-QUESTIONS.md` §2.12 item 1).
+    --images` leave them out (`OPEN-QUESTIONS.md` §2.13 item 1).
 12. **The dataset job** (`tests/dataset/outcome.md`): the cycle starts at a
     seeded place; an undecodable image is removed and a small bitonal one
     boxed instead of blurred; the region box is a second call, in page space
     over a seeded draw. The column `expect_redact_images` is filled from a
-    run (`phase9.py --write-manifest`): 359 rows `clean`, 597 `n/a` (no image
+    run (`phase9.py --write-manifest`): 359 rows `clean`, 600 `n/a` (no image
     the listing reaches, 22 of them files whose only images lie in
     annotations or unused resources), and opf-0024
-    `known_gap:unterminated_inline_image` (`OPEN-QUESTIONS.md` §2.12 item 2).
+    `known_gap:unterminated_inline_image` (`OPEN-QUESTIONS.md` §2.13 item 2).
     Phase 2's `expect_redact` stays unused (all `n/a`); retiring it touches
     every table that names it and is left to the cleanup that retires phase
     2's other placeholders.
-13. **The synthesised files** (rows synth-0263 to synth-0269, 957 rows): three
+13. **The synthesised files** (rows synth-0263 to synth-0269; 960 rows
+    with phase 10's): three
     `treat_suite` files (Apache-2.0) hold every image case of the job; four
     files wrap one codec stream each, copied byte for byte from a dataset file
     whose licence permits it and carrying that licence: CCITT G4 from
@@ -327,9 +328,9 @@ no-op form.
     case is the unit test of item 2 only. Tags `treat_region` and
     `treat_caption` (minimum 1, 7 files each); `shared_image` and
     `image_in_form` raised to 5 (10 and 71 files).
-14. **The redact verb needed no change**: its `images` refusal lifts through
-    `is_implemented` once the catalogue row flips; its message still says
-    "image treatments or metadata" and only `metadata` can trigger it now.
+14. **The redact verb's section refusal** lifts through `is_implemented`
+    once a catalogue row flips; its message now names the missing function
+    (both rows are implemented after the rebase, item 17).
 15. **OpenJPEG under clang's sanitizers** (the team lead's task): the
     clang-sanitize preset compiles the vendored openjpeg target with
     `-fno-sanitize=function`, because its codec table calls
@@ -348,7 +349,42 @@ no-op form.
     (mutate-0046, opf-0019, pdfplumber-0003) has another size than the image
     and is not compared. `leak.py --images` takes the originals' bytes from
     the input through PDFium and does not search data under 32 bytes.
-17. GATE
+17. **Rebased onto phase 10 part A** (`d835bee`): the catalogue rows 6 and 7
+    are both implemented, the dataset verb writes `set_metadata` then
+    `redact_images`, the manifest keeps main's rows with `expect_redact_images`
+    re-inserted before `notes` and this phase's seven rows added again (960),
+    the ABI section is §4.15 and the owner's questions §2.13. Phase 10's
+    page-scaled time limit of `tests/dataset/run.py` (30 s per 200 pages)
+    removed the three timeouts the earlier runs met under load (dccc-0129,
+    394 pages; nicar25-0006; dccc-0135, 910 pages: 10 to 14 s alone, 17 to
+    24 s four at a time).
+18. **The gate as run** (run `p9-gate3`, release build of the rebased tip,
+    960 manifest rows, four workers): `python tests/dataset/run.py --checks
+    open,redact_images --runs 2 --workers 4 --run-id p9-gate3`, `python
+    tests/pdfium/images.py --run p9-gate3 --workers 4`, `python
+    tests/pdfium/leak.py --run p9-gate3 --images --workers 4`, `python
+    tests/pdfium/compare.py --run p9-gate3 --check redact --workers 4`,
+    `python tests/dataset/gates/phase9.py --run p9-gate3`. Over the 360 rows
+    that expect a treatment (one known gap, opf-0024): treated rectangles
+    with an original sample in PDFium's bitmap 0 of 2,633 checked; removed or
+    treated identities still drawn 0 (pdfkit's listing and PDFium's image
+    objects); original encoded bytes in an output 0 of 3,681 searched (442
+    under 32 bytes not searched, 77 images PDFium does not reach on the
+    input's pages, three inputs PDFium does not open); pages stable outside
+    the treated draws' rectangles 5,513 of 5,513 (100%); outputs that re-open
+    without repair with the input's pages 359 of 359; PDFium's text of the
+    output equal to the input's 356 of 356; identical outcomes and outputs
+    over two runs 360 of 360; no crash, no hang. Not compared, each listed in
+    `pdfium-images.json`: 50 treated images PDFium does not hand back (48
+    reached only inside patterns, 2 inline images of dccc-0108 whose input
+    copies PDFium gives no bitmap of either) and 8 tiny 1-bit images whose
+    PDFium bitmap has another size (mutate-0046, opf-0019, pdfplumber-0003).
+    The checks before the last commit: `python build/check.py` (15 of 15
+    groups), `ctest --preset unit`, `ctest --preset sanitize`, `ctest
+    --preset clang-sanitize`, and the clang-sanitize `pdfkit dataset` verb on
+    every manifest file, four at a time with no time limit: no
+    AddressSanitizer or UndefinedBehaviorSanitizer report, OpenJPEG's
+    function-type reports gone (item 15).
 
 ### Deviations of earlier phases that affect this one
 

@@ -442,9 +442,9 @@ From `build-7.md` §9:
 From `build-9.md` §9:
 
 - `redact::EditPlan` holds `images()` (`redact::ImageTreatmentPlan`) beside `text()`; the image-treatment stage (`redact::ImageTreatmentApplier`) runs after the text surgery and before your metadata stage, and edits image objects, their masks and the content streams that draw removed or inline images through the object graph (items 2, 8, 9).
-- The write report gained an `images` key between `rectangles` and `self_check` (`docs/ABI.md` §4.7); `pdfkit_redact_images` is `docs/ABI.md` §4.13, placed after `pdfkit_check` (§4.12) so nothing was renumbered: give your metadata sections the numbers after it (item 7).
-- `cli/verbs/redact.cpp` was not changed: its section refusal now fires for `metadata` alone, and its message still names "image treatments or metadata" — reword or remove it when `pdfkit_set_metadata` lands (item 14).
-- The manifest's last expectation column is `expect_redact_images`, before `notes` (957 rows); the dataset outcome's last member is `redact_images`, after `redact_text`; `tests/dataset/run.py`, `dataset/tools/common.py` and their tests know it. Phase 2's `expect_redact` is still unused (item 12).
+- The write report gained an `images` key between `rectangles` and `self_check` (`docs/ABI.md` §4.7); `pdfkit_redact_images` is `docs/ABI.md` §4.15, after your §4.13 and §4.14 (items 7, 17).
+- `cli/verbs/redact.cpp`'s section refusal names the missing function; with rows 6 and 7 implemented it no longer fires (item 14).
+- The manifest's last expectation column is `expect_redact_images`, before `notes` (960 rows, synth-0263 to synth-0269 this phase's, their `expect_set_metadata` left `n/a` for your fill); the dataset outcome's last member is `redact_images`, after `set_metadata`; `tests/dataset/run.py`, `dataset/tools/common.py` and their tests know it. Phase 2's `expect_redact` is still unused (item 12).
 - The image-treatment specimens are rows synth-0263 to synth-0269, and `dataset/tools/synth/run.py` lets a specimen carry its own `licence` (item 13).
 - `tests/pdfium/leak.py` has `--images`; `compare.py --check redact` writes `pdfium-redact.json` (text) and `pdfium-redact-images.json` (images) (item 16).
 - The clang-sanitize preset compiles the vendored OpenJPEG with `-fno-sanitize=function` (item 15).
