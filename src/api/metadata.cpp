@@ -106,7 +106,7 @@ std::string json(const MetadataReader::Result& result) {
     }
     writer.key("agree");
     if (row.agree) {
-      writer.boolean(*row.agree);
+      writer.boolean(row.agree.value_or(false));
     } else {
       writer.null();
     }

@@ -24,6 +24,29 @@ PRESET = "mingw-release"
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 
 
+def without_member_dates(data: bytes) -> bytes:
+    """An ar archive (the import library) with every member's date set to 0.
+
+    The linker writes the build's time into each member header of the import
+    library it makes, so two builds of one tree differ there and nowhere else.
+    A member header is 60 bytes after the 8-byte magic: name (16), date (12),
+    owner (6), group (6), mode (8), size (10) and the two-byte end marker, and
+    the member's data follows, padded to an even length (the System V ar
+    format, recalled; two clean builds pack to one zip with it)."""
+    if not data.startswith(b"!<arch>\n"):
+        return data
+    out = bytearray(data)
+    at = 8
+    while at + 60 <= len(out):
+        header = out[at:at + 60]
+        if header[58:60] != b"`\n":
+            break
+        out[at + 16:at + 28] = b"0".ljust(12)
+        size = int(header[48:58].decode("ascii").strip() or "0")
+        at += 60 + size + (size & 1)
+    return bytes(out)
+
+
 def project_version() -> str:
     text = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     m = re.search(r"project\(pdfkit\s+VERSION\s+([\d.]+)", text)
@@ -115,7 +138,10 @@ def package() -> str | None:
             info = zipfile.ZipInfo(name, date_time=FIXED_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            archive.writestr(info, files[name].read_bytes())
+            data = files[name].read_bytes()
+            if name.endswith(".lib"):
+                data = without_member_dates(data)
+            archive.writestr(info, data)
     problem = over_budget("zip", target.stat().st_size, limits)
     if problem:
         print(problem, file=sys.stderr)

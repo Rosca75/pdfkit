@@ -357,11 +357,17 @@ tag someone has fetched is a release someone may hold.
 15. **Budgets** are the first release package plus 25 % (DLL 5,121,024,
     exe 616,960, zip 2,445,579 bytes on 2026-10-26, before phase 9's code);
     Part B measures them again on the merged tree. `build/package.py
-    --verify` rebuilds from clean and packages twice.
+    --verify` rebuilds from clean and packages twice; the first such run
+    differed in the import library alone, whose member headers the linker
+    dates with the build's time, so the package writes those dates as 0 (the
+    DLL and the EXE were already identical). At the end of Part A: DLL
+    5,131,264, exe 622,080, zip 2,450,719 bytes, two packagings identical
+    (SHA-256 `e76f5f08...0f226f`), `check_artefact.py` green.
 16. **The ABI tier's cases** are the smallest opening manifest file of 28
     tags, one file per refusal code the manifest expects, a repaired file and
-    the CLI's fixture (a redact job with a text and a metadata section); both
-    callers make the same 492 calls over 28 files.
+    the CLI's fixture (a redact job with a text and a metadata section); with
+    the metadata tags filled, both callers make the same 552 calls over 31
+    files, every expectation held.
 17. **The redact verb's refusal of a section this build lacks** is kept as
     it is (it reads `is_implemented`, so it now refuses only an `images`
     section); phase 9 removes it with its images section.
@@ -391,7 +397,15 @@ tag someone has fetched is a release someone may hold.
     `known_gap:word_in_info_xmp` and `known_gap:word_in_stream`. The earlier gates were not re-run in Part A
     (Part B re-runs every one on the merged tree). The leak check's byte scan
     no longer counts a number original inside a longer number (`1994` in a
-    path's `466.1994`), which the self-check never reads either.
+    path's `466.1994`), which the self-check never reads either. The checks
+    before the push: `python build/check.py` (15 of 15 groups, clang-tidy
+    included), `ctest --preset unit` (584 cases), `ctest --preset sanitize`,
+    `ctest --preset clang-sanitize`, `python tests/abi/run.py`, `python
+    build/package.py --verify` and `python build/check_artefact.py`, and the
+    Python suites of `dataset/tools/tests`, `tests/dataset` and
+    `tests/pdfium`.
+19. **Skills**: the `metadata` group added to `CLAUDE.md` §7.3 is carried by
+    no skill under the user's skills folder; none needed the change.
 
 ### Deviations of earlier phases that affect this one
 
