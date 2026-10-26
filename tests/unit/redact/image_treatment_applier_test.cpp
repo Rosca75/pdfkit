@@ -155,7 +155,7 @@ TEST_CASE("an inline image is rewritten inside its content stream") {
   INFO(result.report);
   REQUIRE(result.write_status == PDFKIT_OK);
   const std::string contents = pdfkit::test::contents_of(result.pdf);
-  CHECK(contents.find("/F [/AHx /Fl]") != std::string::npos);
+  CHECK(contents.find("/F /AHx ID") != std::string::npos);
   CHECK(contents.find("/W 4") != std::string::npos);
   CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, file.data.at("inline")));
   const auto listed = pdfkit::test::list_images(result.pdf);

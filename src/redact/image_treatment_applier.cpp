@@ -7,9 +7,11 @@
 // identity are found by hashing every image stream of the document as the
 // graph holds it, because one picture stored twice is one identity with two
 // objects and both must change. A treated inline image is written with the
-// filters [/AHx /Fl] (or [/AHx /DCT] for a JPEG), so its data is hexadecimal
-// and can never hold the bytes "EI" that end it (ISO 32000-1 section 8.9.7,
-// recalled). An inline image that does not decode at write time loses its
+// one filter /AHx over its samples as they are (an inline image is small,
+// and a filter array is not read by every reader: PDFium decodes no bitmap
+// from an inline [/AHx /Fl] image, measured on the dataset), so its data is
+// hexadecimal and can never hold the bytes "EI" that end it (ISO 32000-1
+// section 8.9.7, recalled). An inline image that does not decode at write time loses its
 // draw rather than keep its original data.
 
 #include "redact/image_treatment_applier.hpp"
@@ -301,10 +303,12 @@ class Stage {
     for (const auto& [key, value] : written.entries()) {
       full.set(images::ImageIdentity::full_key(key), value);
     }
+    // The samples are written as they are, never as a JPEG again: a JPX
+    // source keeps its rule for /Decode, every other codec reads as none.
     const Reencoder::Result encoded =
-        Reencoder::encode(full, samples.buffer, samples.codec, samples.image_mask);
-    const std::vector<std::byte> bytes =
-        encoded.jpeg ? encoded.data : writer::StreamCopier::deflate(encoded.data);
+        Reencoder::encode(full, samples.buffer, samples.codec == "JPXDecode" ? samples.codec : "",
+                          samples.image_mask);
+    const std::vector<std::byte>& bytes = encoded.data;
     static const std::map<std::string, std::string, std::less<>> abbreviations{
         {"BitsPerComponent", "BPC"}, {"ColorSpace", "CS"}, {"Decode", "D"},
         {"DecodeParms", "DP"},       {"Filter", "F"},      {"Height", "H"},
@@ -330,7 +334,7 @@ class Stage {
         writer::Serialiser::write(out, value, numbering);
       }
     }
-    out += encoded.jpeg ? " /F [/AHx /DCT] ID " : " /F [/AHx /Fl] ID ";
+    out += " /F /AHx ID ";
     constexpr std::string_view digits = "0123456789ABCDEF";
     std::string text;
     for (std::size_t i = 0; i < bytes.size(); ++i) {

@@ -299,6 +299,7 @@ bytes.
   "missing_references": 0,
   "unpruned_resources": 0,
   "rectangles": [],
+  "images": [],
   "self_check": {"status": "not_run", "reason": "no text redaction in the edit plan"},
   "warnings": []
 }
@@ -321,7 +322,8 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `pending_redactions` | the source's `/Redact` annotations never applied; the output drops them with every annotation |
 | `missing_references` | the distinct object numbers referenced but missing, written as `null` |
 | `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
-| `rectangles` | per output page a text redaction changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line with the glyphs drawn after it on that line, and each placeholder drawn, widened by a sixth of the glyph size) and the `placeholders` drawn there; empty when nothing was redacted |
+| `rectangles` | per output page a text redaction or an image treatment changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line with the glyphs drawn after it on that line, each placeholder drawn, widened by a sixth of the glyph size, and per draw of a treated image the page bound of each treated pixel rectangle, or the draw's box when the image is removed) and the `placeholders` drawn there; empty when nothing was redacted |
+| `images` | per image identity the plan treats, in identity order: `identity`, `treatment` (`box`, `blur`, `remove`, or `region` for region boxes alone), `objects` (the image objects replaced or emptied), `inline_draws` (the inline draws rewritten or removed), `draws_removed` (the `Do` and `BI` operations removed), `sha256` (per replaced object, and once per rewritten inline image, the SHA-256 of the new encoded data as stored: the stream's bytes, or the inline data from after `ID` to its closing `>`); empty without a treatment |
 | `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match and no rewritten metadata field; `{"status": "passed", "strings": n}` when the output was re-read and none of the n redacted strings (the text matches' strings, and the original values of the metadata fields rewritten) survives (`docs/DESIGN.md` §18); a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface and page, and no PDF is returned |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode or scan and was dropped |
 
@@ -621,6 +623,52 @@ missing `fields_json` or `out`, a key outside the field list (the message
 names the list; names are case-sensitive) and a value that is neither a
 string nor `null`.
 
+### 4.15 pdfkit_redact_images (catalogue 6)
+
+`pdfkit_redact_images(edit, treatments_json, out)` adds image treatments to
+the edit plan (`docs/DESIGN.md` §14); the pixels change when the plan is
+written. `treatments_json` is `{"treatments": [...]}`, each treatment an
+object:
+
+| Key | Holds |
+|---|---|
+| `identity` | required: an identity `pdfkit_images` lists for this document |
+| `treatment` | required: `box` (a filled rectangle painted into the samples), `blur` (a mosaic), `remove` (the image and every operator that draws it go), or `region` (a box over a rectangle the caller found in the pixels; several may be given per identity, beside a box or a blur) |
+| `rectangle` | four numbers: in pixels `[left, top, right, bottom]` from the image's top-left corner (right and bottom exclusive, rounded outward); in page space `[left, bottom, right, top]` in default user space. Absent: the whole image (not for `region`); not with `remove` |
+| `space` | `image` (default) or `page`; `page` needs `page` and `rectangle`, and the rectangle is mapped through the inverse of the CTM of every draw of the image on that page, each mapped rectangle being treated |
+| `page` | the page of a page-space rectangle, from 1 |
+| `caption` | `box` and `region` only: a caption drawn in the box from the placeholder alphabet (`[`, `]`, `_`, `0` to `9`, `A` to `Z`), centred, at the largest height of the caption font (8 to 64 pixels) that fits, in white or black, whichever contrasts with the fill; a box too small for 8 pixels draws none |
+| `colour` | `box` and `region` only: `[red, green, blue]` in 0 to 1 (default black); the fill is the sample value of the image's own colour space and `/Decode` that reads nearest to it (an Indexed image's nearest palette entry), never one a colour-key `/Mask` hides |
+
+One identity takes one `box`, `blur` or `remove`; a second is refused naming
+the first, also across calls. A blur's block is at least 8 pixels and a
+sixteenth of the image's smaller side, a multiple of 8 for a JPEG, on a grid
+from the image's top-left corner. Every treatment is checked before any is
+recorded, so a refused call leaves the plan as it was.
+
+```json
+{"treatments": [{"treatment": 0, "identity": "img:0123456789abcdef", "kind": "box",
+                 "width": 640, "height": 480, "pixels": [[0, 0, 640, 480]], "block": null,
+                 "encoded": {"sha256": "5f1c...", "bytes": 48213},
+                 "occurrences": [{"page": 1, "ordinal": 0, "rectangles": [[72, 500, 300, 671]]}]}]}
+```
+
+| Key | Holds |
+|---|---|
+| `treatment`, `identity`, `kind` | the treatment's index in this call, its identity and kind |
+| `width`, `height` | the image's size in pixels as decoded (the codec's own when it has one); 0 for a removal |
+| `pixels` | the pixel rectangles painted or mosaicked, `[left, top, right, bottom]`; empty for a removal |
+| `block` | the mosaic's block side for a blur, `null` otherwise |
+| `encoded` | the SHA-256 and length of the image's encoded data as stored (decrypted, no filter applied), so a caller can search an output for the original |
+| `occurrences` | per draw of the image (`page`, `ordinal` as `pdfkit_images` numbers them): the device rectangles the treatment changes there (`[left, bottom, right, top]`, 0.01 pt), or the draw's box for a removal |
+
+| Failure | Status | `code` |
+|---|---|---|
+| a null `edit` or `out`, malformed JSON, no `treatments` array, an unknown key or treatment, a rectangle that is not four finite numbers, a page space without a page and a rectangle, a region without a rectangle, a colour outside 0 to 1 | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| an identity no page draws; a second box, blur or remove of one identity; a region of a removed image; a caption or colour on a blur or removal; a caption outside the alphabet; a rectangle that covers no pixel; a page rectangle on a page that does not draw the image; a blur of a bitonal image under 128 pixels on its smaller side (a box is offered) | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a box, blur or region of an image that does not decode (the message offers `remove`) | `PDFKIT_E_REFUSED` | `undecodable_image` |
+| a limit met while a page or an image is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -656,10 +704,11 @@ The redact job file is a JSON object: `input` and `output` (paths), an optional
 (`pdfkit_redact_text`, `pdfkit_redact_images`, `pdfkit_set_metadata`,
 `pdfkit_select_pages`) on one edit plan. An output file is written only when
 `pdfkit_write` succeeds. The `text` section is the argument of
-`pdfkit_redact_text` (`{"matches": [...]}`, §4.11); a self-check refusal exits
-3 and writes no file. While a build lacks `pdfkit_redact_images` or
-`pdfkit_set_metadata`, a job with an `images` or `metadata` section is refused
-as a usage error naming the section, before the input is read.
+`pdfkit_redact_text` (`{"matches": [...]}`, §4.11) and the `images` section
+the argument of `pdfkit_redact_images` (`{"treatments": [...]}`, §4.15); a
+self-check refusal exits 3 and writes no file. While a build lacks
+`pdfkit_set_metadata`, a job with a `metadata` section is refused as a usage
+error naming the section, before the input is read.
 
 The dataset verb writes one outcome per file into `<folder>/outcomes/<id>.json`,
 a folder the caller creates (the harness does), in the shape

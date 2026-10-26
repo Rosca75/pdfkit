@@ -256,6 +256,19 @@ std::vector<ImageTreatmentPlan::Answer> ImageTreatmentPlan::add(
       page.insert(page.end(), reached.rectangles.begin(), reached.rectangles.end());
       answer.occurrences.push_back(std::move(reached));
     }
+    // An image a page reaches only inside a tiling pattern or a soft-mask
+    // group is drawn wherever the pattern paints, which no occurrence names:
+    // the whole media box of each such page is what the treatment may change.
+    for (const std::uint32_t number : entry->pattern_pages) {
+      if (number >= 1 && number <= document.pages().size()) {
+        const syntax::Page::Box& media = document.pages()[number - 1].media_box;
+        auto& page = treatment.rectangles[number];
+        const text::Rect whole = text::Rect::of(media.left, media.bottom, media.right, media.top);
+        if (std::ranges::find(page, whole) == page.end()) {
+          page.push_back(whole);
+        }
+      }
+    }
     std::vector<std::byte> encoded;
     if (treatment.inline_image) {
       if (entry->data) {

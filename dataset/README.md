@@ -57,6 +57,7 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_fonts` | the decoding ladder over every shown code, read from the `text` outcome's per-page `unreadable` counts and filled by `tests/pdfium/text_agreement.py --write-manifest`: `loads` (every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
 | `expect_write` | `identical` (the identity write re-opens in pdfkit without repair with the same page count, and PDFium renders every page as the input renders), `known_gap:<reason>` (a difference known in advance, with its reason) or `n/a` (a file pdfkit refuses) |
 | `expect_select` | `ok` (a seeded random proper subset of the pages, written in a shuffled order, re-opens without repair with that many pages, and each output page renders as its source page), `known_gap:<reason>` or `n/a` (one page, or a file pdfkit refuses) |
+| `expect_redact_images` | `clean` (the seeded image treatment of `tests/dataset/outcome.md` writes an output that re-opens without repair with the input's page count and still lists none of the treated or removed identities; PDFium's bitmaps hold no original sample inside a treated rectangle, the output holds no original's encoded bytes and the pages are pixel-stable outside the treated draws' rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` or `n/a` (a file with no image the job can treat, or one pdfkit refuses) |
 | `expect_redact_text` | `clean` (the seeded text redaction of `tests/dataset/outcome.md` passes the self-check and its output re-opens without repair with the input's page count; PDFium's text and the output's bytes hold no redacted word and the pages are pixel-stable outside the reported rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` (the self-check refuses for a reason the job does not redact, such as a word that is also in the metadata) or `n/a` (a file pdfkit refuses) |
 | `expect_set_metadata` | `clean` (the metadata rewrite of `tests/dataset/outcome.md` passes the self-check, re-opens without repair with the input's page count, and its Info dictionary and XMP packet carry the written values; PDFium's text and Info fields and the output's bytes hold no original value, which `tests/pdfium/leak.py --metadata` measures), `known_gap:<reason>` or `n/a` (no field present, or a file pdfkit refuses) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |
@@ -108,6 +109,15 @@ overrides them from provenance:
   column sits before `notes`. The synthesised redaction traps
   (`dataset/tools/synth/redaction/`, tags `redact_<case>`) draw the marker the
   seeded job always redacts.
+- `expect_redact_images`: `clean` when `expect_open` is `opens` or `repaired`
+  and `expect_images` is not `n/a`, `n/a` otherwise
+  (`common.default_expect_redact_images`, applied by `add.py`); a run fills it
+  from what the job found (`python tests/dataset/gates/phase9.py --run <id>
+  --write-manifest`: `n/a` where `pdfkit_images` lists no image). The column
+  sits before `notes`. The synthesised treatment files
+  (`dataset/tools/synth/images/`, tags `treat_region` and `treat_caption`)
+  hold every image case of the job in one file, the codec sources copied from
+  permissively licensed dataset files under their own licence.
 
 ## 4. The licence rule
 

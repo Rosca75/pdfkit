@@ -50,6 +50,11 @@ MAX_FORM_DEPTH = 32
 # keeps constant.
 JPEG_TOLERANCE = 2
 JPEG_BLOCK = 8
+# Inside a captioned JPEG box a pixel may lie this far from the line between
+# the fill and the ink: the quantisation of a CMYK JPEG goes through the CMYK
+# conversion off the grey axis (up to 21 levels measured on the dataset's
+# CMYK JPEGs, a white caption read as 239, 234, 246).
+CAPTION_JPEG_TOLERANCE = 32
 
 # ---------------------------------------------------------------------------
 # The worker side
@@ -161,98 +166,119 @@ def pool(workers: int) -> pdfium.Pool:
 # The caller side
 
 
-def read_bitmap(path: str) -> tuple[int, int, int, list] | None:
-    """(width, height, channels, rows of pixel tuples) of a worker's bitmap file."""
-    blob = Path(path).read_bytes()
-    header, _, pixels = blob.partition(b"\n")
-    width, height, stride, fmt = (int(v) for v in header.split())
-    channels = {1: 1, 2: 3, 3: 4, 4: 4}.get(fmt)
-    if channels is None:
+class Bitmap:
+    """A worker's bitmap file: rows of `channels` bytes per pixel, `used` of
+    them colour (grey, or blue, green and red)."""
+
+    def __init__(self, path: str):
+        blob = Path(path).read_bytes()
+        header, _, self.data = blob.partition(b"\n")
+        self.width, self.height, self.stride, fmt = (int(v) for v in header.split())
+        self.channels = {1: 1, 2: 3, 3: 4, 4: 4}.get(fmt, 0)
+        self.used = 1 if fmt == 1 else 3
+
+    def pixel(self, x: int, y: int) -> tuple:
+        at = y * self.stride + x * self.channels
+        return tuple(self.data[at:at + self.used])
+
+    def segment(self, y: int, x0: int, x1: int) -> bytes:
+        at = y * self.stride
+        return self.data[at + x0 * self.channels:at + x1 * self.channels]
+
+    def uniform(self, y: int, x0: int, x1: int, value: tuple, tolerance: int,
+                skip: list | None = None) -> int | None:
+        """None when every pixel of the row's span reads value within tolerance;
+        the first other pixel's x otherwise (pixels inside `skip` rectangles aside)."""
+        seg = self.segment(y, x0, x1)
+        if all(value[c] - tolerance <= min(seg[c::self.channels]) and
+               max(seg[c::self.channels]) <= value[c] + tolerance for c in range(self.used)) if seg else True:
+            return None
+        for x in range(x0, x1):
+            if skip and any(bx0 <= x < bx1 and by0 <= y < by1 for bx0, by0, bx1, by1 in skip):
+                continue
+            if not close(self.pixel(x, y), value, tolerance):
+                return x
         return None
-    used = 1 if fmt == 1 else 3
-    rows = []
-    for y in range(height):
-        row = pixels[y * stride:y * stride + width * channels]
-        rows.append([tuple(row[x * channels:x * channels + used]) for x in range(width)])
-    return width, height, used, rows
 
 
 def close(a: tuple, b: tuple, tolerance: int) -> bool:
     return all(abs(p - q) <= tolerance for p, q in zip(a, b))
 
 
-def interior(rect: list[int], jpeg: bool) -> list[int]:
-    """The part of a box judged: all of it, or for a JPEG the 8 by 8 blocks wholly inside it."""
+def interior(rect: list[int], jpeg: bool, bitmap: Bitmap) -> list[int]:
+    """The part of a box judged, cut to the bitmap: all of it, or for a JPEG the
+    8 by 8 blocks wholly inside it."""
     left, top, right, bottom = rect
-    if not jpeg:
-        return [left, top, right, bottom]
-    step = JPEG_BLOCK
-    return [-(-left // step) * step, -(-top // step) * step, (right // step) * step, (bottom // step) * step]
+    if jpeg:
+        step = JPEG_BLOCK
+        left, top = -(-left // step) * step, -(-top // step) * step
+        right, bottom = (right // step) * step, (bottom // step) * step
+    return [max(left, 0), max(top, 0), min(right, bitmap.width), min(bottom, bitmap.height)]
 
 
-def judge_box(rows, rect: list[int], jpeg: bool, caption: bool) -> dict | None:
+def judge_box(bitmap: Bitmap, rect: list[int], jpeg: bool, caption: bool) -> dict | None:
     """None when the rectangle holds the box's fill alone, or with a caption the
     fill and the ink (for a JPEG, the blends between them its blocks make); the
-    first other pixel otherwise."""
-    left, top, right, bottom = interior(rect, jpeg)
+    first other pixel otherwise. The fill is the colour of the judged part's
+    top-left corner, which a centred caption leaves bare."""
+    left, top, right, bottom = interior(rect, jpeg, bitmap)
+    if left >= right or top >= bottom:
+        return None
     tolerance = JPEG_TOLERANCE if jpeg else 0
-    pixels = [(x, y, rows[y][x]) for y in range(max(top, 0), min(bottom, len(rows)))
-              for x in range(max(left, 0), min(right, len(rows[y])))]
-    if not pixels:
+    fill = bitmap.pixel(left, top)
+    odd_rows = [y for y in range(top, bottom) if bitmap.uniform(y, left, right, fill, tolerance) is not None]
+    if not odd_rows:
         return None
     if not caption:
-        fill = pixels[0][2]
-        for x, y, pixel in pixels:
-            if not close(pixel, fill, tolerance):
-                return {"x": x, "y": y, "pixel": list(pixel), "fill": list(fill)}
-        return None
-    # The fill is the commonest colour; the ink the one farthest from it.
-    counts: dict = {}
-    for _, _, pixel in pixels:
-        counts[pixel] = counts.get(pixel, 0) + 1
-    fill = max(counts, key=lambda c: (counts[c], c))
-    ink = max(counts, key=lambda c: (sum((a - b) ** 2 for a, b in zip(c, fill)), c))
+        y = odd_rows[0]
+        x = bitmap.uniform(y, left, right, fill, tolerance)
+        return {"x": x, "y": y, "pixel": list(bitmap.pixel(x, y)), "fill": list(fill)}
+    # The ink is the colour of the caption's rows farthest from the fill.
+    ink = fill
+    for y in odd_rows:
+        for x in range(left, right):
+            pixel = bitmap.pixel(x, y)
+            if sum((p - q) ** 2 for p, q in zip(pixel, fill)) > sum((p - q) ** 2 for p, q in zip(ink, fill)):
+                ink = pixel
     span = [b - a for a, b in zip(fill, ink)]
     length = sum(v * v for v in span)
-    for x, y, pixel in pixels:
-        if not jpeg:
-            if pixel != fill and pixel != ink:
+    for y in odd_rows:
+        for x in range(left, right):
+            pixel = bitmap.pixel(x, y)
+            if not jpeg:
+                if pixel != fill and pixel != ink:
+                    return {"x": x, "y": y, "pixel": list(pixel), "fill": list(fill), "ink": list(ink)}
+                continue
+            # A blend of the two lies on the segment between them, within the
+            # JPEG's ringing.
+            t = sum((p - a) * v for p, a, v in zip(pixel, fill, span)) / length if length else 0.0
+            t = min(1.0, max(0.0, t))
+            nearest = [a + t * v for a, v in zip(fill, span)]
+            if any(abs(p - q) > CAPTION_JPEG_TOLERANCE for p, q in zip(pixel, nearest)):
                 return {"x": x, "y": y, "pixel": list(pixel), "fill": list(fill), "ink": list(ink)}
-            continue
-        # A blend of the two lies on the segment between them, within the
-        # JPEG's ringing.
-        t = sum((p - a) * v for p, a, v in zip(pixel, fill, span)) / length if length else 0.0
-        t = min(1.0, max(0.0, t))
-        nearest = [a + t * v for a, v in zip(fill, span)]
-        if any(abs(p - q) > 3 * JPEG_TOLERANCE for p, q in zip(pixel, nearest)):
-            return {"x": x, "y": y, "pixel": list(pixel), "fill": list(fill), "ink": list(ink)}
     return None
 
 
-def judge_blur(rows, rect: list[int], block: int, jpeg: bool, boxes: list) -> dict | None:
+def judge_blur(bitmap: Bitmap, rect: list[int], block: int, jpeg: bool, boxes: list) -> dict | None:
     """None when every block of the grid is constant inside the rectangle; a
-    pixel under a region box painted after the mosaic is not judged here."""
+    block a region box (painted after the mosaic) touches is judged with the
+    box, not here."""
     left, top, right, bottom = rect
+    right, bottom = min(right, bitmap.width), min(bottom, bitmap.height)
     tolerance = JPEG_TOLERANCE if jpeg else 0
+    margin = JPEG_BLOCK if jpeg else 0
     for row0 in range(top - top % block, bottom, block):
         for col0 in range(left - left % block, right, block):
-            y0, y1 = max(row0, top), min(row0 + block, bottom, len(rows))
+            y0, y1 = max(row0, top), min(row0 + block, bottom)
             x0, x1 = max(col0, left), min(col0 + block, right)
-            if jpeg and any(bx0 < x1 + JPEG_BLOCK and x0 - JPEG_BLOCK < bx1 and
-                            by0 < y1 + JPEG_BLOCK and y0 - JPEG_BLOCK < by1
-                            for bx0, by0, bx1, by1 in boxes):
-                # A JPEG block a region box touches mixes the two fills.
+            if any(bx0 < x1 + margin and x0 - margin < bx1 and by0 < y1 + margin and y0 - margin < by1
+                   for bx0, by0, bx1, by1 in boxes):
                 continue
-            first = None
+            first = bitmap.pixel(x0, y0)
             for y in range(y0, y1):
-                row = rows[y]
-                for x in range(x0, min(x1, len(row))):
-                    if any(bx0 <= x < bx1 and by0 <= y < by1 for bx0, by0, bx1, by1 in boxes):
-                        continue
-                    if first is None:
-                        first = row[x]
-                    elif not close(row[x], first, tolerance):
-                        return {"x": x, "y": y, "pixel": list(row[x]), "block_value": list(first)}
+                x = bitmap.uniform(y, x0, x1, first, tolerance)
+                if x is not None:
+                    return {"x": x, "y": y, "pixel": list(bitmap.pixel(x, y)), "block_value": list(first)}
     return None
 
 
@@ -287,11 +313,11 @@ def check_file(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
             result["unmatched"].append({"identity": identity, "digest": digest[:16],
                                         "drawn": record is not None})
             continue
-        decoded = read_bitmap(record["bitmap"])
-        if decoded is None:
+        bitmap = Bitmap(record["bitmap"])
+        if not bitmap.channels:
             result["unmatched"].append({"identity": identity, "digest": digest[:16], "format": "unknown"})
             continue
-        width, height, _, rows = decoded
+        width, height = bitmap.width, bitmap.height
         if [width, height] != [treatment.get("width"), treatment.get("height")]:
             result["size_differs"].append({"identity": identity, "pdfium": [width, height],
                                            "pdfkit": [treatment.get("width"), treatment.get("height")]})
@@ -309,9 +335,9 @@ def check_file(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
         for kind, rect in checks:
             result["rectangles"] += 1
             if kind == "blur":
-                odd = judge_blur(rows, rect, int(treatment.get("block") or 8), jpeg, regions)
+                odd = judge_blur(bitmap, rect, int(treatment.get("block") or 8), jpeg, regions)
             else:
-                odd = judge_box(rows, rect, jpeg, kind == "caption")
+                odd = judge_box(bitmap, rect, jpeg, kind == "caption")
             if odd is not None:
                 result["survivals"].append({"identity": identity, "kind": kind, "rect": rect, **odd})
     return result

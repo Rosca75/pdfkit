@@ -54,6 +54,7 @@ add_executable(pdfkit_tests
   redact/api_redact_images_test.cpp
   redact/image_remover_test.cpp
   redact/image_treatment_applier_test.cpp
+  redact/jpx_treatment_test.cpp
   redact/self_check_test.cpp
   redact/support/image_redaction.cpp
   redact/support/redaction.cpp

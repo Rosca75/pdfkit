@@ -796,35 +796,70 @@ position the original gave it (CLAUDE.md §5).
 ## 14. Image treatments
 
 A treatment applies to an image identity and reaches every occurrence, because
-the samples belong to the object (one answer per picture). An overlay drawn over
-an image in the content stream is never a treatment, because the samples stay in
-the file.
+the samples belong to the object (one answer per picture): the image object
+is decoded to its samples as its encoding stores them (before `/Decode` and
+the colour space), treated, re-encoded and put back under its own object
+number, so every draw of it, on every page and in every form or pattern,
+shows the treated pixels and the original stream is gone from the output. An
+overlay drawn over an image in the content stream is never a treatment,
+because the samples stay in the file.
 
-- **Box**: a filled rectangle (black by default, a caller colour in the image's
-  colour space otherwise) painted into the decoded samples in image pixel space;
-  a caller rectangle given in page space is mapped through the inverse of the
-  occurrence's CTM and the union over occurrences is painted. An optional caption
-  from the placeholder alphabet is drawn inside the box with a bitmap font of the
-  alphabet rasterised from Liberation Sans at build time by a tool in
-  `build/fonts/` and committed as data, scaled to fit the box. A box over the
-  whole image is the default rectangle.
-- **Blur**: a mosaic over the rectangle (the whole image by default) whose block
-  is at least 8 pixels and at least a sixteenth of the image's smaller
-  dimension, each block filled with its mean, because a mosaic of that size holds
-  no recoverable detail and a convolution blur is reversible; refused for a
-  bitonal image whose smaller dimension is under 128 pixels (box offered).
-- **Remove**: the XObject is gone and every `Do` of it is removed from every
-  content stream (an inline image's `BI … EI` is removed), leaving its rectangle
-  empty.
-- **Soft mask**: the same rectangle is treated in the mask (set opaque under a
-  box, mosaicked under a blur), because a box over the colour and not over the
-  mask shows the box's edge through the mask's shape.
+- **Box**: a filled rectangle painted into the samples in image pixel space,
+  black by default or a caller colour given as red, green and blue; the fill
+  is the sample value of the image's own colour space and `/Decode` that
+  reads nearest to that colour (an Indexed image's nearest palette entry, the
+  inverse of a `[1 0]` `/Decode`, a rich black in CMYK), found by a search
+  over the sample values through the same conversion the decoder applies, and
+  never a value a colour-key `/Mask` hides. A caller rectangle given in page
+  space is mapped through the inverse of the CTM of every draw of the image on
+  that page and rounded outward, and every mapped rectangle is painted. An
+  optional caption from the placeholder alphabet is drawn inside the box with
+  a bitmap font of the alphabet rasterised from Liberation Sans at build time
+  (`build/fonts/bitmap_font.py`, heights 8, 12, 16, 24, 32, 48 and 64
+  pixels) and committed as data, at the largest height whose line fits, in
+  white or black, whichever contrasts with the fill, upright as the image's
+  first draw shows it (an image drawn flipped or turned by a multiple of 90
+  degrees gets its caption turned back); a box too small for 8 pixels draws
+  none. A box over the whole image is the default rectangle. Region boxes,
+  boxes over rectangles the caller found in the pixels, accumulate beside a
+  box or a blur.
+- **Blur**: a mosaic whose block is at least 8 pixels and at least a
+  sixteenth of the image's smaller dimension (a multiple of 8 for a JPEG, so
+  the re-encoded blocks stay constant), on a grid from the image's top-left
+  corner, each block's part inside the rectangle filled with its mean (an
+  Indexed image's palette entry nearest the mean colour), because a mosaic of
+  that size holds no recoverable detail and a convolution blur is
+  reversible; refused for a bitonal image whose smaller dimension is under
+  128 pixels (box offered).
+- **Remove**: every `Do` of the XObject is removed from every content stream
+  (the page's, the forms it draws, the tiling patterns and soft-mask groups
+  its resources name), the operator alone, so the `q`, `Q` and `cm` around it
+  stay balanced; an inline image's `BI … EI` is removed; the XObject's entry
+  goes from every resource dictionary walked and the object itself is
+  emptied, so nothing left can reach its bytes, leaving its rectangle empty.
+- **Soft mask**: the same rectangle is treated in the mask (`/SMask`, a
+  stencil `/Mask`, or a JPEG 2000 codestream's alpha, which becomes a soft
+  mask of its own), set opaque under a box and mosaicked under a blur, because
+  a box over the colour and not over the mask shows the box's edge through the
+  mask's shape; a mask of another size is treated over the same part of the
+  picture, and a mask that does not decode is dropped.
 - **Re-encoding**: a treated lossless image is re-encoded with Flate in its
-  source colour space and bit depth (the `/DecodeParms` and predictors dropped);
-  a treated `DCTDecode` image is re-encoded as JPEG through libjpeg-turbo at
-  quality 90 (author decision) in its colour space; a treated JBIG2, CCITT or
-  JPX image is re-encoded as Flate (1-bit for a bitonal source). `/Decode` and
-  `/ColorSpace` are kept so the pixels mean what they meant.
+  source colour space and bit depth (the `/DecodeParms` and predictors
+  dropped); a treated `DCTDecode` image is re-encoded as JPEG through
+  libjpeg-turbo at quality 90 (author decision) with its component count and
+  no chroma subsampling, CMYK written with the Adobe marker; a treated JBIG2,
+  CCITT or JPX image is re-encoded as Flate (1-bit for a bitonal source, whose
+  codec output is already the image's samples). `/Decode` and `/ColorSpace`
+  are kept so the pixels mean what they meant, except that a JPX image's
+  `/Decode`, which a reader ignores, is dropped, and a `/ColorSpace` the codec
+  implied is written out. A treated inline image is written back in its
+  content stream with its abbreviated keys and the one filter `/AHx` over its
+  samples as they are (a JPEG source included), whose hexadecimal data cannot
+  hold the `EI` that ends it; a filter array is not read by every reader
+  (PDFium decodes no bitmap from an inline `[/AHx /Fl]` image).
+- A treatment that writes exactly an image's original bytes (a blur of an
+  image whose blocks were already constant) hides nothing and is not a
+  survivor.
 - An image the library cannot decode accepts keep and remove only.
 
 ## 15. The channel table
@@ -1019,7 +1054,7 @@ Every refusal carries the three fields of CLAUDE.md §3.3 (`failed`,
 | `unsupported_security_handler` | `/Encrypt` names a handler other than `/Standard`, or a revision outside 2 to 6 | the handler and revision found, and to remove the protection in the producing application |
 | `limit_exceeded` | a stream, the document, an image or an allocation past a limit of §3.2 | the object, the limit, and to re-save or split the file or raise the limit at open |
 | `page_ceiling` | the page count is above the configured ceiling | the count and the ceiling, and to split the file or raise the ceiling at open |
-| `undecodable_image` | `pdfkit_image_data` asked for an image whose encoding does not decode (the call is refused, the document is not) | the identity, the encoding, the object and the fault, and that only keep and remove apply |
+| `undecodable_image` | `pdfkit_image_data` asked for an image whose encoding does not decode, or `pdfkit_redact_images` for a box, blur or region box of it (the call is refused, the document is not) | the identity, the encoding, the object and the fault, and that only keep and remove apply |
 
 | Warning code | When | The message names |
 |---|---|---|
