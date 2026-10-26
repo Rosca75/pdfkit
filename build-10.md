@@ -406,6 +406,12 @@ tag someone has fetched is a release someone may hold.
     `tests/pdfium`.
 19. **Skills**: the `metadata` group added to `CLAUDE.md` §7.3 is carried by
     no skill under the user's skills folder; none needed the change.
+20. **The 11 `known_gap:pdfium_reads_*` rows of item 18 are `clean`** after
+    the phrase-search fix (branch `fix/phrase-search`, `OPEN-QUESTIONS.md`
+    §2.12 item 7 and §2.14): the search and the self-check read every page
+    in the drawing order and along its rows too (`docs/DESIGN.md` §11 and
+    §18), and an Arabic presentation form reads as its letters. Part B's
+    re-run of every gate measures with them clean.
 
 ### Deviations of earlier phases that affect this one
 

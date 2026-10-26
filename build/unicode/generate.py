@@ -15,7 +15,12 @@
 #     and Me (field 2), as ranges;
 #   - the white space a whitespace folding collapses: General_Category Zs, Zl
 #     and Zp, and the controls U+0009 to U+000D and U+0085, which the
-#     White_Space property of PropList.txt adds to them (recalled).
+#     White_Space property of PropList.txt adds to them (recalled);
+#   - the positional presentation forms every folding reads as their
+#     letters: the decompositions of field 5 tagged <initial>, <medial>,
+#     <final> or <isolated> (the Arabic presentation forms and their
+#     ligatures), one level deep, since the canonical decomposition applies
+#     after them.
 # Every input file is pinned by its SHA-256 in build/unicode/unicode.lock;
 # build/check_generated.py regenerates the output and fails on a difference.
 """Generate the folding tables: python build/unicode/generate.py [--out <folder>]."""
@@ -64,10 +69,15 @@ def case_folding() -> list[tuple[int, int]]:
     return sorted(pairs)
 
 
-def unicode_data() -> tuple[dict[int, list[int]], list[tuple[int, str]]]:
-    """The canonical decompositions and every assigned code point's category."""
+POSITIONAL = ("<initial>", "<medial>", "<final>", "<isolated>")
+
+
+def unicode_data() -> tuple[dict[int, list[int]], list[tuple[int, str]], dict[int, list[int]]]:
+    """The canonical decompositions, every assigned code point's category and the positional
+    presentation forms' letters."""
     decompositions: dict[int, list[int]] = {}
     categories: list[tuple[int, str]] = []
+    positional: dict[int, list[int]] = {}
     pending_first = None
     for line in read_pinned("UnicodeData.txt").split("\n"):
         if not line:
@@ -85,7 +95,9 @@ def unicode_data() -> tuple[dict[int, list[int]], list[tuple[int, str]]]:
         categories.append((code, category))
         if mapping and not mapping.startswith("<"):
             decompositions[code] = [int(part, 16) for part in mapping.split()]
-    return decompositions, categories
+        elif mapping.split(" ", 1)[0] in POSITIONAL:
+            positional[code] = [int(part, 16) for part in mapping.split()[1:]]
+    return decompositions, categories, positional
 
 
 def full(code: int, decompositions: dict[int, list[int]]) -> list[int]:
@@ -109,14 +121,15 @@ def ranges(codes: list[int]) -> list[tuple[int, int]]:
 
 def generate() -> str:
     folds = case_folding()
-    decompositions, categories = unicode_data()
+    decompositions, categories, positional = unicode_data()
     marks = ranges([c for c, cat in categories if cat in ("Mn", "Me")])
     spaces = ranges([c for c, cat in categories if cat in ("Zs", "Zl", "Zp")] + CONTROL_SPACES)
     out = [cpp_table.header([
         "The Unicode 18.0.0 tables of the search folding (third_party/unicode/,",
         "https://www.unicode.org/Public/18.0.0/ucd/, Unicode License v3, read): the simple",
-        "case folding, the full canonical decompositions, the combining marks and the",
-        "white space, each sorted for a binary search. Included by",
+        "case folding, the full canonical decompositions, the combining marks, the",
+        "white space and the positional presentation forms' letters, each sorted for a",
+        "binary search. Included by",
         "src/platform/unicode/folding.cpp, which declares the types.",
     ], "build/unicode/generate.py"), ""]
     out.append(f"constexpr std::array<CaseFold, {len(folds)}> case_folds{{{{")
@@ -139,6 +152,18 @@ def generate() -> str:
         out.append(f"constexpr std::array<CodeRange, {len(table)}> {name}{{{{")
         out += [f"    {{0x{a:04X}, 0x{b:04X}}}," for a, b in table]
         out += ["}};", ""]
+    shaped: list[int] = []
+    forms = []
+    for code in sorted(positional):
+        forms.append((code, len(shaped), len(positional[code])))
+        shaped += positional[code]
+    out.append(f"constexpr std::array<char32_t, {len(shaped)}> positional_data{{{{")
+    for start in range(0, len(shaped), 8):
+        out.append("    " + ", ".join(f"0x{c:04X}" for c in shaped[start:start + 8]) + ",")
+    out += ["}};", ""]
+    out.append(f"constexpr std::array<Decomposition, {len(forms)}> positional_forms{{{{")
+    out += [f"    {{0x{c:04X}, {o}, {n}}}," for c, o, n in forms]
+    out += ["}};", ""]
     return "\n".join(out)
 
 

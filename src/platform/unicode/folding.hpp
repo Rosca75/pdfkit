@@ -12,6 +12,13 @@
 //     which has no decomposition, stays;
 //   - whitespace: every run of white space (General_Category Zs, Zl, Zp and
 //     the controls of the White_Space property) reads as one space.
+// Under every option a positional presentation form (a decomposition of
+// UnicodeData.txt tagged <initial>, <medial>, <final> or <isolated>: the
+// Arabic presentation forms and their ligatures) reads as its letters,
+// because it is the letter drawn in the shape its place in a word takes, and
+// a reader that undoes the shaping (PDFium does) writes the letters. The
+// other compatibility forms (a full-width letter, U+00DF, a superscript
+// digit) stay what they are.
 // A folded text keeps, for each of its code points, the index of the source
 // code point it came from, so a match found in folded text maps back to the
 // source. The tables are generated from Unicode 18.0.0 by
@@ -55,6 +62,8 @@ class Folding {
   // The full canonical decomposition of one code point; itself when it has
   // none.
   [[nodiscard]] static std::u32string decompose(char32_t code_point);
+  // The letters of a positional presentation form; itself when it is none.
+  [[nodiscard]] static std::u32string unshape(char32_t code_point);
 
   // The case and diacritic folding of one code point, appended to out (zero
   // code points for a removed mark, several for a decomposition).
