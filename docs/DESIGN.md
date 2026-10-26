@@ -745,7 +745,8 @@ A phrase is matched as a phrase: its words found one by one (each word of a
 phrase present on the page within the phrase's span, in no order a reader
 uses) are not a match, because over the dataset the orders above leave no
 phrase for PDFium to find, while the word-by-word rule would remove or refuse
-the common words of a title wherever they stand near each other.
+the common words of a title wherever they stand near each other (it fired in
+42 of 812 metadata rewrites, on 317 pages, on no phrase a reader reads).
 
 A match spans operators, fonts, `TJ` adjustments, lines and a hyphen, and is one
 match. It removes its glyphs, every duplicate folded into one of them (§7), and

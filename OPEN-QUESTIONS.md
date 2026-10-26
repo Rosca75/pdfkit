@@ -436,6 +436,8 @@ each taken while this question stands; `build-10.md` §9 records them and
      notes that a phrase pdfkit reads across columns may survive in another
      reader's order. No extra cost now.
 
+   *Taken: (a), on the branch `fix/phrase-search`; its decisions are §2.14.*
+
 ### 2.13 Image treatment: what counts as hidden, and what a damaged inline image takes with it (raised by phase 9)
 
 Phase 9 took these four decisions unattended, each the recommended answer
@@ -479,3 +481,57 @@ and each taken while this question stands; `build-9.md` §9 records them and
    - **(a) Keep it — recommended.** No cost.
    - (b) Turn a large treated inline image into an XObject. About 3 hours and
      $45.
+
+### 2.14 The phrase search over every reader's order (raised by the phrase-search fix)
+
+The fix of §2.12 item 7 took these decisions unattended, each the
+recommended answer and each taken while this question stands;
+`docs/DESIGN.md` §11 and §18 state the rules. Do you confirm them?
+
+1. **A search and the self-check read the page in four orders**: pdfkit's
+   reading order, the drawing order, and the page's rows (lines whose
+   baselines agree, across a column gap) read from either end. In the other
+   orders a word gap is read from positions (a space glyph, or a start more
+   than 0.15 of the size past the glyphs before), and a space of the
+   searched string matches a gap or none; inside a word no gap is allowed.
+   A match found only there removes its glyphs as one occurrence per
+   stretch of the glyph list, the first drawing the placeholder.
+   - **(a) Keep the four orders — recommended.** No cost. Over the 960-file
+     dataset (run `ps-gate5` against `ps-base2`, the main binary) the
+     originals PDFium finds in a metadata rewrite's output go from 62 hits
+     in 11 files to 0, each original removed (no refusal); the text
+     redaction job keeps 0 PDFium hits and 0 byte hits, 909 of 909
+     self-checks pass, pixel stability 99.54% and placeholders found 99.44%
+     (main: 99.53% and 99.44%), both runs identical. The seeded single words
+     gain a few occurrences (64 more of 9,615 in an earlier run, in 10
+     files), and the dataset verb takes as long as before.
+   - (b) The drawing order alone (what PDFium and pdf.js read). No
+     development cost; a reader that keeps rows (pdftotext -layout) or reads
+     a right-to-left line visually is not covered.
+   - (c) Every pair of words adjacent in any of the orders, the space
+     required. No development cost; a phrase whose words a reader joins
+     without a gap (the CJK widths of dccc-0139) is missed.
+2. **No word-by-word fallback**: a phrase whose words stand near each other
+   in no reader's order is not a match. Measured on the
+   same run: with the orders above PDFium finds no original, and a
+   fallback (every word of an original within twice its word count of
+   tokens) would still fire in 42 of the 812 rewritten outputs, on 317
+   pages: "Free Culture" on 170 pages of a book about free culture, "2013
+   Publication 15" on 59, "bed side rails", a citation reading
+   "Transportation Statistics, Annual / Statistics", and the URL
+   "martin-thoma.com" for "Martin Thoma" (a hyphen is no white space under
+   the folding; a caller who wants such variants searches them).
+   - **(a) Keep phrases as phrases — recommended.** No cost.
+   - (b) Add the fallback (every word of the phrase on the page within twice
+     its word count of tokens). About 2 hours and $30; the pages above lose
+     their common words, or refuse.
+3. **An Arabic presentation form reads as its letters under every folding**
+   (the decompositions UnicodeData.txt tags `<initial>`, `<medial>`,
+   `<final>`, `<isolated>`), because PDFium writes the letters (pdfbox-0004:
+   "Hello محمد World" drawn in presentation forms). It is a narrower
+   compatibility folding than §2.11 item 1 declines: a full-width letter and
+   `ß` still stay what they are.
+   - **(a) Keep it — recommended.** No cost.
+   - (b) Only under a `compatibility` flag of §2.11 item 1(a). About 2 to 3
+     hours and $40 to $60 with that flag; without the flag pdfbox-0004 is a
+     known gap again.
