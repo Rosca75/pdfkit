@@ -38,8 +38,8 @@ write the same bytes: an output it writes is named in the outcome relative to
 UTF-8 JSON, LF, no byte-order mark, keys in exactly the order shown, two-space
 indentation, one key per catalogue function in the order of the catalogue
 (`open`, `inspect`, `text`, `images`, `metadata`, `channels`, `redact`), then
-`write`, `select` and `redact_text`, each present always: a function the verb
-did not run is `null`.
+`write`, `select`, `redact_text` and `set_metadata`, each present always: a
+function the verb did not run is `null`.
 
 ```json
 {
@@ -75,7 +75,19 @@ did not run is `null`.
     "decoded": 3,
     "undecodable": [{"identity": "img:0123456789abcdef", "code": "undecodable_image"}]
   },
-  "metadata": {"status": "ok", "code": null, "agree": true},
+  "metadata": {
+    "status": "ok",
+    "code": null,
+    "info": true,
+    "xmp": "read",
+    "agree": false,
+    "present": ["Title", "Producer", "CreationDate"],
+    "disagree": ["Producer"],
+    "utf16": 1,
+    "utf16le": 0,
+    "namespaces": ["http://ns.adobe.com/pdf/1.3/", "http://purl.org/dc/elements/1.1/"],
+    "history": false
+  },
   "channels": {"status": "ok", "code": null, "present": ["ch_annotation"]},
   "redact": {
     "status": "ok",
@@ -120,6 +132,20 @@ did not run is `null`.
     "placeholders": [[1, 6]],
     "geometry": [[1, 0, 0, 612, 792, 0]],
     "codes": ["4163636f756e74"],
+    "metadata": ["Title"],
+    "reopen": {"status": "ok", "code": null, "pages": 1, "repairs": []}
+  },
+  "set_metadata": {
+    "status": "ok",
+    "code": null,
+    "fields": ["Title", "Producer", "CreationDate"],
+    "originals": ["Account report", "D:20200101120000Z", "Maker 1.0"],
+    "output": "outputs/qpdf-0001.metadata.pdf",
+    "sha256": "<hex of the output>",
+    "bytes": 5498,
+    "self_check": "passed",
+    "xmp": "read",
+    "mismatches": [],
     "reopen": {"status": "ok", "code": null, "pages": 1, "repairs": []}
   }
 }
@@ -157,10 +183,35 @@ right, top, rotate]` (from `pdfkit_inspect`; a renderer draws the crop box
 turned by the rotation, so `compare.py --check redact` places the rectangles
 through it),
 `codes` the removed codes of four bytes or more (hexadecimal, per font run),
-and `reopen` the output opened again. A self-check refusal is `status`
+and `reopen` the output opened again. `metadata` names the metadata fields the
+job also rewrote, each to `REDACTED <FIELD>` (the field's name in capitals) with
+`pdfkit_set_metadata`: every field one of whose values (the Info value, a paired
+XMP value or an item of an XMP array) holds one of the strings, ASCII letters
+compared without case, because the self-check refuses an output whose metadata
+still holds a redacted string. A self-check refusal is `status`
 `error` with `code` `PDFKIT_E_SELF_CHECK`, the `message` naming the surfaces,
 and the `strings` that were asked; no output is written. It is `skipped` when
 `open` did not succeed.
+
+`metadata` is `pdfkit_metadata` in brief: whether the file has an Info
+dictionary, the packet's state (`read`, `absent` or `unreadable`), whether no
+field disagrees, the fields present in either place and those whose two values
+disagree, the Info strings written in UTF-16 (either byte order) and in
+UTF-16LE, the namespaces of the packet's properties and whether it holds an
+`xmpMM:History`.
+
+`set_metadata` rewrites every field present in either place to `REDACTED
+<FIELD>` with `pdfkit_set_metadata`, adds every original value of those fields
+of three letters or digits or more, the ones the self-check searches for (each
+Info value, paired XMP value and array item, each once, sorted by their
+bytes), as a search of one `pdfkit_redact_text` call with the default folding and
+the placeholder `[REDACTED]`, because the self-check refuses an output in which
+an original survives in the page text, writes `<dir>/outputs/<id>.metadata.pdf`
+and opens it again: `mismatches` names every rewritten field whose Info value is
+not the written one, or, when the output's packet is read, whose XMP values are
+not all the written one. It is `skipped` with the code `no_metadata` for a file
+whose metadata holds no field; a refusal is written as for `redact_text`, with
+the `fields` and `originals` asked.
 
 `text` is `pdfkit_text` with `{"blocks": false, "reserialisation": true}`: each
 page's text as the function writes it (visible blocks, then hidden blocks, a
@@ -203,13 +254,16 @@ checks independently.
 | `expect_images` = `decoded` | `images.status`, `images.undecodable` | `ok` and `undecodable` is empty |
 | `expect_images` = `partial:<reason>` | `images.status` | `ok` |
 | `expect_redact` = `stable` | `redact.status`, `redact.stable` | `ok` and `stable` is true |
-| `expect_metadata` = `agree` | `metadata.status`, `metadata.agree` | `ok` and `agree` is true |
+| `expect_metadata` = `read` | `metadata.status`, `metadata.xmp` | `ok`, and `xmp` is not `unreadable`; whether the two places agree is a property of the file (its `meta_*` tag), not a failure |
+| `expect_metadata` = `known_gap:<reason>` | none | passes apart |
 | `expect_write` = `identical` | `write.status`, `write.reopen` | `ok`, and `reopen.status` `ok` with no repairs and the same page count; the pixel identity is measured by `compare.py --check write` |
 | `expect_write` = `known_gap:<reason>` | `write.status` | `ok` (counted apart) |
 | `expect_select` = `ok` | `select.status`, `select.reopen`, `select.pages` | `ok`, and `reopen.status` `ok` with no repairs and as many pages as `select.pages` names |
 | `expect_select` = `known_gap:<reason>` | `select.status` | `ok` (counted apart) |
 | `expect_redact_text` = `clean` | `redact_text.status`, `redact_text.self_check`, `redact_text.reopen`, `redact_text.pages` | `ok`, `self_check` `passed`, and `reopen.status` `ok` with no repairs and the input's page count; the leak and pixel measures are `tests/pdfium/leak.py` and `compare.py --check redact` |
 | `expect_redact_text` = `known_gap:<reason>` | none | passes apart, a refusal included |
+| `expect_set_metadata` = `clean` | `set_metadata.status`, `set_metadata.self_check`, `set_metadata.mismatches`, `set_metadata.reopen` | `ok`, `self_check` `passed` (or `not_run` when `originals` is empty), no mismatch, and `reopen.status` `ok` with no repairs and the input's page count; the leak measure is `tests/pdfium/leak.py --metadata` |
+| `expect_set_metadata` = `known_gap:<reason>` | none | passes apart, a refusal included |
 | any column = `n/a` | none | not checked |
 
 A function whose status is `not_implemented` makes its column **skipped** for

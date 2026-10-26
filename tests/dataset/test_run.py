@@ -96,7 +96,7 @@ class SummaryTest(unittest.TestCase):
         rows = [{"id": "x", "set": "synth", "sha256": "h", "expect_open": "opens", "expect_text": "n/a",
                  "expect_images": "n/a", "expect_redact": "n/a", "expect_metadata": "n/a",
                  "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a",
-                 "expect_redact_text": "n/a"}]
+                 "expect_redact_text": "n/a", "expect_set_metadata": "n/a"}]
         written = {"x": {"id": "x", "result": "written", "bytes": json.dumps(body).encode(), "seconds": 0.1}}
         return rows, written
 
@@ -132,7 +132,49 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
         self.assertEqual(run.COLUMNS["expect_fonts"], "text")
         self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select",
-                                           "redact_text"})
+                                           "redact_text", "set_metadata"})
+
+
+class TimeoutTest(unittest.TestCase):
+    def test_the_timeout_grows_with_the_page_count(self):
+        self.assertEqual(run.timeout_for({"pages": "1"}), run.TIMEOUT)
+        self.assertEqual(run.timeout_for({"pages": ""}), run.TIMEOUT)
+        self.assertEqual(run.timeout_for({"pages": "200"}), run.TIMEOUT)
+        self.assertEqual(run.timeout_for({"pages": "201"}), 2 * run.TIMEOUT)
+        self.assertEqual(run.timeout_for({"pages": "910"}), 5 * run.TIMEOUT)
+
+
+class MetadataTest(unittest.TestCase):
+    outcome = {"open": {"status": "ok", "pages": 2}}
+
+    def part(self, **extra):
+        base = {"status": "ok", "code": None, "self_check": "passed", "mismatches": [],
+                "originals": ["Old title"], "reopen": {"status": "ok", "pages": 2, "repairs": []}}
+        base.update(extra)
+        return base
+
+    def test_metadata_is_read_unless_the_packet_does_not_scan(self):
+        read = {"status": "ok", "code": None, "info": True, "xmp": "read"}
+        self.assertEqual(run.check("expect_metadata", "read", {"metadata": read})[0], "pass")
+        broken = dict(read, xmp="unreadable")
+        self.assertEqual(run.check("expect_metadata", "read", {"metadata": broken})[0], "fail")
+        self.assertEqual(run.check("expect_metadata", "known_gap:xmp_unreadable",
+                                   {"metadata": broken})[0], "pass")
+
+    def test_a_rewrite_is_clean_when_every_field_reads_back(self):
+        outcome = dict(self.outcome, set_metadata=self.part())
+        self.assertEqual(run.check("expect_set_metadata", "clean", outcome)[0], "pass")
+        outcome = dict(self.outcome, set_metadata=self.part(mismatches=["Title"]))
+        self.assertEqual(run.check("expect_set_metadata", "clean", outcome)[0], "fail")
+        outcome = dict(self.outcome, set_metadata=self.part(self_check="not_run"))
+        self.assertEqual(run.check("expect_set_metadata", "clean", outcome)[0], "fail")
+        outcome = dict(self.outcome, set_metadata=self.part(self_check="not_run", originals=[]))
+        self.assertEqual(run.check("expect_set_metadata", "clean", outcome)[0], "pass")
+        refused = {"status": "error", "code": "self_check", "message": "x"}
+        outcome = dict(self.outcome, set_metadata=refused)
+        self.assertEqual(run.check("expect_set_metadata", "clean", outcome)[0], "fail")
+        self.assertEqual(run.check("expect_set_metadata", "known_gap:title_in_string", outcome)[0],
+                         "pass")
 
 
 class RedactTextTest(unittest.TestCase):

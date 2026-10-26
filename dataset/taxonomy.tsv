@@ -144,3 +144,11 @@ redact_fake_bold	traps	1	the redaction marker drawn twice for a fake bold	synth
 redact_overlapped	traps	1	the redaction marker with other text drawn over it	synth
 redact_type3	traps	1	the redaction marker in a Type 3 font	synth
 redact_identity_h	traps	1	the redaction marker in two-byte Identity-H codes	synth
+meta_info_only	metadata	3	an Info dictionary and no XMP packet	pdfkit
+meta_xmp_only	metadata	3	an XMP packet and no Info dictionary	pdfkit
+meta_both_agree	metadata	3	an Info dictionary and an XMP packet that state at least one field alike and none differently	pdfkit
+meta_both_disagree	metadata	3	an Info dictionary and an XMP packet that state a field differently	pdfkit
+meta_utf16	metadata	3	an Info string written in UTF-16 with a byte-order mark	pdfkit
+meta_xmp_custom_namespace	metadata	3	an XMP packet with a property outside the dc, xmp, pdf, xmpMM and rdf namespaces	pdfkit
+meta_xmp_history	metadata	3	an XMP packet holding an xmpMM:History	pdfkit
+meta_xmp_unreadable	metadata	3	an XMP packet that does not scan as XML	pdfkit

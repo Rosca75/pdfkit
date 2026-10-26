@@ -71,7 +71,10 @@ struct Row {
   std::string field;
   std::optional<std::string> info;
   std::vector<std::string> xmp;
+  // The items of the XMP arrays.
+  std::vector<std::string> items;
   bool disagree = false;
+  bool utf16 = false;
 };
 
 std::vector<Row> rows_of(const JsonText& answer) {
@@ -92,10 +95,18 @@ std::vector<Row> rows_of(const JsonText& answer) {
         if (const JsonText::Node* value = answer.member(answer.node(at), "value")) {
           row.xmp.push_back(value->text);
         }
+        if (const JsonText::Node* items = answer.member(answer.node(at), "items")) {
+          for (const std::size_t item : items->items) {
+            row.items.push_back(answer.node(item).text);
+          }
+        }
       }
     }
     if (const JsonText::Node* agree = answer.member(node, "agree")) {
       row.disagree = agree->raw == "false";
+    }
+    if (const JsonText::Node* encoding = answer.member(node, "info_encoding")) {
+      row.utf16 = encoding->text == "utf16be" || encoding->text == "utf16le";
     }
     rows.push_back(std::move(row));
   }
@@ -120,16 +131,19 @@ DatasetMetadata dataset_metadata(pdfkit_document* document) {
   }
   std::vector<std::string> present;
   std::vector<std::string> disagree;
+  std::size_t utf16 = 0;
   for (const Row& row : rows_of(*answer)) {
     std::vector<std::string> values;
-    if (row.info && !blank(*row.info)) {
-      values.push_back(*row.info);
-    }
-    for (const std::string& value : row.xmp) {
+    const auto add = [&values](const std::string& value) {
       if (!blank(value) && std::ranges::find(values, value) == values.end()) {
         values.push_back(value);
       }
+    };
+    if (row.info) {
+      add(*row.info);
     }
+    std::ranges::for_each(row.xmp, add);
+    std::ranges::for_each(row.items, add);
     if (row.info || !row.xmp.empty()) {
       present.push_back(row.field);
       result.fields.emplace_back(row.field, std::move(values));
@@ -137,17 +151,19 @@ DatasetMetadata dataset_metadata(pdfkit_document* document) {
     if (row.disagree) {
       disagree.push_back(row.field);
     }
+    utf16 += row.utf16 ? 1 : 0;
   }
-  const JsonText::Node* info = answer->member(answer->root(), "info");
-  const JsonText::Node* xmp = answer->member(answer->root(), "xmp");
-  const JsonText::Node* agree = answer->member(answer->root(), "agree");
-  const JsonText::Node* utf16le = answer->member(answer->root(), "utf16le");
-  result.member = R"({"status": "ok", "code": null, "info": )" +
-                  std::string(info != nullptr ? info->raw : "null") +
-                  ", \"xmp\": " + std::string(xmp != nullptr ? xmp->raw : "null") +
-                  ", \"agree\": " + std::string(agree != nullptr ? agree->raw : "null") +
+  const auto raw = [&answer](std::string_view key, std::string_view fallback) {
+    const JsonText::Node* node = answer->member(answer->root(), key);
+    return std::string(node != nullptr ? node->raw : fallback);
+  };
+  result.member = R"({"status": "ok", "code": null, "info": )" + raw("info", "null") +
+                  ", \"xmp\": " + raw("xmp", "null") + ", \"agree\": " + raw("agree", "null") +
                   ", \"present\": " + list(present) + ", \"disagree\": " + list(disagree) +
-                  ", \"utf16le\": " + std::string(utf16le != nullptr ? utf16le->raw : "0") + "}";
+                  ", \"utf16\": " + std::to_string(utf16) +
+                  ", \"utf16le\": " + raw("utf16le", "0") +
+                  ", \"namespaces\": " + raw("xmp_namespaces", "[]") +
+                  ", \"history\": " + raw("xmp_history", "false") + "}";
   return result;
 }
 
@@ -183,7 +199,18 @@ std::string dataset_set_metadata(pdfkit_document* document, std::string_view id,
     names.push_back(field);
     fields +=
         (fields.empty() ? "" : ", ") + json_quote(field) + ": " + json_quote(written_value(field));
-    originals.insert(values.begin(), values.end());
+    // The self-check searches an original of three letters or digits or more,
+    // so the job searches the page text for those.
+    for (const std::string& value : values) {
+      const auto letters = std::ranges::count_if(value, [](char c) {
+        const auto byte = static_cast<unsigned char>(c);
+        return (byte >= '0' && byte <= '9') || ((byte | 0x20U) >= 'a' && (byte | 0x20U) <= 'z') ||
+               byte >= 0xC0;
+      });
+      if (letters >= 3) {
+        originals.insert(value);
+      }
+    }
   }
   fields = "{" + fields + "}";
   const std::vector<std::string> searched(originals.begin(), originals.end());
