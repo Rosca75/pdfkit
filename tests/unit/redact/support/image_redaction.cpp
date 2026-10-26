@@ -42,15 +42,15 @@ ImageFile image_file() {
   ImageFile file;
   PdfBuilder builder;
   builder.begin_document();
-  const std::string shared = pattern(16 * 12 * 3, 1);
-  const std::string kept = pattern(8 * 8, 2);
+  const std::string shared = pattern(std::size_t{16} * 12 * 3, 1);
+  const std::string kept = pattern(std::size_t{8} * 8, 2);
   // Printable bytes, so the inline data holds no white space before an "EI".
   std::string inline_data;
   for (int i = 0; i < 16; ++i) {
     inline_data += static_cast<char>('A' + i);
   }
-  const std::string masked = pattern(16 * 16 * 3, 3);
-  const std::string mask = pattern(16 * 16, 4);
+  const std::string masked = pattern(std::size_t{16} * 16 * 3, 3);
+  const std::string mask = pattern(std::size_t{16} * 16, 4);
   file.data["shared"] = PdfBuilder::deflate(shared);
   file.data["kept"] = kept;
   file.data["inline"] = inline_data;
@@ -192,6 +192,9 @@ std::map<std::uint32_t, images::ImageDecoder::Samples> samples_of(const std::str
     images::ImageDecoder::SamplesResult read =
         images::ImageDecoder::samples(*document, *stream, false);
     REQUIRE(read.samples);
+    if (!read.samples) {
+      continue;
+    }
     out.emplace(number, std::move(*read.samples));
   }
   return out;

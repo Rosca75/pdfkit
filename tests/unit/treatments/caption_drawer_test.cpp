@@ -28,7 +28,10 @@ namespace {
 using pdfkit::images::treatments::CaptionDrawer;
 using pdfkit::images::treatments::PixelBuffer;
 
-const pdfkit::platform::Budget budget;
+const pdfkit::platform::Budget& budget() {
+  static const pdfkit::platform::Budget limits;
+  return limits;
+}
 const std::array<std::uint16_t, 1> ink{1};
 
 // The bound of the inked pixels.
@@ -51,7 +54,7 @@ PixelBuffer::Rect inked(const PixelBuffer& buffer) {
 }  // namespace
 
 TEST_CASE("the caption takes the largest height that fits and is centred in the box") {
-  PixelBuffer buffer(400, 200, 1, 8, budget, "a test image");
+  PixelBuffer buffer(400, 200, 1, 8, budget(), "a test image");
   const PixelBuffer::Rect box{50, 40, 350, 160};
   const std::uint32_t height =
       CaptionDrawer::draw(buffer, box, "REDACTED", ink, CaptionDrawer::Orientation{});
@@ -76,14 +79,14 @@ TEST_CASE("the caption takes the largest height that fits and is centred in the 
 }
 
 TEST_CASE("a box too small for any height draws nothing") {
-  PixelBuffer buffer(40, 40, 1, 8, budget, "a test image");
+  PixelBuffer buffer(40, 40, 1, 8, budget(), "a test image");
   CHECK(CaptionDrawer::draw(buffer, {0, 0, 30, 6}, "REDACTED", ink, CaptionDrawer::Orientation{}) ==
         0U);
-  CHECK(buffer == PixelBuffer(40, 40, 1, 8, budget, "a test image"));
+  CHECK(buffer == PixelBuffer(40, 40, 1, 8, budget(), "a test image"));
 }
 
 TEST_CASE("a character outside the alphabet is refused with the three-part message") {
-  PixelBuffer buffer(100, 40, 1, 8, budget, "a test image");
+  PixelBuffer buffer(100, 40, 1, 8, budget(), "a test image");
   CHECK(CaptionDrawer::outside("Redacted!") == "edact!");
   try {
     (void)CaptionDrawer::draw(buffer, buffer.bounds(), "Secret", ink, CaptionDrawer::Orientation{});
@@ -97,7 +100,7 @@ TEST_CASE("a character outside the alphabet is refused with the three-part messa
 }
 
 TEST_CASE("a turned orientation lays the line along the rows") {
-  PixelBuffer buffer(100, 400, 1, 8, budget, "a test image");
+  PixelBuffer buffer(100, 400, 1, 8, budget(), "a test image");
   // One caption pixel right is one row up; one down is one column right.
   const CaptionDrawer::Orientation turned{0, -1, 1, 0};
   const std::uint32_t height = CaptionDrawer::draw(buffer, buffer.bounds(), "AB", ink, turned);

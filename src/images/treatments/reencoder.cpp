@@ -46,7 +46,7 @@ int deliver(void* opaque, const unsigned char* data, std::size_t size) {
   }
 }
 
-std::string device_space(std::uint32_t components) {
+std::string_view device_space(std::uint32_t components) {
   if (components == 4) {
     return "DeviceCMYK";
   }
@@ -95,7 +95,8 @@ Reencoder::Result Reencoder::encode(const Dictionary& original, const PixelBuffe
   dictionary.set("Height", Object::make_integer(samples.height()));
   dictionary.set("BitsPerComponent", Object::make_integer(samples.bits()));
   if (!image_mask && !dictionary.contains("ColorSpace")) {
-    dictionary.set("ColorSpace", Object::make_name(device_space(samples.components())));
+    dictionary.set("ColorSpace",
+                   Object::make_name(std::string(device_space(samples.components()))));
   }
   if (codec == "JPXDecode" && !image_mask) {
     dictionary.erase("Decode");

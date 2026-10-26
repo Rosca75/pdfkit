@@ -112,13 +112,13 @@ ImageTreatmentPlan::Request read_request(const JsonValue& item, std::size_t inde
       space = text_member(value, index, name);
       if (space != "image" && space != "page") {
         refuse(where(index) + " names the unknown space \"" + space + "\"",
-               "write \"space\": \"image\" (pixels) or \"page\" (default user space)");
+               R"(write "space": "image" (pixels) or "page" (default user space))");
       }
     } else if (name == "page") {
       page = true;
       const std::optional<std::int64_t> number =
           value.kind() == JsonValue::Kind::number ? value.as_int64() : std::nullopt;
-      if (!number || *number < 1 || *number > 0xFFFFFFFF) {
+      if (!number || *number < 1 || std::cmp_greater(*number, 0xFFFFFFFFU)) {
         refuse(where(index) + " gives \"page\" as something other than a page number",
                "write \"page\" as a whole number from 1");
       }
@@ -145,12 +145,12 @@ ImageTreatmentPlan::Request read_request(const JsonValue& item, std::size_t inde
   }
   request.page_space = space == "page";
   if (request.page_space && (!page || !request.rectangle)) {
-    refuse(where(index) + " gives the page space without a \"rectangle\" and a \"page\"",
+    refuse(where(index) + R"( gives the page space without a "rectangle" and a "page")",
            "give the page rectangle [left, bottom, right, top] and the page it is on");
   }
   if (!request.page_space && page) {
-    refuse(where(index) + " gives a \"page\" with a rectangle in pixels",
-           "write \"space\": \"page\" with a page rectangle, or drop the page");
+    refuse(where(index) + R"( gives a "page" with a rectangle in pixels)",
+           R"(write "space": "page" with a page rectangle, or drop the page)");
   }
   if (request.kind == ImageTreatmentPlan::Kind::region && !request.rectangle) {
     refuse(where(index) + " is a region without a \"rectangle\"",
@@ -183,6 +183,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_images(pdfkit_edit* edit,
       refuse("has no \"treatments\" array", "list the treatments as {\"treatments\": [...]}");
     }
     std::vector<ImageTreatmentPlan::Request> requests;
+    requests.reserve(list->as_array().size());
     for (std::size_t i = 0; i < list->as_array().size(); ++i) {
       requests.push_back(read_request(list->as_array()[i], i));
     }

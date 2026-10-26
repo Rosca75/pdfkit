@@ -105,10 +105,12 @@ TEST_CASE("each refusal names what failed, what was expected and the fix") {
         PDFKIT_E_INVALID_ARGUMENT);
   check_refusal(answer, "invalid_argument", "img:0000000000000000");
   const std::string shared = file.identity.at("shared");
-  CHECK(session.call(R"({"treatments": [{"identity": ")" + shared +
-                         R"(", "treatment": "box"}, {"identity": ")" + shared +
-                         R"(", "treatment": "blur"}]})",
-                     answer) == PDFKIT_E_INVALID_ARGUMENT);
+  std::string twice = R"({"treatments": [{"identity": ")";
+  twice += shared;
+  twice += R"(", "treatment": "box"}, {"identity": ")";
+  twice += shared;
+  twice += R"(", "treatment": "blur"}]})";
+  CHECK(session.call(twice, answer) == PDFKIT_E_INVALID_ARGUMENT);
   check_refusal(answer, "invalid_argument", "treatment 0");
   CHECK(session.call(treatment(shared, R"("treatment": "box", "caption": "Secret")"), answer) ==
         PDFKIT_E_INVALID_ARGUMENT);

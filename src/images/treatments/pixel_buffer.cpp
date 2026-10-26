@@ -52,7 +52,7 @@ PixelBuffer PixelBuffer::unpack(platform::ByteSpan packed, std::size_t stride, s
         const std::size_t bit = i * bits;
         const std::size_t at = row + (bit / 8);
         if (at < packed.size()) {
-          const std::uint32_t byte = std::to_integer<std::uint32_t>(packed[at]);
+          const auto byte = std::to_integer<std::uint32_t>(packed[at]);
           const auto shift = static_cast<std::uint32_t>(8 - bits - (bit % 8));
           value = (byte >> shift) & ((1U << bits) - 1U);
         }

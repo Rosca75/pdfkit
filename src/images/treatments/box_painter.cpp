@@ -144,11 +144,13 @@ std::vector<std::uint16_t> BoxPainter::nearest(const Meaning& meaning, const Col
 
 std::vector<std::uint16_t> BoxPainter::contrast(const Meaning& meaning,
                                                 std::span<const std::uint16_t> fill) {
+  // A fill whose colour does not convert reads as black: the caption is then
+  // white.
   Colour colour{0.0, 0.0, 0.0};
   try {
     colour = colour_of(meaning, fill);
   } catch (const DecodeFault&) {
-    // Read as black: the caption is then white.
+    colour = {0.0, 0.0, 0.0};
   }
   std::vector<std::uint16_t> light = nearest(meaning, {1.0, 1.0, 1.0});
   std::vector<std::uint16_t> dark = nearest(meaning, {0.0, 0.0, 0.0});

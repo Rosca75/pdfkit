@@ -27,14 +27,17 @@ using pdfkit::images::treatments::BoxPainter;
 using pdfkit::images::treatments::MosaicBlur;
 using pdfkit::images::treatments::PixelBuffer;
 
-const pdfkit::platform::Budget budget;
+const pdfkit::platform::Budget& budget() {
+  static const pdfkit::platform::Budget limits;
+  return limits;
+}
 
 PixelBuffer gradient(std::uint32_t width, std::uint32_t height, std::uint32_t components) {
-  PixelBuffer buffer(width, height, components, 8, budget, "a test image");
+  PixelBuffer buffer(width, height, components, 8, budget(), "a test image");
   for (std::uint32_t y = 0; y < height; ++y) {
     for (std::uint32_t x = 0; x < width; ++x) {
       for (std::uint32_t c = 0; c < components; ++c) {
-        buffer.set(x, y, c, static_cast<std::uint16_t>((x * 3) + (y * 5) + (c * 11)) & 0xFF);
+        buffer.set(x, y, c, static_cast<std::uint16_t>(((x * 3) + (y * 5) + (c * 11)) & 0xFFU));
       }
     }
   }
@@ -104,7 +107,7 @@ TEST_CASE("an Indexed image takes the palette entry nearest each block's mean co
   meaning.space = ColourSpace::parse(document, fixture.get(number));
   meaning.decode = meaning.space->default_decode(8);
   meaning.components = 1;
-  PixelBuffer buffer(8, 8, 1, 8, budget, "a test image");
+  PixelBuffer buffer(8, 8, 1, 8, budget(), "a test image");
   for (std::uint32_t y = 0; y < 8; ++y) {
     for (std::uint32_t x = 0; x < 8; ++x) {
       // A checkerboard of black and white: its mean is the middle grey.

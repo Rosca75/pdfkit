@@ -37,7 +37,7 @@ void MosaicBlur::require_blurrable(bool bitonal, std::uint32_t width, std::uint3
         "a bitonal image at least " + std::to_string(minimum_bitonal_side) +
             " pixels on its smaller side, where a mosaic block of at least " +
             std::to_string(minimum_block) + " pixels hides its shapes",
-        "give this image the treatment \"box\" (which may carry a caption) or \"remove\"");
+        R"(give this image the treatment "box" (which may carry a caption) or "remove")");
   }
 }
 

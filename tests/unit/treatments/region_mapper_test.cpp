@@ -27,6 +27,9 @@ TEST_CASE("under the identity the unit square holds the whole grid, row 0 at the
   const auto pixels =
       RegionMapper::to_pixels(Matrix::identity(), 10, 20, Rect::of(0.0, 0.5, 0.5, 1.0));
   REQUIRE(pixels);
+  if (!pixels) {
+    return;
+  }
   CHECK(*pixels == PixelBuffer::Rect{0, 0, 5, 10});
 }
 
@@ -35,6 +38,9 @@ TEST_CASE("a scaled image maps a page rectangle to its pixels, rounded outward")
   const Matrix ctm{400.0, 0.0, 0.0, 200.0, 100.0, 300.0};
   const auto pixels = RegionMapper::to_pixels(ctm, 200, 100, Rect::of(141.0, 401.0, 200.0, 459.0));
   REQUIRE(pixels);
+  if (!pixels) {
+    return;
+  }
   // x: (141-100)/2 = 20.5 -> 20, (200-100)/2 = 50; rows from the top:
   // (500-459)/2 = 20.5 -> 20, (500-401)/2 = 49.5 -> 50.
   CHECK(*pixels == PixelBuffer::Rect{20, 20, 50, 50});
@@ -51,6 +57,9 @@ TEST_CASE("a page rectangle on exact pixel edges keeps its size") {
   const auto pixels =
       RegionMapper::to_pixels(ctm, 100, 100, RegionMapper::to_page(ctm, 100, 100, rect));
   REQUIRE(pixels);
+  if (!pixels) {
+    return;
+  }
   CHECK(*pixels == rect);
 }
 
@@ -62,6 +71,9 @@ TEST_CASE("a turned image (90 degrees) maps columns to the page's vertical") {
   // v 0..1 (the whole height) -> columns 0..5, every row.
   const auto pixels = RegionMapper::to_pixels(ctm, 10, 4, Rect::of(150.0, 0.0, 200.0, 50.0));
   REQUIRE(pixels);
+  if (!pixels) {
+    return;
+  }
   CHECK(*pixels == PixelBuffer::Rect{0, 0, 5, 4});
 }
 
@@ -70,6 +82,9 @@ TEST_CASE("a flipped image maps its top row to the page's bottom") {
   const Matrix ctm{100.0, 0.0, 0.0, -100.0, 0.0, 100.0};
   const auto pixels = RegionMapper::to_pixels(ctm, 100, 100, Rect::of(0.0, 0.0, 100.0, 10.0));
   REQUIRE(pixels);
+  if (!pixels) {
+    return;
+  }
   CHECK(*pixels == PixelBuffer::Rect{0, 0, 100, 10});
 }
 
@@ -81,5 +96,8 @@ TEST_CASE("a miss, a singular matrix and a caller rectangle outside give no rect
   CHECK(!RegionMapper::clip({20.0, 20.0, 30.0, 30.0}, 10, 10));
   const auto clipped = RegionMapper::clip({-5.0, 2.5, 7.2, 40.0}, 10, 10);
   REQUIRE(clipped);
+  if (!clipped) {
+    return;
+  }
   CHECK(*clipped == PixelBuffer::Rect{0, 2, 8, 10});
 }

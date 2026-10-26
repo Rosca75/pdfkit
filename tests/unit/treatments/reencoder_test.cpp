@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -66,6 +67,9 @@ ImageDecoder::Samples read_back(const Reencoder::Result& result) {
   ImageDecoder::SamplesResult read =
       ImageDecoder::samples(document, fixture.stream_of(number), false);
   REQUIRE(read.samples);
+  if (!read.samples) {
+    throw std::runtime_error(read.fault);
+  }
   return std::move(*read.samples);
 }
 
@@ -76,6 +80,9 @@ ImageDecoder::Samples samples_of(const std::string& entries, const std::string& 
   ImageDecoder::SamplesResult read =
       ImageDecoder::samples(document, fixture.stream_of(number), false);
   REQUIRE(read.samples);
+  if (!read.samples) {
+    throw std::runtime_error(read.fault);
+  }
   return std::move(*read.samples);
 }
 
@@ -89,7 +96,7 @@ TEST_CASE("a Flate image round-trips at every depth with every sample equal") {
     const std::size_t row = ((width * static_cast<std::size_t>(components * bits)) + 7) / 8;
     std::string data(row * height, '\0');
     for (std::size_t i = 0; i < data.size(); ++i) {
-      data[i] = static_cast<char>((i * 37 + 11) & 0xFF);
+      data[i] = static_cast<char>((i * 37 + 11) & 0xFFU);
     }
     const std::string space = components == 3 ? "/DeviceRGB" : "/DeviceGray";
     const ImageDecoder::Samples source = samples_of(

@@ -28,12 +28,15 @@ using pdfkit::images::treatments::BoxPainter;
 using pdfkit::images::treatments::PixelBuffer;
 using pdfkit::platform::Budget;
 
-const Budget budget;
+const pdfkit::platform::Budget& budget() {
+  static const pdfkit::platform::Budget limits;
+  return limits;
+}
 
 // A buffer whose every sample is a distinct pattern value.
 PixelBuffer patterned(std::uint32_t width, std::uint32_t height, std::uint32_t components,
                       std::uint32_t bits) {
-  PixelBuffer buffer(width, height, components, bits, budget, "a test image");
+  PixelBuffer buffer(width, height, components, bits, budget(), "a test image");
   for (std::uint32_t y = 0; y < height; ++y) {
     for (std::uint32_t x = 0; x < width; ++x) {
       for (std::uint32_t c = 0; c < components; ++c) {
@@ -82,13 +85,13 @@ TEST_CASE("rows pack and unpack at every depth") {
     const auto packed = buffer.pack();
     CHECK(packed.size() == buffer.stride() * 5);
     const PixelBuffer back =
-        PixelBuffer::unpack(packed, buffer.stride(), 13, 5, 3, bits, budget, "a test image");
+        PixelBuffer::unpack(packed, buffer.stride(), 13, 5, 3, bits, budget(), "a test image");
     CHECK(back == buffer);
   }
 }
 
 TEST_CASE("a buffer past the budget is refused before it is reserved") {
-  const Budget small(Budget::Limits{1024, 1024 * 1024, 1000});
+  const Budget small(Budget::Limits{1024, 1024ULL * 1024, 1000});
   CHECK_THROWS(PixelBuffer(100, 100, 3, 8, small, "a large image"));
 }
 

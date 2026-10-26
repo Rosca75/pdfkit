@@ -26,7 +26,10 @@ using pdfkit::images::treatments::BoxPainter;
 using pdfkit::images::treatments::PixelBuffer;
 using pdfkit::images::treatments::SoftMaskTreatment;
 
-const pdfkit::platform::Budget budget;
+const pdfkit::platform::Budget& budget() {
+  static const pdfkit::platform::Budget limits;
+  return limits;
+}
 
 BoxPainter::Meaning grey() {
   BoxPainter::Meaning meaning;
@@ -37,7 +40,7 @@ BoxPainter::Meaning grey() {
 }
 
 PixelBuffer faded(std::uint32_t width, std::uint32_t height) {
-  PixelBuffer mask(width, height, 1, 8, budget, "a test mask");
+  PixelBuffer mask(width, height, 1, 8, budget(), "a test mask");
   for (std::uint32_t y = 0; y < height; ++y) {
     for (std::uint32_t x = 0; x < width; ++x) {
       mask.set(x, y, 0, static_cast<std::uint16_t>((x * 9 + y * 4) % 200));
@@ -71,7 +74,7 @@ TEST_CASE("a mask of half the image's size is treated over the same part, rounde
 }
 
 TEST_CASE("a stencil mask paints inside the box") {
-  PixelBuffer mask(16, 16, 1, 1, budget, "a test stencil");
+  PixelBuffer mask(16, 16, 1, 1, budget(), "a test stencil");
   for (std::uint32_t y = 0; y < 16; ++y) {
     for (std::uint32_t x = 0; x < 16; ++x) {
       mask.set(x, y, 0, 1);

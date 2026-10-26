@@ -289,20 +289,20 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
           for (const double value : box) {
             draws += ", " + decimal(value);
           }
-          draws += "]";
+          draws += ']';
         }
-        draws += "]";
+        draws += ']';
         described += (i == 0 ? "" : ", ") + std::string(R"({"identity": )") +
                      json_quote(images[i].identity) + R"(, "kind": )" + json_quote(images[i].kind) +
                      R"(, "caption": )" + (images[i].captioned ? "true" : "false") +
                      R"(, "encoding": )" + images[i].encoding + R"(, "width": )" + raw("width") +
                      R"(, "height": )" + raw("height") + R"(, "pixels": )" + raw("pixels") +
                      R"(, "block": )" + raw("block") + R"(, "encoded": )" + raw("encoded") +
-                     R"(, "draws": )" + draws + "}";
+                     R"(, "draws": )" + draws + '}';
       }
     }
   }
-  described += "]";
+  described += ']';
   std::string region_member = "null";
   if (!region.empty()) {
     std::string pixels = "null";

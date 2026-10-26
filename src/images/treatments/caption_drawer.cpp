@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <utility>
 
 namespace pdfkit::images::treatments {
 
@@ -132,8 +133,8 @@ std::uint32_t CaptionDrawer::draw(PixelBuffer& buffer, const PixelBuffer::Rect& 
         const int cy = static_cast<int>(row);
         const int x = origin_x + (cx * orientation.right_x) + (cy * orientation.down_x);
         const int y = origin_y + (cx * orientation.right_y) + (cy * orientation.down_y);
-        if (x >= static_cast<int>(area.left) && x < static_cast<int>(area.right) &&
-            y >= static_cast<int>(area.top) && y < static_cast<int>(area.bottom)) {
+        if (std::cmp_greater_equal(x, area.left) && std::cmp_less(x, area.right) &&
+            std::cmp_greater_equal(y, area.top) && std::cmp_less(y, area.bottom)) {
           buffer.set_pixel(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), ink);
         }
       }
