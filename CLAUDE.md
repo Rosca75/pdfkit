@@ -35,7 +35,7 @@ performs no OCR.
 | `third_party/inventory.tsv` | every vendored component: path, version, upstream, licence, SHA-256 |
 | `THIRD-PARTY-NOTICES.md` | the licence notices shipped with every artefact |
 | `build/toolchain.md` | the pinned compiler, CMake, Ninja, clang-format and clang-tidy versions and the proxy behaviour |
-| `build-1.md` to `build-10.md` | the phased build plans; each is authoritative for its phase's scope until its gate passes, then moves to `docs/archive/build/` |
+| `build-5.md`, `build-6.md`, `build-10.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 |
 
 Every other markdown file is a working document. `OPEN-QUESTIONS.md` holds the
 questions waiting for the owner. A file added to or removed from this set moves
@@ -43,8 +43,9 @@ this table in the same change, because a charter that does not say which
 documents are authoritative leaves each session to guess.
 
 Markdown under `docs/archive/` is the record. No rule is derived from it and no
-authoritative file links into it: where a past decision explains a current rule,
-the rule states the reason itself.
+authoritative file links into it but the Build file column of §2, which says
+where each function's plan and its deviations are kept: where a past decision
+explains a current rule, the rule states the reason itself.
 
 ## 2. The function catalogue
 
@@ -55,19 +56,19 @@ registry in `src/api/catalogue.cpp` and the CLI verbs to one another.
 
 | # | Function | C ABI symbol | Inputs | Outputs | Fails when | Build file |
 |---|---|---|---|---|---|---|
-| 1.1 | Open | `pdfkit_open` | PDF bytes; options JSON (limits, page ceiling) | a document handle; an open report (repairs made, decryption used) | no `%PDF` header and no page object; a non-empty user password; a stream or the file past the inflate limits; a page count past the ceiling | `build-3.md` |
-| 1.2 | Inspect | `pdfkit_inspect` | document handle | JSON: version, page count, per page the boxes and rotation, encryption, repairs, warnings | never on a valid handle | `build-3.md` |
-| 2 | Extract text | `pdfkit_text` | document handle; options JSON (pages, glyph level on or off) | JSON: per page the blocks, lines and words in reading order, and the glyph list with every field of the glyph record (§4) | a page number out of range | `build-5.md` |
-| 3.1 | List images | `pdfkit_images` | document handle; options JSON (pages) | JSON: every image XObject and inline image with its identity, encoding, size, colour space, masks and occurrences; a warning per image that cannot be decoded | a page number out of range | `build-6.md` |
-| 3.2 | Image pixels | `pdfkit_image_data` | document handle; image identity; options JSON (mask or base) | PNG bytes for a lossless source, the original JPEG bytes for a DCT source | an unknown identity; an encoding the image cannot be decoded from (the warning code says which) | `build-6.md` |
-| 4 | Extract metadata | `pdfkit_metadata` | document handle | JSON: one row per field with the Info value and the XMP value side by side and whether they agree | never on a valid handle | `build-10.md` |
-| 5 | Redact text | `pdfkit_redact_text` | edit handle; JSON matches as glyph ranges from an extraction or as search strings with the caller's folding rules, each with its placeholder | JSON per match: occurrences found, device rectangles, how the placeholder was fitted | a placeholder outside the placeholder alphabet; a glyph range from another document or out of range | `build-8.md` |
-| 6 | Redact images | `pdfkit_redact_images` | edit handle; JSON treatments per image identity: box (rectangle, optional caption), blur, remove | JSON per treatment: the rectangles painted, the occurrences reached | an unknown identity; box or blur on an image that cannot be decoded (remove is offered); a caption outside the alphabet | `build-9.md` |
-| 7 | Rewrite metadata | `pdfkit_set_metadata` | edit handle; JSON field values | JSON: the fields as they will be written | a field outside the metadata field list | `build-10.md` |
-| 8 | Strip hidden channels | `pdfkit_channels` (report); applied by every `pdfkit_write` | document handle | JSON: per channel of the channel table, present or not and the count | never on a valid handle | `build-7.md` |
-| 9 | Select pages | `pdfkit_select_pages` | edit handle; JSON page list | none until written | an empty, duplicated or out-of-range page list | `build-7.md` |
-| 10.1 | Write | `pdfkit_write` | edit handle | PDF bytes; a write report (pages, rectangles changed, channels stripped, self-check result) | the self-check finds a redacted string in any text surface (the refusal names the page and the surface) | `build-7.md`, self-check `build-8.md` |
-| 10.2 | Check | `pdfkit_check` | PDF bytes; JSON strings with folding rules | JSON: every surviving occurrence by page and surface | the bytes do not open | `build-8.md` |
+| 1.1 | Open | `pdfkit_open` | PDF bytes; options JSON (limits, page ceiling) | a document handle; an open report (repairs made, decryption used, warnings) | no `%PDF` header and no page object (`not_pdf`); a header and no page object (`no_page`); a non-empty user password, or a revision 5 or 6 `/Perms` that does not decrypt (`password_required`); a handler other than `/Standard` or a revision, version, crypt filter or method it does not define (`unsupported_security_handler`); a stream, the file or the object count past a limit (`limit_exceeded`); a page count past the ceiling (`page_ceiling`); an unknown or malformed option | `docs/archive/build/build-3.md` |
+| 1.2 | Inspect | `pdfkit_inspect` | document handle | JSON: version, page count, per page the boxes and rotation, encryption, repairs, warnings | never on a valid handle | `docs/archive/build/build-3.md` |
+| 2 | Extract text | `pdfkit_text` | document handle; options JSON (pages, blocks, glyph level, re-serialisation check) | JSON: per page the blocks, lines and words in reading order, and the glyph list with every field of the glyph record (§4); the document fingerprint a glyph range names | a page number out of range or listed twice; an unknown option; a limit met while reading a page (`limit_exceeded`) | `build-5.md` |
+| 3.1 | List images | `pdfkit_images` | document handle; options JSON (pages) | JSON: every image XObject and inline image with its identity, encoding, size, colour space, masks and occurrences; a warning per image that cannot be decoded | a page number out of range or listed twice; an unknown option; a limit met while reading a page (`limit_exceeded`) | `build-6.md` |
+| 3.2 | Image pixels | `pdfkit_image_data` | document handle; image identity; options JSON (mask or base, a DCT image's pixels as PNG) | PNG bytes for a lossless source (or a DCT source asked as PNG), the original JPEG bytes for a DCT source | an unknown identity; the mask of an image without one; an image that does not decode (`undecodable_image`, naming the encoding and the fault) | `build-6.md` |
+| 4 | Extract metadata | `pdfkit_metadata` | document handle | JSON: one row per field with the Info value and the XMP value side by side and whether they agree; the packet's state, namespaces and history | never on a valid handle (a packet that does not scan is reported, with its warning) | `build-10.md` |
+| 5 | Redact text | `pdfkit_redact_text` | edit handle; JSON matches as glyph ranges from an extraction or as search strings with the caller's folding rules, each with its placeholder | JSON per match: occurrences found, device rectangles, how the placeholder was fitted | a placeholder outside the placeholder alphabet; a glyph range from another document, on a page outside it, empty or past the page's glyphs; a match with both or neither of a search and a range; an unknown folding or key; a limit met while reading a page | `docs/archive/build/build-8.md` |
+| 6 | Redact images | `pdfkit_redact_images` | edit handle; JSON treatments per image identity: box (rectangle, optional caption and colour), region boxes, blur, remove; rectangles in image pixels or in page space | JSON per treatment: the pixels painted, the occurrences reached and their device rectangles, the original's encoded hash | an unknown identity; a second box, blur or remove of one identity; box, region or blur on an image that cannot be decoded (`undecodable_image`, remove is offered); a caption outside the alphabet; a caption or colour on blur or remove; a rectangle that covers no pixel; a blur of a bitonal image under 128 pixels | `docs/archive/build/build-9.md` |
+| 7 | Rewrite metadata | `pdfkit_set_metadata` | edit handle; JSON field values, `null` removing a field | JSON: the fields as they will be written and the XMP properties each touches | a field outside the metadata field list; a value that is neither a string nor `null` | `build-10.md` |
+| 8 | Strip hidden channels | `pdfkit_channels` (report); applied by every `pdfkit_write` | document handle | JSON: per channel of the channel table, present or not and the count | never on a valid handle | `docs/archive/build/build-7.md` |
+| 9 | Select pages | `pdfkit_select_pages` | edit handle; JSON page list | the pages recorded; nothing is written until `pdfkit_write` | an empty, duplicated or out-of-range page list | `docs/archive/build/build-7.md` |
+| 10.1 | Write | `pdfkit_write` | edit handle | PDF bytes; a write report (pages, size and hash, objects, channels stripped, rectangles changed, image treatments, self-check result, warnings) | the self-check finds a redacted string or an original value of a rewritten metadata field in any text surface (the refusal names the page and the surface); a limit met while a stream is read | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
+| 10.2 | Check | `pdfkit_check` | PDF bytes; JSON strings with folding rules | JSON: every surviving occurrence by page and surface | the bytes do not open | `docs/archive/build/build-8.md` |
 
 The lifecycle symbols carry no row of their own: `pdfkit_abi_version`,
 `pdfkit_version` (the library and ABI versions, the build and each catalogue
@@ -79,19 +80,20 @@ standard output:
 | Verb | Calls | Writes files |
 |---|---|---|
 | `inspect` | 1.1, 1.2 | none |
-| `text` | 2 | none |
-| `images` | 3.1, 3.2 | one PNG or JPEG per image (and per mask) into `--out` |
-| `metadata` | 4 | none |
+| `text` | 1.1, 2 | none |
+| `images` | 1.1, 3.1, 3.2 | one PNG or JPEG per image (and per mask) into `--out` |
+| `metadata` | 1.1, 4 | none |
 | `redact` | 1.1, 5, 6, 7, 9, 10.1, driven by a JSON job file | the output PDF named by the job |
 | `select-pages` | 1.1, 9, 10.1 | the output PDF |
 | `check` | 10.2 | none |
-| `channels` | 8 | none |
+| `channels` | 1.1, 8 | none |
 | `dataset` | every function the dataset manifest expects, per file | one JSON outcome per file into the run's report folder |
 
 Exit codes: 0 success; 1 usage error; 2 the input was refused (the JSON names
 why); 3 the self-check refused the output; 4 an internal error, which is always a
-defect to fix, or a catalogue function whose implementation has not landed
-(`PDFKIT_E_NOT_IMPLEMENTED`, which names the function). `docs/ABI.md` owns the JSON shapes.
+defect to fix, or `PDFKIT_E_NOT_IMPLEMENTED`, which names the function and is
+reserved for a build that leaves a catalogue row out (this one implements every
+row, and `pdfkit_version` says so per row). `docs/ABI.md` owns the JSON shapes.
 
 **Content outside page content streams is dropped**: form fields, annotations,
 bookmarks, named destinations, attachments, JavaScript and the structure tree's
@@ -112,11 +114,11 @@ line this table does not allow.
 
 | Layer | Folder | Holds | May include |
 |---|---|---|---|
-| platform | `src/platform/` | the only compiler- and OS-specific code (export macros, endianness, checked arithmetic), the byte span and buffer types, the decoding budget, the error type, the hashes and ciphers (SHA-256/384/512, MD5, AES, RC4), the JSON writer and reader, the Unicode tables and folding | the C++ standard library |
+| platform | `src/platform/` | the only compiler- and OS-specific code (export macros, endianness, checked arithmetic), the byte span and buffer types, the decoding budget, the error type, the hashes and ciphers (SHA-256/384/512, MD5, AES, RC4), the JSON value, writer and reader, the build description `pdfkit_version` reports, the Unicode tables and folding | the C++ standard library |
 | syntax | `src/syntax/` | the lexer, the object model, the cross-reference reader, reconstruction, object streams, the standard security handler, the non-image filters, the page tree and resources, the content lexer, the Info dictionary and XMP packet reader | platform, zlib |
 | fonts | `src/fonts/` | the font loader, simple and composite fonts, CMaps, encodings, the glyph list, the font-program readers (TrueType, CFF, Type 1), the Core 14 widths, the decoding ladder | syntax, platform |
 | text | `src/text/` | the content interpreter (the graphics and text state machine), the glyph record, figure and image occurrences, the layout (words, lines, blocks, reading order), the hidden-text classes | fonts, syntax, platform |
-| images | `src/images/` | image identity, the colour spaces, the masks, the codec adapters (DCT, JPEG 2000) and the written codecs (JBIG2, CCITT), PNG writing, the pixel treatments (box, blur) and re-encoding | text, syntax, platform, libjpeg-turbo, OpenJPEG, zlib |
+| images | `src/images/` | image identity, the colour spaces, the masks, the codec adapters (DCT, JPEG 2000) and the written codecs (JBIG2, CCITT), PNG writing, the pixel treatments (box with its caption, region boxes, the blur mosaic, the soft-mask follow-up) and re-encoding | text, syntax, platform, libjpeg-turbo, OpenJPEG, zlib |
 | writer | `src/writer/` | the reachable-object sweep, deterministic renumbering, the serialiser and cross-reference stream, the channel table, page selection with resource pruning, the metadata writer, the placeholder font embedding | syntax, platform, zlib |
 | redact | `src/redact/` | match finding (glyph ranges and folded search), the content-stream surgery, the placeholder fitting, image treatments applied to the document, the edit plan, the self-check | writer, images, text, fonts, syntax, platform |
 | api | `src/api/` | the C ABI implementation: handles, the catalogue registry, one file per catalogue function, JSON in and out, the catch-all that turns every failure into a status | every layer above |
@@ -149,8 +151,10 @@ redaction of the wrong bytes.
 - Strings are UTF-8, sizes are `size_t`, handles are opaque pointers, and the
   calling convention is the platform's C default.
 - The ABI only grows: a symbol never changes its signature or meaning, a JSON
-  output only gains fields, and `pdfkit_abi_version` is raised on every
-  addition, because a caller binds to symbols once and is not rebuilt with us.
+  output only gains fields, and `pdfkit_abi_version`, 1 for the first release,
+  is raised on every addition after it, because a caller binds to symbols once
+  and is not rebuilt with us (nothing was released for a caller to bind to
+  while the catalogue was built).
 - A document handle is used by one thread at a time; distinct handles are
   independent. The library holds no global mutable state, so this is the whole
   threading contract.
@@ -171,10 +175,11 @@ cli/              the command-line tool, one file per verb under cli/verbs/
 third_party/      vendored sources, one folder per component with its licence file
 tests/unit/       unit tests over fixtures written in code (tests/unit/support/ holds the PDF builder)
 tests/dataset/    the dataset harness: runs the CLI over the manifest and checks expectations
-tests/pdfium/     the PDFium comparison: binding, text agreement, rendering, leak check
+tests/pdfium/     the PDFium comparison: binding, text, image and metadata agreement, rendering, leak check
+tests/abi/        the C ABI from .NET (dotnet/) and Python (python/), run by run.py
 dataset/          manifest.tsv, taxonomy.tsv, README.md, tools/; files/, cache/ and reports/ are ignored
-docs/             DESIGN.md, ABI.md, SOURCES.md, archive/
-build/            check scripts, hooks, toolchain pin, presets helpers, size budgets, packaging
+docs/             DESIGN.md, ABI.md, SOURCES.md, archive/build/ (the build plans of finished phases)
+build/            check scripts and their tests, hooks, toolchain pin, presets helpers, fonts/ and unicode/ generators, size budgets, packaging
 .github/          workflows that run the same checks
 ```
 
@@ -208,7 +213,7 @@ fails until all of them agree.
 | match | a range of glyph records the caller wants redacted, given as glyph ranges or found by a folded search; continuous across operators, lines and hyphens |
 | placeholder | the string drawn where a match was, in the placeholder font, from the placeholder alphabet `[`, `]`, `_`, `0`-`9`, `A`-`Z` |
 | placeholder font | a CID-keyed TrueType subset of Liberation Sans (Regular and Bold) holding the placeholder alphabet and `.notdef`, embedded once per output file with a `ToUnicode` map |
-| treatment | what is done to an image identity: `keep`, `box`, `blur`, `remove` |
+| treatment | what is done to an image identity: `keep`, `box`, `blur`, `remove`, and `region` boxes over rectangles the caller found in its pixels |
 | channel | a place in a PDF where text or pixels can survive outside the page's drawn content; one row of the channel table |
 | edit plan | the caller's matches, treatments, page selection and metadata values held by an edit handle until `pdfkit_write` |
 | self-check | the re-read of an output with the library's own reader, refusing the output when a redacted string survives in any text surface |
@@ -253,7 +258,7 @@ A session that wants to change a rule reads its reason here first.
 - **Leaving the following glyphs in place leaks the removed span's width**
   (Bland et al., PETS 2023, recovered redacted names from glyph positions in
   eleven tools). The owner accepts the leak for layout fidelity; re-anchoring the
-  rest of the line is a later switch and never the default.
+  rest of the line would be an opt-in switch and is never the default.
 - **Extractors disagree on what is text**, and the specification itself says
   TrueType encoding heuristics are "not described here". The decoding ladder
   records which rung answered each code, and the reading gate is measured
@@ -323,10 +328,12 @@ A dataset of at least 500 and at most 1,000 PDF files is the regression suite,
 the acceptance gate and the catalogue of what breaks. `dataset/manifest.tsv` is
 committed; the files are not. `dataset/README.md` owns the column definitions.
 One row per file: `id`, `set`, `source` (URL or generator), `licence`, `sha256`,
-`bytes`, `pages`, `producer`, `tags`, and one expected outcome per catalogue
-function (`open`: `opens`, `repaired` or `refused:<code>`; `text`: `agree`,
-`known_gap:<reason>` or `n/a`; `images`: `decoded`, `partial:<reason>` or
-`n/a`; and one column per later function).
+`bytes`, `pages`, `producer`, `tags`, an expected outcome per function the
+dataset verb measures (`expect_open`: `opens`, `repaired` or `refused:<code>`;
+`expect_text`, `expect_fonts`, `expect_images`, `expect_metadata`,
+`expect_write`, `expect_select`, `expect_redact_text`, `expect_set_metadata`,
+`expect_redact_images`, each a pass value, `known_gap:<reason>` or `n/a`), and
+`notes`. The manifest holds 960 rows.
 
 ### 7.2 Composition and licences
 
@@ -338,11 +345,12 @@ function (`open`: `opens`, `repaired` or `refused:<code>`; `text`: `agree`,
   qpdf's test files, PDFium's test resources and corpus, the PDF Association's
   safedocs and pdf20examples, the Open Preservation Foundation format corpus,
   pdf.js's test files, PdfPig's and PDFBox's test files, py-pdf's sample files,
-  the veraPDF corpus, corkami's proofs of concept, and one or two 1,000-file zips
-  of Digital Corpora's CC-MAIN-2021-31-PDF-UNTRUNCATED as the wild sample. The
-  PDF Association's stressful corpus and Digital Corpora's UNSAFE-DOCS are
-  optional sets run in a sandboxed process for the refuse-rather-than-hang
-  invariant only.
+  the veraPDF corpus, one 1,000-file zip of Digital Corpora's
+  CC-MAIN-2021-31-PDF-UNTRUNCATED as the wild sample, and, scouted beyond these,
+  pdf-differences, pdfminer.six, pdfplumber, pikepdf, Apache Tika and NICAR
+  2025. corkami's proofs of concept, the PDF Association's stressful corpus and
+  Digital Corpora's UNSAFE-DOCS carry no licence that allows it and are not
+  fetched (`dataset/sources.tsv` records each set's status).
 - **No PDF is committed to git**, whatever its licence, because unit fixtures
   are written in code and the dataset lives outside git; `build/check_repo.py`
   fails on any committed file whose bytes start with `%PDF`.
@@ -350,7 +358,8 @@ function (`open`: `opens`, `repaired` or `refused:<code>`; `text`: `agree`,
   generator on the laptop (Word Save as PDF and PDF/A, Microsoft Print to PDF
   from Word, Excel and PowerPoint, Edge Save as PDF) by
   `dataset/tools/generate_office.ps1`, which kills any application that hangs or
-  shows a dialog.
+  shows a dialog; Word and Edge cannot be driven unattended on the laptop, so
+  their two tags wait on the owner (`OPEN-QUESTIONS.md`).
 - **Synthesised files** fill every taxonomy tag no public file covers, written by
   `dataset/tools/synth/` from a description of the pattern known to break
   extraction, because a tag with no file is a blind spot.
@@ -408,11 +417,11 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
 | Tier | What it proves | Command |
 |---|---|---|
 | unit | each component against fixtures written in code by `tests/unit/support/` (no committed PDF) | `ctest --preset unit` |
-| sanitizer | the unit tier under the sanitizers the pinned toolchain supports (`build/toolchain.md` lists them) | `ctest --preset sanitize` |
-| dataset | the catalogue's expectations over every manifest file, with a 30 s per-file timeout and the refusal invariant | `python tests/dataset/run.py` |
-| pdfium | text agreement, pixel stability and the second leak check against PDFium | `python tests/pdfium/compare.py --run <run-id>` |
+| sanitizer | the unit tier under the sanitizers the pinned toolchain supports (`build/toolchain.md` lists them): UBSan in trap mode under GCC, ASan and UBSan under llvm-mingw | `ctest --preset sanitize`, `ctest --preset clang-sanitize` |
+| dataset | the catalogue's expectations over every manifest file, twice for determinism, with a timeout of 30 s per started block of 200 pages and the refusal invariant; each phase's gate script judges a run | `python tests/dataset/run.py`, `python tests/dataset/gates/phase<n>.py --run <run-id>` |
+| pdfium | text, image and metadata agreement, pixel stability and the second leak check against PDFium | `tests/pdfium/text_agreement.py`, `image_agreement.py`, `metadata.py`, `compare.py --check write,select,text,redact`, `images.py`, `leak.py --metadata --images`, each with `--run <run-id>` |
 | abi | the C ABI loaded from .NET and from Python | `python tests/abi/run.py` |
-| checks | layout, formatting, tidy, warnings, headers, catalogue, third party, repository, no-network | `python build/check.py` |
+| checks | layout, headers, comments, catalogue, third party, no-network, repository, paths, generated files, warnings, formatting and tidy, the artefact's imports | `python build/check.py` |
 
 ### 8.2 Rules
 
@@ -486,10 +495,11 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
 ## 10. Build and release
 
 - **CMake with Ninja**, driven by `CMakePresets.json`: `mingw-debug`,
-  `mingw-release`, `mingw-sanitize`. Targets: `pdfkit` (the shared library),
-  `pdfkit_core` (the static library every test links), `pdfkit_cli` (the
-  `pdfkit` executable), `pdfkit_tests` (the unit tier), and one target per
-  vendored component.
+  `mingw-release`, `mingw-sanitize` and `clang-sanitize` (llvm-mingw, for
+  AddressSanitizer). Targets: `pdfkit` (the shared library), `pdfkit_core` (the
+  static library every test links), `pdfkit_cli` (the `pdfkit` executable),
+  `pdfkit_tests` (the unit tier), `pdfkit_image_census` (the image decoders'
+  dataset census), and one target per vendored component.
 - **The toolchain is pinned** in `build/toolchain.md`: WinLibs MinGW-w64 GCC
   16.1.0 (UCRT, POSIX threads, SEH), CMake 4.3.2, Ninja 1.13.2, and clang-format
   and clang-tidy from PyPI at the versions recorded there, with the proxy
@@ -503,10 +513,14 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
   holding `pdfkit.dll`, its import library, `pdfkit.h`, `pdfkit.exe`,
   `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md`, produced by
   `python build/package.py`; further architectures are added as the toolchain
-  pin gains them. `build/budgets.tsv` holds the size budget of each artefact
-  and the packaging step fails past it.
+  pin gains them. `build/budgets.tsv` holds the size budget of the DLL, the
+  executable and the zip (the first release package plus 25%) and the
+  packaging step fails past it; the zip's entries are sorted, dated 1980-01-01
+  and the import library's member dates zeroed, so `python build/package.py
+  --verify`, which packs twice around a clean rebuild, finds one set of bytes.
 - **CI runs the same checks**: `.github/workflows/` call `build/check.py`, the
-  unit tier and the abi tier; until runners start, the pre-push hook
+  unit tier and the abi tier; the hosted runners do not start for this
+  repository, so the pre-push hook
   (`build/hooks/pre-push`, installed by `python build/install_hooks.py`) is the
   gate, and it runs `build/check.py --fast` and the unit tier.
 
@@ -518,8 +532,10 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
 - **Main is always green.** A phase merges into `main` only after its checks,
   unit tier and gate pass on the merged tip; the merge is made locally (no pull
   request) and pushed. The merge commit message carries the gate's numbers and
-  the trailer `Build-Phase: <n> done`, or the branch carries
-  `Build-Phase: <n> incomplete` with the reason when the session stops early.
+  the trailer `Build-Phase: <n> done`; a phase whose checks and leak measures
+  pass but whose gate does not merges with `Build-Phase: <n> gate-failed` and
+  the owner's question, and the branch carries `Build-Phase: <n> incomplete`
+  with the reason when the session stops early.
 - **Shared caches live in the main checkout**, resolved through
   `git rev-parse --git-common-dir`: the dataset files under `dataset/files/` and
   the PDFium binary under `build/cache/`, so every worktree reads one copy.
@@ -536,6 +552,8 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
 - The URL behind every external fact: `docs/SOURCES.md`.
 - The dataset's columns, tags and tools: `dataset/README.md`, `dataset/taxonomy.tsv`.
 - The pinned toolchain: `build/toolchain.md`.
-- The phase being built: the lowest-numbered `build-<n>.md` whose phase is not
-  marked done in `git log --grep "Build-Phase: <n> done"`.
+- A phase's plan: `build-<n>.md` at the root while its phase is not marked
+  done in `git log --grep "Build-Phase: <n> done"`, `docs/archive/build/`
+  after; a phase marked `gate-failed` keeps its plan at the root, with its
+  open measures and the owner's question.
 - Questions waiting for the owner: `OPEN-QUESTIONS.md`.

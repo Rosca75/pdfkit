@@ -52,7 +52,7 @@ resolves conflicts in these with phases 4 and 7.
   interpreter serves extraction and redaction (CLAUDE.md §3.2).
 - `src/api/` and `cli/` stubs from phase 1, `docs/ABI.md`'s conventions.
 - `tests/pdfium/` and `tests/dataset/run.py` from phase 2.
-- `build-3.md` §9 and, for the listing step, `build-5.md` §9.
+- `docs/archive/build/build-3.md` §9 and, for the listing step, `build-5.md` §9.
 
 ## 2. Components
 
@@ -199,7 +199,7 @@ to their phase-1 stubs. Nothing persisted changes shape.
 
 > Read `CLAUDE.md`, `docs/DESIGN.md` §3, §6 (image occurrences), §9 and §19,
 > `docs/ABI.md`, `docs/SOURCES.md`, all of `build-6.md`, and the deviations
-> sections (§9) of `build-1.md` to `build-3.md` (and of `build-5.md` before the
+> sections (§9) of `docs/archive/build/build-1.md` to `docs/archive/build/build-3.md` (and of `build-5.md` before the
 > listing step). Before planning, read what landed in `src/syntax/` (streams,
 > the filter chain's hand-back of image-encoded bytes, inline images in the
 > content lexer), `src/platform/` (budget, SHA-256, checked arithmetic), the
@@ -224,7 +224,7 @@ to their phase-1 stubs. Nothing persisted changes shape.
 > `Build-Phase: 6 incomplete` (a split point of §7) or
 > `Build-Phase: 6 gate-failed`, with the gate's numbers in the message. Never
 > merge into `main`; the team lead merges. Record every deviation from this
-> file in its §9 and in every downstream build file it affects (`build-9.md`,
+> file in its §9 and in every downstream build file it affects (`docs/archive/build/build-9.md`,
 > `build-10.md`) in the same change.
 
 ## 9. Deviations recorded by this phase
@@ -393,14 +393,14 @@ From `build-5.md` §9 (the listing step reads these):
 - One image drawn twice gives two occurrences; one form drawn twice is walked twice (two `PageContent::streams` entries with the same `form`), so its images are numbered twice, as `docs/DESIGN.md` §9.2 wants. Identity is the image layer's: group occurrences by identity, not by `reference`.
 - The text layer charges `Document::decode` once per form per `TextReader` (it caches decoded forms), and decodes no image data.
 
-From `build-1.md` §9:
+From `docs/archive/build/build-1.md` §9:
 
 - `cli/verbs/images.cpp` takes `--out <folder>` without checking it first; the first image write reports a folder that cannot be written, and `std::filesystem` stays out of the CLI because it alone tripled `pdfkit.exe` (item 7).
 - `pdfkit_image_data(doc, identity, options_json, out)` writes PNG or JPEG bytes, not JSON, into `out` on success (item 4).
-- `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`build-1.md` §9 item 11).
-- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+- `third_party/inventory.tsv` has the columns `path, name, version, upstream, archive, archive_sha256, tree_sha256, licence, test_only`; compute a tree hash with `python build/check_third_party.py --print-tree-hash third_party/<name>` (our `CMakeLists.txt` in the folder is excluded) and cache the upstream archive in the main checkout's `build/cache/third_party/` (`docs/archive/build/build-1.md` §9 item 11).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`docs/archive/build/build-1.md` §9 item 8).
 
-From `build-3.md` §9:
+From `docs/archive/build/build-3.md` §9:
 
 - The object model is `syntax::Object` (nested `Reference`, `Number`, `String` with its literal-or-hex flag, `Array` = `std::vector<Object>`), `syntax::Dictionary` (insertion-ordered) and `syntax::Stream` (dictionary, raw byte range, owner); all immutable and shared, built through the `make_*` factories (item 3).
 - `syntax::Document::open(bytes, Limits)` returns the document; `object(reference)`, `resolve(object)` and `resolve_entry(dictionary, key)` resolve (strings come back decrypted), `decode(stream, page)` decrypts and runs the filters up to the first image codec (`Filters::Result::remaining` names the codecs left), `content_pieces(contents, page)` decodes a `/Contents` value, `pages()` holds `syntax::Page` (boxes, rotation, resolved resources, contents), `repair(reason)` and `warn(code, message, page)` record (items 3, 4).

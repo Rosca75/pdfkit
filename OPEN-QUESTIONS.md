@@ -96,7 +96,7 @@ The session took (b) for now; the gate counts 121 of 123 tags at minimum.
 
 ### 2.3 corkami's proofs of concept carry no licence (phase 2)
 
-`build-2.md` planned 15 files from https://github.com/corkami/pocs as
+`docs/archive/build/build-2.md` planned 15 files from https://github.com/corkami/pocs as
 `terms:none`, local reading only. The repository has no LICENSE file and its
 README states no terms, so under the rule "admit a set only when its licence or
 terms allow local testing" the session recorded it `licence_unclear` and did
@@ -162,7 +162,7 @@ stream uses (plus `/DefaultGray`, `/DefaultRGB`, `/DefaultCMYK` and
 page draws is not written. An undrawn form can hold text an extractor reads,
 so it is a channel; the price is fidelity risk where a content stream uses a
 name the usage reader misses, which the gate measured at 0 pages of 8,027
-(every differing page has another cause, `build-7.md` §9 item 14). §16 now
+(every differing page has another cause, `docs/archive/build/build-7.md` §9 item 14). §16 now
 says so. Do you want to keep it?
 
 - **(a) Keep pruning on every write — recommended, and taken while this
@@ -187,7 +187,7 @@ reads 99.08%). Do you want to keep it?
 
 - **(a) Keep PDFium's Adobe CMYK table — recommended, and taken while this
   question stands.** No cost; a CMYK image then looks as it does in Chrome's
-  viewer, and the treated images of `build-9.md` re-encode from the kept CMYK
+  viewer, and the treated images of `docs/archive/build/build-9.md` re-encode from the kept CMYK
   samples either way.
 - **(b) Return to the naive complement.** About 0.5 hour and $5 to $10 (one
   function, its tests, the notice row and a gate run); the continuous-tone
@@ -287,7 +287,7 @@ file in twenty below 0.90", whatever the cause).
 ### 2.11 Text redaction: what the search folds and where the self-check looks (raised by phase 8)
 
 Phase 8 took these five decisions unattended, each the recommended answer
-and each taken while this question stands; `build-8.md` §9 records them and
+and each taken while this question stands; `docs/archive/build/build-8.md` §9 records them and
 `docs/DESIGN.md` §11, §12, §15 and §18 say so. Do you confirm them?
 
 1. **No compatibility folding.** The default folding is the one §11 names
@@ -424,7 +424,7 @@ each taken while this question stands; `build-10.md` §9 records them and
    (pypdf-0019, pypdf-0021) or as the TeX logo's lowered E (qpdf-0038) is
    not matched, and PDFium, reading in its own order, finds it in the
    output. pdfkit's own self-check reads pdfkit's order and passes. This is
-   the leak rule of `build-8.md` §5 met by a phrase rather than a word; the
+   the leak rule of `docs/archive/build/build-8.md` §5 met by a phrase rather than a word; the
    seeded words of the text redaction job show no such survivor (902 files,
    0 PDFium hits).
    - **(a) A fix session on the phrase search before the release —
@@ -441,7 +441,7 @@ each taken while this question stands; `build-10.md` §9 records them and
 ### 2.13 Image treatment: what counts as hidden, and what a damaged inline image takes with it (raised by phase 9)
 
 Phase 9 took these four decisions unattended, each the recommended answer
-and each taken while this question stands; `build-9.md` §9 records them and
+and each taken while this question stands; `docs/archive/build/build-9.md` §9 records them and
 `docs/DESIGN.md` §14 says so. Do you confirm them?
 
 1. **A treatment that writes exactly an image's original bytes is not a
@@ -535,3 +535,39 @@ recommended answer and each taken while this question stands;
    - (b) Only under a `compatibility` flag of §2.11 item 1(a). About 2 to 3
      hours and $40 to $60 with that flag; without the flag pdfbox-0004 is a
      known gap again.
+
+### 2.15 No v0.1.0 tag: two gates of the final dataset stand failed (raised by phase 10)
+
+`build-10.md` §4 tags `v0.1.0` only when every phase from 3 to 10 merged
+`done` and every gate holds on the final dataset. On the final dataset of 960
+files (runs `p10-final` and `p10-final-robust`, the release build of the
+merged tip; `build-10.md` §9 holds the whole table) every leak measure is zero
+and phases 3, 4, 7, 8 and 9 hold, but three items do not, so **no tag is
+made**:
+
+- **Phase 5, the reading gate**: 56 of 898 files below 0.90 F1 with PDFium,
+  6.24 % against at most 5 % (median 1.0; by cause 21 pdfkit, 27 PDFium, 8
+  legitimate), the numbers of §2.10 unchanged.
+- **Phase 6, bitonal agreement**: 495 of 498 images equal to PDFium's bitmap,
+  against 100 %. All three are PDFium's: qpdf-0026 (its first Group 4 coding
+  line, `build-6.md` §9 item 4) and two of the image phase's synthesised
+  files with `/Decode [1 0]` (synth-0263, synth-0265), which PDFium's
+  renderer inverts as pdfkit does while `FPDFImageObj_GetBitmap` hands back
+  the samples uninverted.
+- **Phase 10's coverage**: 153 of 155 tags at their minimum; `gen_word_pdfa`
+  and `gen_edge` wait on §2.2.
+
+The release would ship with these known gaps; nothing else is open. Do you
+want:
+
+- **(b) Release as `0.1.0-preview`, the gaps listed in the release notes and
+  the manifest — recommended**: the leak measures are zero, the gaps are a
+  reader's agreement share (most of it PDFium's or decisions already on this
+  list, §2.5), a PDFium bitmap convention and two generator files the laptop
+  cannot make. About 1 hour and $15 (the tag, the notes).
+- (a) A fix session on the causes, then `v0.1.0`: the 21 pdfkit-caused
+  reading files (§2.10 (a), ~8-12 h, ~$150-250) and amending phase 6's
+  bitonal gate to name PDFium differences as phase 5's does (~0.5 h, $10);
+  `gen_word_pdfa` and `gen_edge` still need §2.2 answered.
+- (c) No release until every gate holds as written. No cost now; phase 5's
+  gate cannot hold while 27 PDFium-caused files count against it.
