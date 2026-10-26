@@ -35,7 +35,7 @@ approximation (it owns those files for that purpose).
 
 - `src/fonts/` as merged by phase 4: `PdfFont::decode`, `width`, the vertical
   metrics, `is_bold`, `DecodingRung`, `FontLoader` and its cache. Read
-  `build-4.md` §9 first: if phase 4 merged `gate-failed`, its census numbers are
+  `docs/archive/build/build-4.md` §9 first: if phase 4 merged `gate-failed`, its census numbers are
   the baseline this phase must beat and the open question stands.
 - `src/syntax/`: the content lexer (operators with operands and byte ranges, the
   `/Contents` concatenation, inline images), the page list with boxes and
@@ -48,7 +48,7 @@ approximation (it owns those files for that purpose).
 - `tests/pdfium/` and `tests/dataset/run.py` from phase 2: how PDFium's text is
   read per page, how the dataset verb's per-file outcomes are compared to the
   manifest.
-- `build-3.md` §9 and `build-4.md` §9.
+- `docs/archive/build/build-3.md` §9 and `docs/archive/build/build-4.md` §9.
 
 ## 2. Components
 
@@ -72,7 +72,7 @@ Namespace `pdfkit::text`, one class per file in `src/text/`.
 
 Phase 4's census files are deleted, and the `dataset --fonts` mode is replaced by
 reading the rung counts out of the `text` outcome; recorded in this file's §9
-and in `build-4.md`'s header is left as written.
+and in `docs/archive/build/build-4.md`'s header is left as written.
 
 ## 3. Tests
 
@@ -191,7 +191,7 @@ the `text` column of the manifest is reverted with the merge.
 
 > Read `CLAUDE.md`, `docs/DESIGN.md` §4 to §8 and §19, `docs/ABI.md`,
 > `docs/SOURCES.md`, all of `build-5.md`, and the deviations sections (§9) of
-> `build-1.md` to `build-4.md`. Before planning, read what landed in
+> `docs/archive/build/build-1.md` to `docs/archive/build/build-4.md`. Before planning, read what landed in
 > `src/fonts/` (`PdfFont`, `DecodingRung`, `FontLoader`), `src/syntax/` (the
 > content lexer, pages, resources), `src/api/` (the registry, `guarded`),
 > `cli/verbs/text.cpp`, `tests/dataset/run.py` and `tests/pdfium/`. Work in a
@@ -214,7 +214,7 @@ the `text` column of the manifest is reverted with the merge.
 > `Build-Phase: 5 gate-failed`, with the gate's numbers in the message. Never
 > merge into `main`; the team lead merges. Record every deviation from this file
 > in its §9 and in every downstream build file it affects (`build-6.md`,
-> `build-8.md`, `build-9.md`, `build-10.md`) in the same change.
+> `docs/archive/build/build-8.md`, `docs/archive/build/build-9.md`, `build-10.md`) in the same change.
 
 ## 9. Deviations recorded by this phase
 
@@ -333,13 +333,13 @@ the `text` column of the manifest is reverted with the merge.
 
 ### Deviations of earlier phases that affect this one
 
-From `build-1.md` §9:
+From `docs/archive/build/build-1.md` §9:
 
 - The JSON tree type is `platform::JsonValue` in `src/platform/json_value.hpp`; options arrive through `api::parse_json_object` (item 2).
 - `cli/verbs/text.cpp` takes `--options <json>` and `--open-options <json>` and is complete once the functions exist (item 7).
-- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`docs/archive/build/build-1.md` §9 item 8).
 
-From `build-3.md` §9:
+From `docs/archive/build/build-3.md` §9:
 
 - The object model is `syntax::Object` (nested `Reference`, `Number`, `String` with its literal-or-hex flag, `Array` = `std::vector<Object>`), `syntax::Dictionary` (insertion-ordered) and `syntax::Stream` (dictionary, raw byte range, owner); all immutable and shared, built through the `make_*` factories (item 3).
 - `syntax::Document::open(bytes, Limits)` returns the document; `object(reference)`, `resolve(object)` and `resolve_entry(dictionary, key)` resolve (strings come back decrypted), `decode(stream, page)` decrypts and runs the filters up to the first image codec (`Filters::Result::remaining` names the codecs left), `content_pieces(contents, page)` decodes a `/Contents` value, `pages()` holds `syntax::Page` (boxes, rotation, resolved resources, contents), `repair(reason)` and `warn(code, message, page)` record (items 3, 4).
@@ -347,7 +347,7 @@ From `build-3.md` §9:
 - `Document::decode` charges the budget on every call, so a layer that decodes a shared stream more than once caches the decoded bytes (item 11).
 - The fixture writer is `test::PdfBuilder`, `test::ContentBuilder` and `test::open_document` in `tests/unit/support/`; the `dataset` verb writes `text: null` until this phase fills it (item 12).
 
-From `build-4.md` §9:
+From `docs/archive/build/build-4.md` §9:
 
 - The fonts API as built: `fonts::FontLoader loader(document)` and `loader.load(entry)`, where `entry` is the `/Font` resource value as written (pass the reference, not the resolved dictionary, so the font is cached by object number; `syntax::Resources::lookup` returns resolved objects, so read the raw entry from the resource dictionary as `fonts::FontCensus` does); `PdfFont::decode(bytes)` returns `std::vector<PdfFont::DecodedCode>` with `code`, `byte_length`, `text` (UTF-8, empty when unreadable), `rung` and `decomposed`; `width(code)` is in thousandths of text space (a Type 3 width already through `/FontMatrix[0]`, so the interpreter applies `Tfs` only); `vertical_advance(code)` gives `w1`, `vx`, `vy` for `is_vertical()` fonts; `vertical_metrics()` gives ascent and descent in thousandths with a `fallback` flag (0.8 and -0.2 em); `widths_estimated()` is the `font_not_embedded` condition; `unreadable_count()` counts over the whole document, so the per-page `unreadable_text` count is the interpreter's own tally of `DecodingRung::unreadable` records (items 2, 8).
 - `Tw` applies to a code whose `byte_length` is 1 and whose `code` is 32 only; a composite font's two-byte code 32 takes no word spacing (`docs/DESIGN.md` §6.1).

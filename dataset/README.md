@@ -52,14 +52,14 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_open` | `opens` (no repair), `repaired` (opens through reconstruction), or `refused:<code>` with a refusal code of `docs/DESIGN.md` chapter 19 |
 | `expect_text` | `agree` (pdfkit's text must agree with PDFium's), `known_gap:<reason>` (a disagreement known in advance, with its reason), or `n/a` (no text, or no reader can open it) |
 | `expect_images` | `decoded` (every image decodes), `partial:<reason>`, or `n/a` (no image) |
-| `expect_redact` | `stable` (a redaction leaves the page pixel-stable outside the changed rectangles) or `n/a` |
+| `expect_redact` | unused: `n/a` in every row (the image redaction's expectation is `expect_redact_images`, and pixel stability is measured by `tests/pdfium/compare.py --check redact`) |
 | `expect_metadata` | `read` (pdfkit_metadata reads the Info dictionary and the XMP packet), `known_gap:<reason>` (`known_gap:xmp_unreadable` for a packet that does not scan, which the reader reports and never guesses at) or `n/a` (neither is present, or the file is refused); whether the two places agree is the file's `meta_*` tag, not an expectation |
 | `expect_fonts` | the decoding ladder over every shown code, read from the `text` outcome's per-page `unreadable` counts and filled by `tests/pdfium/text_agreement.py --write-manifest`: `loads` (every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
 | `expect_write` | `identical` (the identity write re-opens in pdfkit without repair with the same page count, and PDFium renders every page as the input renders), `known_gap:<reason>` (a difference known in advance, with its reason) or `n/a` (a file pdfkit refuses) |
 | `expect_select` | `ok` (a seeded random proper subset of the pages, written in a shuffled order, re-opens without repair with that many pages, and each output page renders as its source page), `known_gap:<reason>` or `n/a` (one page, or a file pdfkit refuses) |
-| `expect_redact_images` | `clean` (the seeded image treatment of `tests/dataset/outcome.md` writes an output that re-opens without repair with the input's page count and still lists none of the treated or removed identities; PDFium's bitmaps hold no original sample inside a treated rectangle, the output holds no original's encoded bytes and the pages are pixel-stable outside the treated draws' rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` or `n/a` (a file with no image the job can treat, or one pdfkit refuses) |
 | `expect_redact_text` | `clean` (the seeded text redaction of `tests/dataset/outcome.md` passes the self-check and its output re-opens without repair with the input's page count; PDFium's text and the output's bytes hold no redacted word and the pages are pixel-stable outside the reported rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` (the self-check refuses for a reason the job does not redact, such as a word that is also in the metadata) or `n/a` (a file pdfkit refuses) |
 | `expect_set_metadata` | `clean` (the metadata rewrite of `tests/dataset/outcome.md` passes the self-check, re-opens without repair with the input's page count, and its Info dictionary and XMP packet carry the written values; PDFium's text and Info fields and the output's bytes hold no original value, which `tests/pdfium/leak.py --metadata` measures), `known_gap:<reason>` or `n/a` (no field present, or a file pdfkit refuses) |
+| `expect_redact_images` | `clean` (the seeded image treatment of `tests/dataset/outcome.md` writes an output that re-opens without repair with the input's page count and still lists none of the treated or removed identities; PDFium's bitmaps hold no original sample inside a treated rectangle, the output holds no original's encoded bytes and the pages are pixel-stable outside the treated draws' rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` or `n/a` (a file with no image the job can treat, or one pdfkit refuses) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |
 
 A new catalogue function adds its expectation column here and in
@@ -89,7 +89,7 @@ overrides them from provenance:
   `partial:<encodings that failed>` (joined by `+`) otherwise, and `n/a` for
   a file not opened; a file whose resources reach no image keeps its value (an
   inline image is not reached that way); `--check` compares a run with it.
-- `expect_redact`: `n/a` until the phase that delivers image redaction sets it.
+- `expect_redact`: `n/a`, unused.
 - `expect_metadata`, `expect_set_metadata` and the tags of the `metadata`
   group: `n/a` and no tag for a new row, until `python
   tests/dataset/gates/phase10.py --run <id> --write-manifest` fills them from a
@@ -106,7 +106,7 @@ overrides them from provenance:
 - `expect_redact_text`: `clean` when `expect_open` is `opens` or `repaired`,
   `n/a` otherwise (`common.default_expect_redact_text`, applied by `add.py`); a
   refusal a run explains is recorded as `known_gap:<reason>` by hand. The
-  column sits before `notes`. The synthesised redaction traps
+  column follows `expect_select`. The synthesised redaction traps
   (`dataset/tools/synth/redaction/`, tags `redact_<case>`) draw the marker the
   seeded job always redacts.
 - `expect_redact_images`: `clean` when `expect_open` is `opens` or `repaired`
@@ -114,7 +114,7 @@ overrides them from provenance:
   (`common.default_expect_redact_images`, applied by `add.py`); a run fills it
   from what the job found (`python tests/dataset/gates/phase9.py --run <id>
   --write-manifest`: `n/a` where `pdfkit_images` lists no image). The column
-  sits before `notes`. The synthesised treatment files
+  sits before `notes`, after `expect_set_metadata`. The synthesised treatment files
   (`dataset/tools/synth/images/`, tags `treat_region` and `treat_caption`)
   hold every image case of the job in one file, the codec sources copied from
   permissively licensed dataset files under their own licence.
@@ -163,7 +163,7 @@ The admitted sets and the files taken:
 | `pdfbox` | PDFBox test resources | Apache-2.0 | 15 |
 | `pdf20ex` | PDF Association PDF 2.0 examples | CC-BY-SA-4.0 | 7 |
 | `nicar25` | public-records PDFs collected as hard extraction cases | MIT | 7 |
-| `synth` | `dataset/tools/synth/` | Apache-2.0 | 220 |
+| `synth` | `dataset/tools/synth/` | Apache-2.0 | 243 |
 | `mutate` | `dataset/tools/mutate.py` over admitted files | the source's | 75 |
 | `office` | `dataset/tools/generate_office.ps1` | Apache-2.0 | 4 |
 

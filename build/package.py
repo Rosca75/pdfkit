@@ -129,7 +129,7 @@ def package() -> str | None:
             problems.append(problem)
     if problems:
         print("\n".join(problems), file=sys.stderr)
-        return 1
+        return None
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     target = dist / f"pdfkit-{project_version()}-windows-x64.zip"

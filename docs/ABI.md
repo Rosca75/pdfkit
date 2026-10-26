@@ -4,8 +4,8 @@ This file owns the C ABI of pdfkit: every exported symbol, its inputs and
 outputs, its status codes, the JSON error object, the versioning rule, and the
 command-line tool's verbs and exit codes. The header is
 `include/pdfkit/pdfkit.h`; `CLAUDE.md` §2 owns which functions exist, and this
-file owns how they are called. A function's JSON shapes are added here by the
-change that implements it.
+file owns how they are called. This build implements every catalogue
+function; the version of the library is 0.1.0 and of the ABI 1.
 
 ## 1. Calling rules
 
@@ -31,8 +31,10 @@ change that implements it.
   out-of-memory condition is `PDFKIT_E_INTERNAL`; when even the error object
   cannot be allocated, the status alone is returned and the buffer stays empty.
 - **Calling convention**: the platform's C default (`cdecl` on Windows x64,
-  where there is one convention). From .NET: `[DllImport("pdfkit")]` with
-  `CallingConvention.Cdecl`; from Python: `ctypes.CDLL`.
+  where there is one convention). From .NET: `[LibraryImport("pdfkit")]`
+  (or `[DllImport("pdfkit")]` with `CallingConvention.Cdecl`), as
+  `tests/abi/dotnet` declares every symbol; from Python: `ctypes.CDLL`, as
+  `tests/abi/python/test_abi.py` does.
 - **Linking**: `pdfkit.dll` imports only operating-system DLLs (KERNEL32 and the
   Universal C Runtime API sets). C and C++ callers link `pdfkit.lib` (the import
   library) and include `pdfkit/pdfkit.h` without defining anything.
@@ -75,9 +77,10 @@ library cannot build an error without them.
 | `expected` | what the library expected there |
 | `fix` | what the caller can do about it |
 
-A function not part of this build answers with `code` `not_implemented`, a
-`failed` naming the symbol, its catalogue number and its function, and an
-`expected` naming the build file that delivers it:
+The code `not_implemented` is reserved for a build that leaves a catalogue
+row out (this build leaves none): such a function answers with a `failed`
+naming the symbol, its catalogue number and its function, and an `expected`
+naming the plan that delivers it:
 
 ```json
 {
@@ -114,40 +117,39 @@ The version object:
   "build": "gcc 16.1.0, Release",
   "catalogue": [
     {"number": "1.1", "function": "Open", "symbol": "pdfkit_open", "verb": "inspect",
-     "build_file": "build-3.md", "implemented": false,
-     "error": {"code": "not_implemented", "failed": "...", "expected": "...", "fix": "..."}}
+     "build_file": "docs/archive/build/build-3.md", "implemented": true}
   ]
 }
 ```
 
-`catalogue` holds one entry per row of `CLAUDE.md` §2 in its order; `error` is
-present only when `implemented` is false and is exactly the object the
-function returns, so a caller (the CLI among them) can report a missing
+`catalogue` holds one entry per row of `CLAUDE.md` §2 in its order, every one
+`implemented` in this build; for a row a build leaves out, `implemented` is
+false and `error` is exactly the object the function returns, so a caller (the CLI among them) can report a missing
 function before reading any input. `build` names the compiler and the build
 type and never a time, so two builds of one tree report the same text.
 
 ### 4.2 Catalogue functions
 
-| # | Signature | Required arguments | Output on success | Delivered by |
+| # | Signature | Required arguments | Output on success | Plan |
 |---|---|---|---|---|
-| 1.1 | `pdfkit_open(const uint8_t* bytes, size_t size, const char* options_json, pdfkit_document** out_doc, pdfkit_buffer* out)` | `out`, `out_doc`; `bytes` unless `size` is 0 | `*out_doc` the handle; `out` the open report | `build-3.md` |
-| 1.2 | `pdfkit_inspect(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the inspect JSON | `build-3.md` |
+| 1.1 | `pdfkit_open(const uint8_t* bytes, size_t size, const char* options_json, pdfkit_document** out_doc, pdfkit_buffer* out)` | `out`, `out_doc`; `bytes` unless `size` is 0 | `*out_doc` the handle; `out` the open report | `docs/archive/build/build-3.md` |
+| 1.2 | `pdfkit_inspect(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the inspect JSON | `docs/archive/build/build-3.md` |
 | 2 | `pdfkit_text(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the text JSON | `build-5.md` |
 | 3.1 | `pdfkit_images(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the image list JSON | `build-6.md` |
 | 3.2 | `pdfkit_image_data(pdfkit_document* doc, const char* identity, const char* options_json, pdfkit_buffer* out)` | `doc`, `identity`, `out` | PNG or JPEG bytes (not JSON) | `build-6.md` |
 | 4 | `pdfkit_metadata(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the metadata JSON | `build-10.md` |
-| 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `build-8.md` |
-| 6 | `pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json, pdfkit_buffer* out)` | `edit`, `treatments_json`, `out` | the per-treatment JSON | `build-9.md` |
+| 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `docs/archive/build/build-8.md` |
+| 6 | `pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json, pdfkit_buffer* out)` | `edit`, `treatments_json`, `out` | the per-treatment JSON | `docs/archive/build/build-9.md` |
 | 7 | `pdfkit_set_metadata(pdfkit_edit* edit, const char* fields_json, pdfkit_buffer* out)` | `edit`, `fields_json`, `out` | the fields as they will be written | `build-10.md` |
-| 8 | `pdfkit_channels(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the channel report JSON | `build-7.md` |
-| 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `build-7.md` |
-| 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `build-7.md`, self-check `build-8.md` |
-| 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `build-8.md` |
+| 8 | `pdfkit_channels(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the channel report JSON | `docs/archive/build/build-7.md` |
+| 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `docs/archive/build/build-7.md` |
+| 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
+| 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md` |
 
 Every function returns `PDFKIT_E_INVALID_ARGUMENT` for a missing required
-argument or malformed JSON, and `PDFKIT_E_NOT_IMPLEMENTED` until the build file
-in the last column lands; the build file that implements a function adds its
-JSON shapes and its failure codes to a section of this chapter. `pdfkit_write`
+argument or malformed JSON; each function's section below gives its JSON
+shapes and its failure codes, and the last column names the plan that built it
+(`CLAUDE.md` §2 says where each plan is kept). `pdfkit_write`
 is the one function with two output buffers: the PDF bytes are not JSON, and
 the write report travels beside them; on failure `out_pdf` stays empty and
 `out` holds the error.
@@ -241,7 +243,7 @@ same rows. It takes no options (`NULL` or `{}`; anything else is
 }
 ```
 
-`channels` holds the 23 rows in the table's order, each with its `id` (the
+`channels` holds the 24 rows in the table's order, each with its `id` (the
 dataset's taxonomy tag), its `name`, `present` and `count`; `present` lists the
 ids whose count is above zero. The counts: `ch_revisions` the sections the
 `startxref` chain adds after the first (a linearized file's first-page section
@@ -678,16 +680,17 @@ recorded, so a refused call leaves the plan as it was.
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
   JSON output only gains fields, and a status value never changes.
-- `pdfkit_abi_version` returns 1 and is raised by one on every addition to the
-  header (a symbol or a status value), in the change that adds it.
+- `pdfkit_abi_version` returns 1, the version of the first release, and is
+  raised by one on every addition after it (a symbol, a status value or a JSON
+  field), in the change that adds it.
 - A caller checks `pdfkit_abi_version() >= N` for the version whose symbols it
   binds, and reads `pdfkit_version`'s `catalogue` to learn which functions this
   build implements.
 
 ## 6. The command-line tool
 
-`pdfkit <verb> [arguments]` writes one JSON document on standard output and
-exits with a stable code. `pdfkit --help` lists the verbs, `pdfkit <verb> --help`
+`pdfkit <verb> [arguments]` writes one JSON document on standard output (the
+help texts are plain text) and exits with a stable code. `pdfkit --help` lists the verbs, `pdfkit <verb> --help`
 prints a verb's usage and an example, and `pdfkit --version` prints the
 version object of §4.1. The tool calls the C ABI and nothing beneath it.
 
@@ -711,9 +714,9 @@ The redact job file is a JSON object: `input` and `output` (paths), an optional
 `pdfkit_write` succeeds. The `text` section is the argument of
 `pdfkit_redact_text` (`{"matches": [...]}`, §4.11) and the `images` section
 the argument of `pdfkit_redact_images` (`{"treatments": [...]}`, §4.15); a
-self-check refusal exits 3 and writes no file. A job with a section whose
-function the build lacks is refused as a usage error naming the section and
-the function, before the input is read.
+self-check refusal exits 3 and writes no file. A build that left
+`pdfkit_redact_images` or `pdfkit_set_metadata` out would refuse a job with
+that section as a usage error before reading the input.
 
 The dataset verb writes one outcome per file into `<folder>/outcomes/<id>.json`,
 a folder the caller creates (the harness does), in the shape
@@ -734,7 +737,7 @@ reported without reading the document.
 | 1 | usage error: a wrong command line, a file that cannot be read or written, a malformed option | `PDFKIT_E_INVALID_ARGUMENT` |
 | 2 | the input was refused; the JSON names why | `PDFKIT_E_REFUSED` |
 | 3 | the self-check refused the output | `PDFKIT_E_SELF_CHECK` |
-| 4 | an internal error, or a function this build lacks | `PDFKIT_E_INTERNAL`, `PDFKIT_E_NOT_IMPLEMENTED` |
+| 4 | an internal error, or the reserved status of a function a build leaves out | `PDFKIT_E_INTERNAL`, `PDFKIT_E_NOT_IMPLEMENTED` |
 
 `PDFKIT_E_NOT_IMPLEMENTED` maps to 4 because a missing function is a defect
 from the caller's point of view: the build in hand cannot do what was asked.

@@ -141,6 +141,120 @@ def write_manifest(run_dir: Path) -> dict:
     return changed
 
 
+def gate_entry(phase: int, measures: Measures | None, note: str = "") -> dict:
+    if measures is None:
+        return {"phase": phase, "passed": None, "rows": [], "note": note}
+    return {"phase": phase, "passed": all(r["pass"] for r in measures.rows), "rows": measures.rows,
+            "note": note}
+
+
+def reading_gate(run_dir: Path, rows: list[dict], summary: dict, outcomes: dict) -> dict:
+    """The reading gate (open, repair, refusal) from the run's own outcomes and the manifest's PDFium
+    page counts: a row's `pages` is PDFium's count, empty when PDFium does not open the file."""
+    m = Measures()
+    pdfium_opens = [r for r in rows if r["pages"].isdigit() and r["id"] in outcomes]
+    opened = [r for r in pdfium_opens if (outcomes[r["id"]].get("open") or {}).get("status") == "ok"]
+    m.share("of the files PDFium opens, pdfkit opens", len(opened), len(pdfium_opens), 0.99,
+            {"not_opened": [r["id"] for r in pdfium_opens if r not in opened]})
+    same = [r for r in opened if (outcomes[r["id"]]["open"].get("pages")) == int(r["pages"])]
+    m.share("page count equal to PDFium's on files both open", len(same), len(opened), 0.99,
+            {"differ": [f"{r['id']}: {outcomes[r['id']]['open'].get('pages')} vs {r['pages']}"
+                        for r in opened if r not in same]})
+    silent = []
+    for row in rows:
+        if not row["source"].startswith("mutate:") or row["id"] not in outcomes:
+            continue
+        source = outcomes.get(row["source"].split(":")[1]) or {}
+        mine = outcomes[row["id"]].get("open") or {}
+        if mine.get("status") == "ok" and mine.get("pages") != (source.get("open") or {}).get("pages"):
+            silent.append(row["id"])
+    m.zero("mutated files that open with another page count than their source and no refusal",
+           len(silent), {"files": silent})
+    refusals = [r for r in rows if r["expect_open"].startswith("refused:") and r["id"] in outcomes]
+    matched = [r for r in refusals if (outcomes[r["id"]].get("open") or {}).get("code")
+               == r["expect_open"].split(":", 1)[1]]
+    m.share("expected refusals refused with their code", len(matched), len(refusals), 1.0,
+            {"other": [r["id"] for r in refusals if r not in matched]})
+    return gate_entry(3, m, "measured from the run's outcomes")
+
+
+def fonts_gate(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
+    """The decoding ladder's gate from the text outcomes: every font loaded (the text function answered
+    on every opened file) and the share of codes no rung reads, over the files PDFium reads text from.
+    The census of character agreement this gate first used is not run again; the reading gate's word
+    agreement stands for it."""
+    m = Measures()
+    opened = [k for k, o in outcomes.items() if (o.get("open") or {}).get("status") == "ok"]
+    answered = [k for k in opened if (outcomes[k].get("text") or {}).get("status") == "ok"]
+    m.share("fonts loaded without an exception (text answered on every opened file)", len(answered),
+            len(opened), 1.0, {"failed": [k for k in opened if k not in answered]})
+    scored = {r["id"] for r in rows if r.get("expect_text", "n/a") != "n/a"}
+    unreadable = total = 0
+    for k in answered:
+        if k not in scored:
+            continue
+        rungs = outcomes[k]["text"].get("rungs") or {}
+        total += sum(rungs.values())
+        unreadable += rungs.get("unreadable", 0)
+    value = unreadable / total if total else None
+    m.add("codes no rung reads, of every shown code on files PDFium reads text from", value,
+          "not measured" if value is None else f"{unreadable} / {total} = {value:.2%}", "<= 1%",
+          value is not None and value <= 0.01)
+    return gate_entry(4, m, "the census's character agreement is not run again (see the reading gate)")
+
+
+def text_gate(run_dir: Path) -> dict:
+    """The reading gate from tests/pdfium/text_agreement.py's agreement.json."""
+    data = read_json(run_dir / "agreement.json")
+    if data is None:
+        return gate_entry(5, None, f"python tests/pdfium/text_agreement.py --run {run_dir.name} --hidden")
+    m = Measures()
+    m.add("median bag-of-words F1 with PDFium", data["median"], f"{data['median']:.3f}", ">= 0.97",
+          data["median"] >= 0.97)
+    below, scored = data["below_0_90"], data["files_scored"]
+    m.add("files below 0.90 F1", below / scored, f"{below} / {scored} = {below / scored:.2%} "
+          f"(causes: {data['below_by_cause']})", "<= 5%", below / scored <= 0.05)
+    nondet = (data.get("determinism") or {}).get("nondeterministic", [])
+    m.zero("text outcomes that differ between the two runs", len(nondet), {"files": nondet})
+    rs = data["reserialisation"]
+    m.zero("undamaged content stream walks that do not write back to their bytes", rs["failed"],
+           {"streams": rs["streams"], "damaged": rs["damaged"]})
+    hidden = data.get("hidden") or {}
+    m.zero("planted hidden marker words not extracted with their class", len(hidden.get("failures", [])),
+           {"files": hidden.get("files")})
+    return gate_entry(5, m, "tests/pdfium/text_agreement.py")
+
+
+def images_gate(run_dir: Path, summary: dict) -> dict:
+    """The image decoders' gate from tests/pdfium/image_agreement.py's census and listing summaries."""
+    census = run_dir / "image-census" / "summary.md"
+    listing = run_dir / "image-listing" / "listing.md"
+    if not census.exists():
+        return gate_entry(6, None, f"python tests/pdfium/image_agreement.py --out {run_dir}/image-census")
+    text = census.read_text(encoding="utf-8")
+    m = Measures()
+
+    def pair(pattern: str, source: str) -> tuple[int, int]:
+        found = re.search(pattern, source)
+        return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+
+    decoded, occurrences = pair(r"(\d+) of (\d+) page occurrences", text)
+    m.share("image occurrences that decode (reached through resources)", decoded, occurrences, 0.98)
+    if listing.exists():
+        listed = listing.read_text(encoding="utf-8")
+        count, total = pair(r"Decoded occurrences: (\d+) of (\d+)", listed)
+        m.share("image occurrences that decode (the listing's draws)", count, total, 0.98)
+        silent = re.search(r"Undecodable images without their warning: (\d+)", listed)
+        m.zero("undecodable images without their warning", int(silent.group(1)) if silent else -1)
+    agree, compared = pair(r"Bitonal agreement \(pixel for pixel\): (\d+) of (\d+)", text)
+    m.share("bitonal images equal to PDFium's bitmap pixel for pixel", agree, compared, 1.0)
+    agree, compared = pair(r"Continuous-tone agreement \(MAD <= 2.0\): (\d+) of (\d+)", text)
+    m.share("continuous-tone images within a mean difference of 2 of PDFium's", agree, compared, 0.99)
+    m.zero("image outcomes that differ between the two runs",
+           len([i for i in summary.get("nondeterministic", [])]))
+    return gate_entry(6, m, "tests/pdfium/image_agreement.py (census and listing)")
+
+
 def judge(run_dir: Path, rows: list[dict]) -> dict:
     summary = read_json(run_dir / "summary.json") or {}
     measures = Measures()
@@ -211,8 +325,9 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
     measures.zero("crashes, hangs past the timeout, anything but a status", len(crashes) + len(hangs),
                   {"crashes": crashes, "hangs": hangs})
 
-    earlier = []
-    for phase in range(3, 10):
+    earlier = [reading_gate(run_dir, rows, summary, outcomes), fonts_gate(run_dir, rows, outcomes),
+               text_gate(run_dir), images_gate(run_dir, summary)]
+    for phase in range(7, 10):
         table = read_json(run_dir / f"phase{phase}.json")
         if table is None:
             earlier.append({"phase": phase, "passed": None, "rows": []})
@@ -236,7 +351,7 @@ def markdown(result: dict) -> str:
               "|---|---|---|---|---|"]
     for entry in result["earlier"]:
         if entry["passed"] is None:
-            lines.append(f"| {entry['phase']} | (no phase{entry['phase']}.json in the run folder) | | | not run |")
+            lines.append(f"| {entry['phase']} | not run: {entry.get('note') or 'no table in the run folder'} | | | not run |")
             continue
         for row in entry["rows"]:
             lines.append(f"| {entry['phase']} | {row['measure']} | {row['shown']} | {row['threshold']} | "

@@ -166,7 +166,7 @@ dataset of N files, <gate> reads <number> against its threshold of
 
 A regression of a leak measure (phase 8's or phase 9's survivors, or a
 metadata original value found) is never offered as (b): it is a stop-the-line
-defect handled as `build-8.md` §5 states.
+defect handled as `docs/archive/build/build-8.md` §5 states.
 
 **Unattended action**: write the question with the evidence into
 `OPEN-QUESTIONS.md`; merge the branch if checks, the unit tier, the ABI tier and
@@ -221,7 +221,7 @@ tag someone has fetched is a release someone may hold.
 > Read `CLAUDE.md`, `docs/DESIGN.md` (all of it: this phase sweeps it),
 > `docs/ABI.md`, `docs/SOURCES.md`, `dataset/README.md`,
 > `dataset/taxonomy.tsv`, all of `build-10.md`, and the deviations sections
-> (§9) of `build-1.md` to `build-9.md`, then implement `build-10.md` exactly as
+> (§9) of `docs/archive/build/build-1.md` to `docs/archive/build/build-9.md`, then implement `build-10.md` exactly as
 > written. Before planning, read as landed `src/syntax/` (the trailer, the
 > catalog, strings), `src/redact/write_pipeline.*`,
 > `src/writer/channel_table.cpp`, `src/redact/self_check.*`,
@@ -283,7 +283,7 @@ tag someone has fetched is a release someone may hold.
    missed (items 6, 7 and 12), each fixed with a test that fails without the
    fix.
 4. **The XMP identifiers stay, regenerated** (the first option of the
-   `build-7.md` note, `OPEN-QUESTIONS.md` §2.12 item 3): the metadata stage
+   `docs/archive/build/build-7.md` note, `OPEN-QUESTIONS.md` §2.12 item 3): the metadata stage
    writes `xmpMM:DocumentID` and `xmpMM:InstanceID` as placeholders, the
    channel strip keeps those two only when they hold the placeholder, and the
    file writer patches them with `xmp.did:` and `xmp.iid:` and the first and
@@ -306,7 +306,7 @@ tag someone has fetched is a release someone may hold.
    needle** (`OPEN-QUESTIONS.md` §2.12 item 2); every other original value of
    a rewritten field (the Info value, each paired XMP value and each array
    item) is, on every page, unless the plan also searches the page text for
-   it, which keeps the changed-pages-only reading of `build-8.md` §9 item 8.
+   it, which keeps the changed-pages-only reading of `docs/archive/build/build-8.md` §9 item 8.
 8. **The self-check's metadata surfaces, refined**: the `info` surface reads
    the strings of an Info entry's arrays and dictionaries (the string walk
    leaves the Info object to it), and the `xmp` surface leaves out the
@@ -412,6 +412,108 @@ tag someone has fetched is a release someone may hold.
     in the drawing order and along its rows too (`docs/DESIGN.md` §11 and
     §18), and an Arabic presentation form reads as its letters. Part B's
     re-run of every gate measures with them clean.
+21. **Part B started from the merged `main`** (`bc7e794`: Part A, phase 9's
+    image treatments and the phrase-search fix) on a fresh
+    `phase/10-release`, not a rebase. The seven synthesised image rows
+    (`synth-0263` to `synth-0269`) took their metadata tags and columns from
+    the final run (`phase10.py --write-manifest`), and 23 synthesised rows
+    their `expect_fonts` (`n/a` to `loads`, `text_agreement.py
+    --write-manifest`); no other expectation moved.
+22. **Every gate re-run on the final dataset** (960 files, the release build
+    of `bc7e794`, at most four workers). `tests/dataset/run.py --runs 2
+    --run-id p10-final` (927 s), then `text_agreement.py --hidden`,
+    `image_agreement.py` (census and `--listing`), `compare.py --check
+    write,select,text,redact`, `images.py`, `leak.py --images`, `leak.py
+    --metadata`, `metadata.py`, and `tests/dataset/gates/phase7.py`,
+    `phase8.py`, `phase9.py` and `phase10.py` over it. `phase10.py` now
+    measures phases 3 to 6 itself, from the run's outcomes and the text and
+    image reports (phase 4's character census, retired by phase 5, is not
+    run; the unreadable share and the fonts loaded stand for it), and gathers
+    phases 7 to 9 from their scripts' tables. The first run met two timeouts
+    under the machine's other load (nicar25-0006, 147 pages, 12.5 s alone;
+    opf-0022, 179 pages, 5.2 s alone); a second two-run pass of the same
+    build, `p10-final-robust` (563 s), met none, with no crash, no failure
+    and both runs identical. The table (the earlier phases' first numbers in
+    their build files' §9):
+
+    | Phase | Measure | Final dataset | Threshold | Result |
+    |---|---|---|---|---|
+    | 3 | of the files PDFium opens, pdfkit opens | 898 / 899 (99.89 %) | 99 % | pass |
+    | 3 | page count equal to PDFium's | 897 / 898 (99.89 %) | 99 % | pass |
+    | 3 | mutated files diverging in silence | 0 | 0 | pass |
+    | 3 | expected refusals with their code | 49 / 49 | 100 % | pass |
+    | 4 | fonts loaded (text answered on every opened file) | 911 / 911 | 100 % | pass |
+    | 4 | codes no rung reads | 0.54 % (88,787 of 16,565,200) | 1 % | pass |
+    | 5 | median word F1 with PDFium | 1.0 | 0.97 | pass |
+    | 5 | files below 0.90 | 56 / 898 (6.24 %; 21 pdfkit, 27 PDFium, 8 legitimate) | 5 % | **fail** (as at phase 5: 6.4 %) |
+    | 5 | text determinism, re-serialisation, hidden markers | 0 differing, 12,122 of 12,122 walks, 0 missed | exact | pass |
+    | 6 | occurrences decoded (resources; listing) | 6,132 / 6,138 (99.90 %); 36,505 / 36,516 (99.97 %) | 98 % | pass |
+    | 6 | undecodable images without their warning | 0 | 0 | pass |
+    | 6 | bitonal images equal to PDFium's bitmap | 495 / 498 (99.40 %) | 100 % | **fail** (as at phase 6: 491 / 492); all three PDFium's (`OPEN-QUESTIONS.md` §2.15) |
+    | 6 | continuous-tone within MAD 2 | 3,687 / 3,723 (99.03 %) | 99 % | pass |
+    | 7 | identity write re-opens; opens in PDFium | 911 / 911; 898 / 898 | 100 % | pass |
+    | 7 | identity-write pages pixel-identical | 8,061 / 8,066 (99.94 %) | 99 % | pass |
+    | 7 | text F1 = 1.0 output against input | 898 / 898 | 99.5 % | pass |
+    | 7 | planted markers left; drawn markers lost | 0; 0 | 0 | pass |
+    | 7 | selections right; kept pages identical; leaks | 283 / 283; 3,736 / 3,737 (99.97 %); 0 | 100 %; 99 %; 0 | pass |
+    | 8 | self-check passes (known gaps apart) | 909 / 909 | 100 % | pass |
+    | 8 | redacted words in PDFium's text; in decoded bytes | 0; 0 (19 removed-code sequences in other fonts' strings, informational) | 0 | pass |
+    | 8 | pages stable outside the rectangles | 8,024 / 8,061 (99.54 %) | 99 % | pass |
+    | 8 | placeholders read back | 9,289 / 9,341 (99.44 %) | 99 % | pass |
+    | 9 | treated rectangles carrying an original sample | 0 of 2,633 | 0 | pass |
+    | 9 | treated or removed identities drawn or found in the output | 0; 0 of 3,681 | 0 | pass |
+    | 9 | pages stable outside the treated draws | 5,513 / 5,513 | 99 % | pass |
+    | 9 | outputs re-open; PDFium text unchanged | 359 / 359; 356 / 356 | 100 % | pass |
+    | 10 | dataset size; tags at their minimum | 960; 153 / 155 | 500 to 1,000; every tag | **fail** (`gen_word_pdfa`, `gen_edge`, `OPEN-QUESTIONS.md` §2.2) |
+    | 10 | metadata read | 814 / 814 | 100 % | pass |
+    | 10 | Info fields equal to PDFium's | 3,056 / 3,056 (pdfium-0033 named) | 100 % | pass |
+    | 10 | rewrites carrying the written values | 812 / 812 | 100 % | pass |
+    | 10 | originals found in an output or by PDFium | 0 of 812 files | 0 | pass |
+    | all | two runs identical; crashes; hangs | 960 / 960; 0; 0 (`p10-final-robust`) | 100 %; 0; 0 | pass |
+    | all | ABI tier (.NET, Python); packaging | 31 files, 552 calls each; two packagings identical, imports clean | green | pass |
+
+23. **The release package of the whole catalogue**: the image treatments
+    took the executable to 926,208 bytes, past Part A's budget of 771,200,
+    so the budgets are set again from this first package of every function
+    plus 25 % (DLL 5,793,792, exe 926,208, zip 2,815,699 bytes); `package.py
+    --verify` now fails when a budget does (it compared two failures as
+    identical), and two packagings around a clean rebuild are byte-identical
+    (SHA-256 `e29f573c...2419df`), the imports clean. The ABI tier passes from
+    .NET and Python against the final DLL (31 files, 552 calls each), and the
+    ASan build's dataset verb ran over every file: the `clang-sanitize`
+    build (llvm-mingw, ASan and UBSan, debug) through `run.py --runs 1
+    --run-id p10-asan` (2,263 s) finished 803 of the 960 files with no
+    sanitizer report and no crash; the other 157 passed the page-scaled limit
+    in that debug build (phase 8's pass, with no limit and one job fewer, saw
+    25) and were not read to the end there.
+24. **No tag** (`OPEN-QUESTIONS.md` §2.15): phases 5 and 6 merged
+    `gate-failed` and their gates still read failed on the final dataset,
+    and two generator tags wait on the owner, so this phase closes
+    `Build-Phase: 10 gate-failed` with the release question, and its plan,
+    like those of phases 5 and 6, stays at the root.
+25. **The documentation sweep**, written from what landed: `CLAUDE.md` §1
+    (the build plans' row, the archive's one inbound link), §2 (every
+    function's failures as the code refuses them, the plans' paths, 1.1 for
+    every document verb, the reserved status), §3 (platform and images rows,
+    the layout), §4 (the region treatment), §7 (the columns, 960 rows, the
+    sets admitted and refused, Word and Edge), §8.1 (both sanitizer tiers, the
+    page-scaled timeout, the PDFium tier's commands, the check groups), §10
+    (the `clang-sanitize` preset, the census target, the budgets and
+    `--verify`, the runners), §11 and §12 (`gate-failed` as a closing status,
+    where a phase's plan lives), and the ABI version rule of §3.3
+    (`OPEN-QUESTIONS.md` §2.12 item 6); `docs/ABI.md` (every function
+    implemented, the real version object, the plans' column, 24 channel rows,
+    the version rule, `LibraryImport`); `docs/DESIGN.md` §2 and §19 (the
+    `/Perms` refusal and the handler's other refusals as the code has them),
+    §5.3, §9.4, §9.5 (the PNG forms and `decode_jpeg`), §12, §15, §17;
+    `dataset/README.md` (the columns' order, the unused `expect_redact`, the
+    synthesised count); `README.md` (the catalogue as `CLAUDE.md` §2 numbers
+    it, the CLI and a job file, calling from .NET and Python, the pinned
+    toolchain and the build, packaging and tests). The plans of phases 1 to
+    4 and 7 to 9 moved to `docs/archive/build/` with `git mv`, every
+    reference to them pointed there and `build/paths_pending.tsv` emptied.
+    `docs/SOURCES.md` and `THIRD-PARTY-NOTICES.md` needed nothing: the
+    inventory's eight components are the notices' sections 1 to 7 and 9.
 
 ### Deviations of earlier phases that affect this one
 
@@ -420,23 +522,23 @@ From `build-5.md` §9:
 - The manifest's `expect_text` (`agree`, `known_gap:<pdfkit|pdfium|legitimate>`, `n/a`) and `expect_fonts` (`loads`, `unreadable:<count>`, `n/a`) are filled by `python tests/pdfium/text_agreement.py --run <id> --write-manifest` from a dataset run; a row added later starts `n/a` until that runs, and a file below 0.90 needs its cause line in `tests/pdfium/text_causes.tsv` (item 13).
 - The reading gate's question is `OPEN-QUESTIONS.md` §2.10 (item 16).
 
-From `build-1.md` §9:
+From `docs/archive/build/build-1.md` §9:
 
 - `pdfkit_version` returns `version`, `abi`, `build` and a `catalogue` array (item 6).
 - Release links strip symbols, drop unused sections and omit the PE time stamp; at the first package the DLL was 634 KB, the exe 333 KB and the zip 432 KB against budgets of 8 MB, 1 MB and 6 MB (item 9).
 - `CMakePresets.json` uses schema version 11, the newest CMake 4.3.2 accepts (item 10).
-- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`build-1.md` §9 item 8).
+- The sanitizer tier is two runs: `ctest --preset sanitize` (GCC, UBSan in trap mode) and `ctest --preset clang-sanitize` (llvm-mingw, ASan and UBSan) (`docs/archive/build/build-1.md` §9 item 8).
 
-From `build-2.md` §9:
+From `docs/archive/build/build-2.md` §9:
 
 - `dataset/tools/generate_office.ps1` could not drive Word or Edge unattended on the laptop, so `gen_word_pdfa` and `gen_edge` wait on `OPEN-QUESTIONS.md` §2.2 (item 6).
 - The dataset tools have no `cryptography` and no Pillow, because the proxy cuts compiled wheels; a synthesised JPEG or JPEG 2000 needs another route (item 4).
 - The manifest holds 910 rows, which leaves room for 90 more under the ceiling of 1,000 (item 11).
 
-From `build-7.md` §9:
+From `docs/archive/build/build-7.md` §9:
 
 - The write surface is `writer::ObjectGraph` (`src/writer/object_graph.hpp`): `get(number)` reads an object with every earlier stage's edits applied, `set(number, object)` replaces one, `add(object)` adds one under a fresh number; the source `syntax::Document` is never changed. Read through the graph, never through `Document::object`, because page selection runs first and replaces page dictionaries, the catalog and every pruned form (a form with resources of its own gets a pruned copy under its own number) (items 2, 5).
-- A created stream is `syntax::Stream(dictionary, encoded bytes)`; `writer::StreamCopier::compress(dictionary, decoded)` makes a Flate one, `StreamCopier::plain` an uncompressed one; the file writer copies untouched streams byte for byte (decrypted, `/Crypt` dropped) (`build-3.md` §9 item 17).
+- A created stream is `syntax::Stream(dictionary, encoded bytes)`; `writer::StreamCopier::compress(dictionary, decoded)` makes a Flate one, `StreamCopier::plain` an uncompressed one; the file writer copies untouched streams byte for byte (decrypted, `/Crypt` dropped) (`docs/archive/build/build-3.md` §9 item 17).
 - `redact::WritePipeline` (`src/redact/write_pipeline.cpp`) has the named stages page selection, text surgery, image treatments, metadata, channel stripping, serialisation, self-check; fill your stage, never reorder. The write report (`writer::WriteReport`) already carries `rectangles` (empty) and `self_check` (`not_run` with its reason) (items 2, 10).
 - `redact::EditPlan` holds the page list only; add your member beside it (its header names where).
 - Every write prunes resources to the names the content uses (`writer::ResourceUsage` reads `Tf`, `Do`, `gs`, `cs`/`CS`, `scn`/`SCN`, `sh`, `BDC`/`DP` and inline-image colour spaces), so an object your stage stops drawing leaves the output without further work, and a resource your stage starts drawing must be named in the resources it edits (item 5).
@@ -445,7 +547,7 @@ From `build-7.md` §9:
 - The dataset outcome gains `channels`, `write` and `select`; outputs go to `<run>/outputs/`, named relative to the run folder (`tests/dataset/outcome.md`).
 - The metadata stage runs before the channel strip, and the strip removes the whole `xmpMM` namespace of the catalog's packet afterwards: regenerate `xmpMM:DocumentID` and `xmpMM:InstanceID` after the strip (for instance as a step of the serialisation stage, once the output's hash is known), or narrow the strip to `xmpMM:History` in the same change. The Info dictionary is copied as it is until this stage rewrites it.
 
-From `build-9.md` §9:
+From `docs/archive/build/build-9.md` §9:
 
 - `redact::EditPlan` holds `images()` (`redact::ImageTreatmentPlan`) beside `text()`; the image-treatment stage (`redact::ImageTreatmentApplier`) runs after the text surgery and before your metadata stage, and edits image objects, their masks and the content streams that draw removed or inline images through the object graph (items 2, 8, 9).
 - The write report gained an `images` key between `rectangles` and `self_check` (`docs/ABI.md` §4.7); `pdfkit_redact_images` is `docs/ABI.md` §4.15, after your §4.13 and §4.14 (items 7, 17).
@@ -455,7 +557,7 @@ From `build-9.md` §9:
 - `tests/pdfium/leak.py` has `--images`; `compare.py --check redact` writes `pdfium-redact.json` (text) and `pdfium-redact-images.json` (images) (item 16).
 - The clang-sanitize preset compiles the vendored OpenJPEG with `-fno-sanitize=function` (item 15).
 
-From `build-8.md` §9:
+From `docs/archive/build/build-8.md` §9:
 
 - The self-check already searches the Info dictionary's strings (`info`) and the XMP packet's text (`xmp`, entities read) for every redacted string, and refuses the output on a survivor; 85 manifest rows are `known_gap:metadata_holds_word` because the seeded job's words are also in their metadata. When `pdfkit_set_metadata` lands, either make the dataset job rewrite the fields that hold a redacted word and re-derive those rows to `clean`, or keep them as gaps (`OPEN-QUESTIONS.md` §2.11 item 5); `tests/dataset/outcome.md` describes the job (items 8, 10).
 - Search folding is `platform::unicode::Folding` (`src/platform/unicode/folding.hpp`, Unicode 18.0.0 tables); `redact::MatchFinder::ranges_in` finds a search string in any UTF-8 value and `MatchFinder::byte_forms` gives its byte forms, for a metadata surface of your own (items 5, 11).
