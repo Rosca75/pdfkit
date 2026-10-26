@@ -2,7 +2,7 @@
 # Copyright 2026 The pdfkit authors
 #
 # Writes every synthesised pattern and registers the files. Each pattern module
-# under synth/patterns/, synth/channels/ and synth/redaction/ holds PATTERNS, a table from pattern name to a function
+# under synth/patterns/, synth/channels/, synth/redaction/ and synth/metadata/ holds PATTERNS, a table from pattern name to a function
 # returning specimens: the bytes, the tags the pattern stands for, the text the
 # page draws and the text pdfkit's decoding ladder will report (they differ only
 # where the file lies, as a wrong ToUnicode does). The expected text agreement
@@ -43,13 +43,15 @@ class Specimen:
 
 
 def pattern_table() -> dict:
-    """Every pattern of synth.patterns, synth.channels (the planted-marker patterns) and synth.redaction."""
+    """Every pattern of synth.patterns, synth.channels (the planted-marker patterns), synth.redaction
+    and synth.metadata."""
     import synth.channels
+    import synth.metadata
     import synth.patterns
     import synth.redaction
 
     table = {}
-    for package in (synth.patterns, synth.channels, synth.redaction):
+    for package in (synth.patterns, synth.channels, synth.redaction, synth.metadata):
         for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda i: i.name):
             module = importlib.import_module(f"{package.__name__}.{info.name}")
             for name, fn in getattr(module, "PATTERNS", {}).items():

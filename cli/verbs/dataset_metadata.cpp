@@ -91,6 +91,7 @@ struct Row {
   // The items of the XMP arrays.
   std::vector<std::string> items;
   bool disagree = false;
+  bool agree = false;
   bool utf16 = false;
 };
 
@@ -121,6 +122,7 @@ std::vector<Row> rows_of(const JsonText& answer) {
     }
     if (const JsonText::Node* agree = answer.member(node, "agree")) {
       row.disagree = agree->raw == "false";
+      row.agree = agree->raw == "true";
     }
     if (const JsonText::Node* encoding = answer.member(node, "info_encoding")) {
       row.utf16 = encoding->text == "utf16be" || encoding->text == "utf16le";
@@ -148,6 +150,7 @@ DatasetMetadata dataset_metadata(pdfkit_document* document) {
   }
   std::vector<std::string> present;
   std::vector<std::string> disagree;
+  std::vector<std::string> agreeing;
   std::size_t utf16 = 0;
   for (const Row& row : rows_of(*answer)) {
     std::vector<std::string> values;
@@ -165,6 +168,9 @@ DatasetMetadata dataset_metadata(pdfkit_document* document) {
       present.push_back(row.field);
       result.fields.emplace_back(row.field, std::move(values));
     }
+    if (row.agree) {
+      agreeing.push_back(row.field);
+    }
     if (row.disagree) {
       disagree.push_back(row.field);
     }
@@ -176,8 +182,8 @@ DatasetMetadata dataset_metadata(pdfkit_document* document) {
   };
   result.member = R"({"status": "ok", "code": null, "info": )" + raw("info", "null") +
                   ", \"xmp\": " + raw("xmp", "null") + ", \"agree\": " + raw("agree", "null") +
-                  ", \"present\": " + list(present) + ", \"disagree\": " + list(disagree) +
-                  ", \"utf16\": " + std::to_string(utf16) +
+                  ", \"present\": " + list(present) + ", \"agreeing\": " + list(agreeing) +
+                  ", \"disagree\": " + list(disagree) + ", \"utf16\": " + std::to_string(utf16) +
                   ", \"utf16le\": " + raw("utf16le", "0") +
                   ", \"namespaces\": " + raw("xmp_namespaces", "[]") +
                   ", \"history\": " + raw("xmp_history", "false") + "}";

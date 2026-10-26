@@ -82,6 +82,7 @@ function the verb did not run is `null`.
     "xmp": "read",
     "agree": false,
     "present": ["Title", "Producer", "CreationDate"],
+    "agreeing": ["Title"],
     "disagree": ["Producer"],
     "utf16": 1,
     "utf16le": 0,
@@ -195,8 +196,8 @@ and the `strings` that were asked; no output is written. It is `skipped` when
 
 `metadata` is `pdfkit_metadata` in brief: whether the file has an Info
 dictionary, the packet's state (`read`, `absent` or `unreadable`), whether no
-field disagrees, the fields present in either place and those whose two values
-disagree, the Info strings written in UTF-16 (either byte order) and in
+field disagrees, the fields present in either place, those whose two values
+agree and those whose two values disagree, the Info strings written in UTF-16 (either byte order) and in
 UTF-16LE, the namespaces of the packet's properties and whether it holds an
 `xmpMM:History`.
 
