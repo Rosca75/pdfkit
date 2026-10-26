@@ -751,7 +751,7 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
       if (match.kind == MatchFinder::Match::Kind::search) {
         std::vector<MatchFinder::Occurrence> here = finder.find(match, base + i);
         // The string in another reader's order of the page.
-        for (MatchFinder::Occurrence& other : finder.find_orders(match, base + i)) {
+        for (MatchFinder::Occurrence& other : finder.find_orders(match, base + i, here)) {
           here.push_back(std::move(other));
         }
         // The codes that spell the string where the text does not read it.

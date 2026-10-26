@@ -246,12 +246,12 @@ class Axis {
   return std::max(std::abs(a.size), std::abs(b.size));
 }
 
-// Whether b, drawn right after a, continues a's word.
-[[nodiscard]] bool drawn_on(const text::GlyphRecord& a, const text::GlyphRecord& b) {
+// Whether b, drawn right after a, continues a's word; axis is a's direction.
+[[nodiscard]] bool drawn_on(const text::GlyphRecord& a, const text::GlyphRecord& b,
+                            const Axis& axis) {
   if (rounded(a.angle) != rounded(b.angle)) {
     return false;
   }
-  const Axis axis(a.angle);
   const double size = size_of(a, b);
   const double gap = axis.along(b.origin) - axis.along(a.advance_end);
   const double drop = std::abs(axis.across(b.origin) - axis.across(a.origin));
@@ -277,21 +277,12 @@ struct Extent {
 
 }  // namespace
 
-void MatchFinder::add_units(std::vector<Unit>& units, std::size_t draw, bool& gap) const {
-  const std::string& text = page_->content.glyphs[draw].text;
-  if (text.empty()) {
+void MatchFinder::add_step(std::vector<Step>& steps, std::size_t draw, bool& gap) const {
+  if (page_->content.glyphs[draw].text.empty()) {
     return;
   }
-  if (gap && !units.empty()) {
-    units.push_back({U' ', none, true});
-  }
+  steps.push_back({draw, gap && !steps.empty()});
   gap = false;
-  std::size_t at = 0;
-  while (at < text.size()) {
-    const platform::Utf8Sequence sequence = platform::next_utf8_sequence(text, at);
-    units.push_back({sequence.valid ? sequence.code_point : U'�', position_[draw], false});
-    at += std::max<std::size_t>(sequence.length, 1);
-  }
 }
 
 bool MatchFinder::in_orders(std::size_t draw) const {
@@ -314,14 +305,23 @@ void MatchFinder::build_orders() {
   // The drawing order.
   std::optional<std::size_t> before;
   bool gap = false;
+  double axis_angle = 0.0;
+  Axis drawn_axis(axis_angle);
   for (std::size_t draw = 0; draw < glyphs.size(); ++draw) {
     if (!in_orders(draw)) {
       continue;
     }
-    if (before && !drawn_on(glyphs[*before], glyphs[draw])) {
-      gap = true;
+    if (before) {
+      // The direction changes seldom, so its axis is computed once per run.
+      if (rounded(glyphs[*before].angle) != axis_angle) {
+        axis_angle = rounded(glyphs[*before].angle);
+        drawn_axis = Axis(axis_angle);
+      }
+      if (!drawn_on(glyphs[*before], glyphs[draw], drawn_axis)) {
+        gap = true;
+      }
     }
-    add_units(orders_[0], draw, gap);
+    add_step(orders_[0], draw, gap);
     before = draw;
   }
 
@@ -393,7 +393,7 @@ void MatchFinder::build_orders() {
         gap = true;
       }
       reach = i == 0 ? extent.high : std::max(reach, extent.high);
-      add_units(orders_[1], extent.draw, gap);
+      add_step(orders_[1], extent.draw, gap);
     }
     gap = true;
     double low = 0.0;
@@ -404,7 +404,7 @@ void MatchFinder::build_orders() {
         gap = true;
       }
       low = i == extents.size() ? extent.low : std::min(low, extent.low);
-      add_units(orders_[2], extent.draw, gap);
+      add_step(orders_[2], extent.draw, gap);
     }
   }
 }
@@ -417,25 +417,53 @@ const std::vector<MatchFinder::OrderHaystack>& MatchFinder::order_haystacks(
     return found->second;
   }
   build_orders();
-  std::vector<OrderHaystack> built;
-  for (const std::vector<Unit>& units : orders_) {
-    std::u32string text;
-    text.reserve(units.size());
-    for (const Unit& unit : units) {
-      text.push_back(unit.code_point);
+  // Each glyph's text folded once: the folding works code point by code
+  // point, so a glyph folds alike in every order.
+  const std::vector<text::GlyphRecord>& glyphs = page_->content.glyphs;
+  std::u32string folded;
+  std::vector<std::size_t> offset(glyphs.size() + 1, 0);
+  for (std::size_t draw = 0; draw < glyphs.size(); ++draw) {
+    offset[draw] = folded.size();
+    if (!in_orders(draw)) {
+      continue;
     }
-    const TextFolding::Mapped mapped = TextFolding::fold(text, folding.text);
+    const std::string& text = glyphs[draw].text;
+    std::size_t at = 0;
+    while (at < text.size()) {
+      const platform::Utf8Sequence sequence = platform::next_utf8_sequence(text, at);
+      const char32_t value = sequence.valid ? sequence.code_point : U'�';
+      if (folding.text.whitespace && TextFolding::is_white_space(value)) {
+        folded.push_back(U' ');
+      } else {
+        TextFolding::fold_code_point(value, folding.text, folded);
+      }
+      at += std::max<std::size_t>(sequence.length, 1);
+    }
+  }
+  offset[glyphs.size()] = folded.size();
+  const bool whitespace = folding.text.whitespace;
+  std::vector<OrderHaystack> built;
+  for (const std::vector<Step>& steps : orders_) {
     OrderHaystack& hay = built.emplace_back();
     bool gap = false;
-    for (std::size_t i = 0; i < mapped.text.size(); ++i) {
-      if (folding.text.whitespace && mapped.text[i] == U' ') {
-        gap = true;
-        continue;
+    for (std::size_t s = 0; s < steps.size(); ++s) {
+      gap = gap || steps[s].gap;
+      if (gap && !whitespace && !hay.text.empty()) {
+        hay.text.push_back(U' ');
+        hay.step.push_back(s);
+        hay.gap.push_back(false);
+        gap = false;
       }
-      hay.text.push_back(mapped.text[i]);
-      hay.unit.push_back(mapped.source[i]);
-      hay.gap.push_back(gap);
-      gap = false;
+      for (std::size_t i = offset[steps[s].draw]; i < offset[steps[s].draw + 1]; ++i) {
+        if (whitespace && folded[i] == U' ') {
+          gap = true;
+          continue;
+        }
+        hay.text.push_back(folded[i]);
+        hay.step.push_back(s);
+        hay.gap.push_back(gap);
+        gap = false;
+      }
     }
   }
   return order_folded_.emplace(index, std::move(built)).first->second;
@@ -443,6 +471,11 @@ const std::vector<MatchFinder::OrderHaystack>& MatchFinder::order_haystacks(
 
 std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match,
                                                               std::size_t index) {
+  return find_orders(match, index, find(match, index));
+}
+
+std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match, std::size_t index,
+                                                              std::span<const Occurrence> known) {
   std::vector<Occurrence> found;
   // The needle as the haystacks hold it, and the characters a space of it
   // precedes.
@@ -461,16 +494,16 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match
   if (needle.empty()) {
     return found;
   }
-  std::set<std::size_t> covered;
-  for (const Occurrence& occurrence : find(match, index)) {
-    for (std::size_t p = occurrence.first; p < occurrence.last; ++p) {
-      covered.insert(p);
+  std::vector<bool> covered(page_->order.size(), false);
+  for (const Occurrence& occurrence : known) {
+    for (std::size_t p = occurrence.first; p < occurrence.last && p < covered.size(); ++p) {
+      covered[p] = true;
     }
   }
   const std::vector<OrderHaystack>& hays = order_haystacks(match.folding);
   for (std::size_t order = 0; order < hays.size(); ++order) {
     const OrderHaystack& hay = hays[order];
-    const std::vector<Unit>& units = orders_[order];
+    const std::vector<Step>& steps = orders_[order];
     std::size_t from = 0;
     while (from < hay.text.size()) {
       const std::size_t at = hay.text.find(needle, from);
@@ -487,9 +520,10 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match
       }
       const std::size_t end = at + needle.size();
       std::vector<std::size_t> positions;
-      for (std::size_t u = hay.unit[at]; u <= hay.unit[end - 1] && u < units.size(); ++u) {
-        if (!units[u].separator && !covered.contains(units[u].position)) {
-          positions.push_back(units[u].position);
+      for (std::size_t s = hay.step[at]; s <= hay.step[end - 1] && s < steps.size(); ++s) {
+        const std::size_t p = position_[steps[s].draw];
+        if (!covered[p]) {
+          positions.push_back(p);
         }
       }
       std::ranges::sort(positions);
@@ -504,7 +538,9 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match
                          i == 0 ? match.placeholder : std::string()});
         i = j;
       }
-      covered.insert(positions.begin(), positions.end());
+      for (const std::size_t p : positions) {
+        covered[p] = true;
+      }
       from = end;
     }
   }

@@ -319,7 +319,7 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     for (const MatchFinder::Match& needle : needles) {
       // The reading order and every other order a reader reads the page in.
       std::vector<MatchFinder::Occurrence> occurrences = finder.find(needle, 0);
-      for (MatchFinder::Occurrence& other : finder.find_orders(needle, 0)) {
+      for (MatchFinder::Occurrence& other : finder.find_orders(needle, 0, occurrences)) {
         occurrences.push_back(std::move(other));
       }
       for (const MatchFinder::Occurrence& found : occurrences) {

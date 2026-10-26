@@ -100,6 +100,11 @@ std::u32string Folding::decompose(char32_t code_point) {
 }
 
 std::u32string Folding::unshape(char32_t code_point) {
+  // Every positional form lies in the presentation forms blocks, from the
+  // first entry of the table to its last.
+  if (code_point < positional_forms.front().code || code_point > positional_forms.back().code) {
+    return {code_point};
+  }
   const auto found =
       std::ranges::lower_bound(positional_forms, code_point, {}, &Decomposition::code);
   if (found == positional_forms.end() || found->code != code_point) {

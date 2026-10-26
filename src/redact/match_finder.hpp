@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -108,6 +109,9 @@ class MatchFinder {
   // placeholder, and the glyphs find() or an earlier run already covers are
   // left out. The hyphenation join is the reading order's alone.
   [[nodiscard]] std::vector<Occurrence> find_orders(const Match& match, std::size_t index);
+  // The same, given what find() returned for the match.
+  [[nodiscard]] std::vector<Occurrence> find_orders(const Match& match, std::size_t index,
+                                                    std::span<const Occurrence> known);
 
   // The byte forms of a search string the raw scans look for: its UTF-8, its
   // Latin-1 when every character fits, and its UTF-16BE, its white space
@@ -147,11 +151,19 @@ class MatchFinder {
     std::vector<std::size_t> unit;  // per folded code point, its unit
   };
 
+  // One glyph of another order: its draw index, and whether a word gap
+  // precedes it.
+  struct Step {
+    std::size_t draw = 0;
+    bool gap = false;
+  };
+
   // One of the other orders folded: without its white space under the
-  // whitespace folding, gap naming the characters a word gap precedes.
+  // whitespace folding, gap naming the characters a word gap precedes, step
+  // the step each character came from.
   struct OrderHaystack {
     std::u32string text;
-    std::vector<std::size_t> unit;
+    std::vector<std::size_t> step;
     std::vector<bool> gap;
   };
 
@@ -161,10 +173,10 @@ class MatchFinder {
   void index_positions();
   void build_orders();
   // Whether the other orders read the glyph of draw index draw (a duplicate
-  // copy is read with its partner), and its code points appended to units,
-  // a separator first when gap says a word gap precedes it.
+  // copy is read with its partner), and the glyph appended to steps when it
+  // shows text, carrying the word gap gap says precedes it.
   [[nodiscard]] bool in_orders(std::size_t draw) const;
-  void add_units(std::vector<Unit>& units, std::size_t draw, bool& gap) const;
+  void add_step(std::vector<Step>& steps, std::size_t draw, bool& gap) const;
   [[nodiscard]] const std::vector<OrderHaystack>& order_haystacks(const Folding& folding);
 
   const text::PageText* page_;
@@ -172,9 +184,10 @@ class MatchFinder {
   std::vector<Unit> plain_;
   std::vector<Unit> joined_;
   std::map<unsigned, Haystack> folded_;
-  // The other orders' units (the drawing order, the rows read forwards and
-  // backwards), built on first use of find_orders, and their folded forms.
-  std::vector<std::vector<Unit>> orders_;
+  // The other orders (the drawing order, the rows read forwards and
+  // backwards), built on first use of find_orders, and their folded forms,
+  // each glyph's text folded once for all three.
+  std::vector<std::vector<Step>> orders_;
   std::map<unsigned, std::vector<OrderHaystack>> order_folded_;
   // The reading-order position of each draw index, built on first use.
   std::vector<std::size_t> position_;
