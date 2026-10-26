@@ -227,7 +227,128 @@ no-op form.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **The base was green**: `python build/check.py` (15 of 15 groups) and the
+   unit tier passed on `main` before any change; no repair commit.
+2. **Files beyond §2**, each for one class or one concern:
+   `src/images/treatments/jpeg_guard.c` (the libjpeg-turbo compressor inside
+   a setjmp guard, the twin of `dct_guard.c`; `src/images/CMakeLists.txt`
+   names both C sources); `tests/unit/redact/support/image_redaction.*` (the
+   three-page fixture and the calls through the C ABI);
+   `tests/unit/redact/jpx_treatment_test.cpp` (a JPEG 2000 in-data alpha,
+   encoded in the test by OpenJPEG); `cli/verbs/dataset_redact_images.*` (the
+   dataset verb's `redact_images` member, one line in `dataset.cpp`);
+   `dataset/tools/synth/images/{__init__,treatments}.py`. The redact layer's
+   tests (`image_remover_test.cpp`, `image_treatment_applier_test.cpp`,
+   `api_redact_images_test.cpp`) sit in `tests/unit/redact/`, the layer's
+   folder, not in `tests/unit/treatments/`. Additive edits outside the owned
+   paths: `images::ImageDecoder::samples` and `samples_inline` (the samples
+   as the encoding stores them, `src/images/image_decoder.*`),
+   `images::ImageListing::Occurrence::ctm` and `Entry::width`, `height`,
+   `bitonal` (set by `probe`), `writer::WriteReport::images` (the `images`
+   key of the write report, `docs/ABI.md` §4.7), `src/api/catalogue.cpp`
+   (row 6 implemented), `tests/unit/writer/api_edit_test.cpp` (the report's
+   keys), `dataset/tools/synth/run.py` (the `synth.images` package and a
+   specimen's own `licence`), `dataset/tools/common.py`, `add.py` and their
+   test (the column), `tests/dataset/run.py` and its test,
+   `tests/pdfium/leak.py` (`--images`), `tests/pdfium/compare.py` (`--check
+   redact` judges both members), `third_party/openjpeg/CMakeLists.txt`
+   (item 15).
+3. **No `build/fonts/check_regenerated.py`**: the bitmap font generator is a
+   row of `build/check_generated.py`'s `GENERATORS`, as phase 8 did for the
+   placeholder subset. It fills a pixel when a quarter of a four by four
+   grid of samples lies inside the outline, because sampling the pixel's
+   centre alone lost every stem at 8 pixels.
+4. **`PixelBuffer` keeps one 16-bit value per sample**, unpacked, so every
+   treatment indexes every depth alike; it packs rows (with their stride) for
+   the re-encoder. The budget check is on two bytes per sample.
+5. **The box colour is red, green and blue** (default black), and the fill is
+   found by a search over the image's sample values through the decoder's own
+   `/Decode` and colour conversion, nearest in RGB, never a colour-keyed
+   value: one rule covers the inverse of `/Decode`, the Indexed palette entry
+   and black in CMYK, Lab, ICC, Separation and DeviceN (`OPEN-QUESTIONS.md`
+   §2.12 item 3). The caption is white or black, whichever reads farther from
+   the fill, upright as the image's first draw shows it (a flipped or turned
+   CTM turns the caption back).
+6. **The mosaic grid starts at the image's top-left corner**, not the
+   rectangle's, and a JPEG's block is a multiple of 8; a treated JPEG is
+   written without chroma subsampling. Together they keep every re-encoded
+   JPEG block inside one mosaic block or one box, which is what lets PDFium's
+   bitmap prove the treatment (`docs/DESIGN.md` §14 says so).
+7. **The ABI shapes** (`docs/ABI.md` §4.13, after `pdfkit_check`'s §4.12 so
+   no section is renumbered): `{"treatments": [{"identity", "treatment":
+   "box" | "blur" | "remove" | "region", "rectangle", "space": "image" |
+   "page", "page", "caption", "colour"}]}`; a region box accumulates beside a
+   box or a blur, is refused on a removed image; the answer adds `width`,
+   `height`, `pixels`, `block` and `encoded` (the original's SHA-256 and
+   length) to the occurrences. An undecodable image's box or blur is the
+   refusal `undecodable_image` under `PDFKIT_E_REFUSED` (DESIGN §19 extended).
+8. **Removal walks more than pages and forms**: the tiling patterns and
+   soft-mask groups the resources name, so an image drawn there goes too;
+   Type 3 glyph procedures are not walked. Every removed object is emptied
+   after the walk, so a reference the walk did not see reaches nothing. An
+   image reached only inside a pattern reports its pages' media boxes as its
+   rectangles, because the pattern paints where no occurrence says.
+9. **A treated inline image is rewritten by the same walk** (`ImageRemover`
+   holds both edits) as its samples under the one filter `/AHx`, a JPEG source
+   included: hexadecimal data cannot hold the `EI` that ends it, and one
+   filter is the form every reader handles (`OPEN-QUESTIONS.md` §2.12 item
+   4). PDFium gives no bitmap of two inline images of dccc-0108 (a named
+   colour space), in the input as in the output, so those two are not
+   compared.
+10. **Re-encoding as built**: a JPX image's `/Decode` is dropped (a reader
+    ignores it on JPX), its in-data alpha becomes a soft mask object of its
+    own; a mask that does not decode is dropped from the treated image; a
+    `/ColorSpace` a codec implied is written out.
+11. **A treatment that writes exactly an original's bytes is not a survivor**
+    (dccc-0120, qpdf-0033: a blur of already block-constant images); the
+    dataset member lists them as `unchanged`, and `images.py` and `leak.py
+    --images` leave them out (`OPEN-QUESTIONS.md` §2.12 item 1).
+12. **The dataset job** (`tests/dataset/outcome.md`): the cycle starts at a
+    seeded place; an undecodable image is removed and a small bitonal one
+    boxed instead of blurred; the region box is a second call, in page space
+    over a seeded draw. The column `expect_redact_images` is filled from a
+    run (`phase9.py --write-manifest`): 359 rows `clean`, 597 `n/a` (no image
+    the listing reaches, 22 of them files whose only images lie in
+    annotations or unused resources), and opf-0024
+    `known_gap:unterminated_inline_image` (`OPEN-QUESTIONS.md` §2.12 item 2).
+    Phase 2's `expect_redact` stays unused (all `n/a`); retiring it touches
+    every table that names it and is left to the cleanup that retires phase
+    2's other placeholders.
+13. **The synthesised files** (rows synth-0263 to synth-0269, 957 rows): three
+    `treat_suite` files (Apache-2.0) hold every image case of the job; four
+    files wrap one codec stream each, copied byte for byte from a dataset file
+    whose licence permits it and carrying that licence: CCITT G4 from
+    opf-0007 (CC0-1.0), a CMYK JPEG from pdfpig-0009 (Apache-2.0), JBIG2 with
+    globals from pdfium-0015 (BSD-3-Clause), JPEG 2000 from nicar25-0003
+    (MIT), each as three identities of the same bytes (an explicit `/Decode`
+    tells them apart) so the cycle gives the codec a box, a blur and a
+    removal. No permissive dataset file holds a JPEG 2000 image with
+    `/SMaskInData` and the dataset tools have no JPEG 2000 encoder, so that
+    case is the unit test of item 2 only. Tags `treat_region` and
+    `treat_caption` (minimum 1, 7 files each); `shared_image` and
+    `image_in_form` raised to 5 (10 and 71 files).
+14. **The redact verb needed no change**: its `images` refusal lifts through
+    `is_implemented` once the catalogue row flips; its message still says
+    "image treatments or metadata" and only `metadata` can trigger it now.
+15. **OpenJPEG under clang's sanitizers** (the team lead's task): the
+    clang-sanitize preset compiles the vendored openjpeg target with
+    `-fno-sanitize=function`, because its codec table calls
+    `opj_jp2_destroy`, `opj_j2k_end_decompress` and their kin through
+    pointers of `void *` parameters, which the function-type check reported
+    on 16 JPEG 2000 files of phase 8's ASan run; the vendored sources are
+    unchanged.
+16. **The PDFium checks as built**: `tests/pdfium/images.py` aligns output
+    image objects with treated ones by the SHA-256 of their stored data,
+    judges a box (one colour; a captioned box the fill and the ink, any blend
+    of the two within 32 levels for a JPEG, because a CMYK JPEG's
+    quantisation leaves the grey axis by up to 21 levels through the CMYK
+    conversion) and a blur (constant blocks) on the 8 by 8 JPEG blocks wholly
+    inside, and counts images PDFium does not reach (inside patterns) as
+    unmatched, not as passes; PDFium's bitmap of eight tiny 1-bit images
+    (mutate-0046, opf-0019, pdfplumber-0003) has another size than the image
+    and is not compared. `leak.py --images` takes the originals' bytes from
+    the input through PDFium and does not search data under 32 bytes.
+17. GATE
 
 ### Deviations of earlier phases that affect this one
 
