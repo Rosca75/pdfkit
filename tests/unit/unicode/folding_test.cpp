@@ -66,6 +66,24 @@ TEST_CASE("the whitespace folding collapses runs to one space") {
   CHECK_FALSE(Folding::is_white_space(U'​'));
 }
 
+TEST_CASE("a positional presentation form reads as its letters under every folding") {
+  // "Muhammad" in Arabic presentation forms B (initial meem, medial hah,
+  // medial meem, final dal) reads as the base letters, whatever the options.
+  const std::string shaped = "\xEF\xBB\xA3\xEF\xBA\xA4\xEF\xBB\xA4\xEF\xBA\xAA";
+  const std::string letters = "\xD9\x85\xD8\xAD\xD9\x85\xD8\xAF";
+  CHECK(fold(shaped, true, true, true) == letters);
+  CHECK(fold(shaped, false, false, false) == letters);
+  // The lam-alef ligature's final form is two letters, both naming it.
+  const Folding::Mapped mapped =
+      Folding::fold(Folding::decode("x\xEF\xBB\xBC"), {false, false, false});
+  CHECK(Folding::encode(mapped.text) == "x\xD9\x84\xD8\xA7");
+  REQUIRE(mapped.source.size() == 3);
+  CHECK(mapped.source[1] == 1);
+  CHECK(mapped.source[2] == 1);
+  // Other compatibility forms stay what they are: a full-width letter.
+  CHECK(fold("\xEF\xBC\xA1", true, true, true) == "\xEF\xBD\x81");
+}
+
 TEST_CASE("each folded code point names its source") {
   const Folding::Mapped mapped = Folding::fold(Folding::decode("A\xC3\x89  b"), {true, true, true});
   CHECK(Folding::encode(mapped.text) == "ae b");

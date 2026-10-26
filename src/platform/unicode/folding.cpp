@@ -2,10 +2,12 @@
 // Copyright 2026 The pdfkit authors
 //
 // The folding steps over the generated tables. Every table is sorted, so a
-// lookup is a binary search. A code point is folded as decomposition, mark
-// removal, case folding, then decomposition and mark removal again, because a
-// case folding can produce a decomposable letter (U+212B ANGSTROM SIGN folds
-// to U+00E5, which decomposes to "a" and a ring above).
+// lookup is a binary search. A positional presentation form is first
+// replaced by its letters, each then folded on its own. A code point is
+// folded as decomposition, mark removal, case folding, then decomposition and
+// mark removal again, because a case folding can produce a decomposable
+// letter (U+212B ANGSTROM SIGN folds to U+00E5, which decomposes to "a" and a
+// ring above).
 
 #include "platform/unicode/folding.hpp"
 
@@ -97,7 +99,24 @@ std::u32string Folding::decompose(char32_t code_point) {
           decomposition_data.begin() + found->offset + found->length};
 }
 
+std::u32string Folding::unshape(char32_t code_point) {
+  const auto found =
+      std::ranges::lower_bound(positional_forms, code_point, {}, &Decomposition::code);
+  if (found == positional_forms.end() || found->code != code_point) {
+    return {code_point};
+  }
+  return {positional_data.begin() + found->offset,
+          positional_data.begin() + found->offset + found->length};
+}
+
 void Folding::fold_code_point(char32_t code_point, const Options& options, std::u32string& out) {
+  if (const std::u32string letters = unshape(code_point);
+      letters.size() != 1 || letters.front() != code_point) {
+    for (const char32_t letter : letters) {
+      fold_code_point(letter, options, out);
+    }
+    return;
+  }
   if (!options.diacritics) {
     out.push_back(options.case_fold ? simple_case_fold(code_point) : code_point);
     return;
