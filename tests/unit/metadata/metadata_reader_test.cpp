@@ -22,6 +22,7 @@
 #include <doctest.h>
 
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -48,18 +49,20 @@ const MetadataReader::Row& row(const MetadataReader::Result& result, Field field
   return result.rows.front();
 }
 
-const std::string every_field_xmp = MetadataFixture::xmp(
-    "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">A title</rdf:li></rdf:Alt></dc:title>\n"
-    "<dc:creator><rdf:Seq><rdf:li>Ann Author</rdf:li></rdf:Seq></dc:creator>\n"
-    "<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">A subject</rdf:li></rdf:Alt>"
-    "</dc:description>\n"
-    "<dc:subject><rdf:Bag><rdf:li>one</rdf:li><rdf:li>two</rdf:li></rdf:Bag></dc:subject>\n"
-    "<pdf:Keywords>one, two</pdf:Keywords>\n"
-    "<xmp:CreatorTool>Writer</xmp:CreatorTool>\n"
-    "<xmp:CreateDate>2020-01-02T03:04:05+01:00</xmp:CreateDate>\n",
-    "pdf:Producer=\"Maker\" xmp:ModifyDate=\"2021-06-07T08:09:10Z\"");
+std::string every_field_xmp() {
+  return MetadataFixture::xmp(
+      "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">A title</rdf:li></rdf:Alt></dc:title>\n"
+      "<dc:creator><rdf:Seq><rdf:li>Ann Author</rdf:li></rdf:Seq></dc:creator>\n"
+      "<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">A subject</rdf:li></rdf:Alt>"
+      "</dc:description>\n"
+      "<dc:subject><rdf:Bag><rdf:li>one</rdf:li><rdf:li>two</rdf:li></rdf:Bag></dc:subject>\n"
+      "<pdf:Keywords>one, two</pdf:Keywords>\n"
+      "<xmp:CreatorTool>Writer</xmp:CreatorTool>\n"
+      "<xmp:CreateDate>2020-01-02T03:04:05+01:00</xmp:CreateDate>\n",
+      R"(pdf:Producer="Maker" xmp:ModifyDate="2021-06-07T08:09:10Z")");
+}
 
-const std::string every_field_info =
+constexpr std::string_view every_field_info =
     "/Title (A title) /Author (Ann Author) /Subject (A subject) /Keywords (one, two) "
     "/Creator (Writer) /Producer (Maker) /CreationDate (D:20200102030405+01'00') "
     "/ModDate (D:20210607080910Z)";
@@ -68,8 +71,8 @@ const std::string every_field_info =
 
 TEST_CASE("every field read from both places agrees") {
   MetadataFixture fixture;
-  fixture.info = every_field_info;
-  fixture.packet = every_field_xmp;
+  fixture.info = std::string(every_field_info);
+  fixture.packet = every_field_xmp();
   const MetadataReader::Result result = read(fixture);
   CHECK(result.info_present);
   CHECK(result.xmp_present);
@@ -81,7 +84,7 @@ TEST_CASE("every field read from both places agrees") {
     REQUIRE_FALSE(each.xmp.empty());
     CHECK(require_value(each.agree));
   }
-  CHECK(*row(result, Field::title).info == "A title");
+  CHECK(require_value(row(result, Field::title).info) == "A title");
   CHECK(row(result, Field::title).xmp.front().property == "dc:title");
   CHECK(row(result, Field::author).xmp.front().value == "Ann Author");
   CHECK(row(result, Field::producer).xmp.front().value == "Maker");
@@ -91,10 +94,10 @@ TEST_CASE("every field read from both places agrees") {
   CHECK(keywords.xmp[1].property == "dc:subject");
   CHECK(keywords.xmp[1].value == "one; two");
   const MetadataReader::Row& created = row(result, Field::creation_date);
-  CHECK(*created.info == "D:20200102030405+01'00'");
-  CHECK(*created.info_iso == "2020-01-02T03:04:05+01:00");
-  CHECK(*created.xmp_iso == "2020-01-02T03:04:05+01:00");
-  CHECK(*row(result, Field::mod_date).info_iso == "2021-06-07T08:09:10Z");
+  CHECK(require_value(created.info) == "D:20200102030405+01'00'");
+  CHECK(require_value(created.info_iso) == "2020-01-02T03:04:05+01:00");
+  CHECK(require_value(created.xmp_iso) == "2020-01-02T03:04:05+01:00");
+  CHECK(require_value(row(result, Field::mod_date).info_iso) == "2021-06-07T08:09:10Z");
 }
 
 TEST_CASE("disagreeing rows are reported as such") {
@@ -119,18 +122,18 @@ TEST_CASE("Info strings in UTF-16BE, UTF-16LE and PDFDocEncoding") {
   const MetadataReader::Result result = read(fixture);
   CHECK(result.info_present);
   CHECK_FALSE(result.xmp_present);
-  CHECK(*row(result, Field::title).info == "Zo\xC3\xAB");
+  CHECK(require_value(row(result, Field::title).info) == "Zo\xC3\xAB");
   CHECK(row(result, Field::title).info_form == PdfDocEncoding::Form::utf16be);
   CHECK(row(result, Field::author).info_form == PdfDocEncoding::Form::utf16le);
-  CHECK(*row(result, Field::author).info == "\xCE\xA9mega");
-  CHECK(*row(result, Field::subject).info == "\xE2\x80\xA2\xE2\x82\xAC");
+  CHECK(require_value(row(result, Field::author).info) == "\xCE\xA9mega");
+  CHECK(require_value(row(result, Field::subject).info) == "\xE2\x80\xA2\xE2\x82\xAC");
   CHECK(result.utf16le == 1);
   CHECK_FALSE(row(result, Field::title).agree.has_value());
 }
 
 TEST_CASE("a file with XMP only, and one with neither") {
   MetadataFixture fixture;
-  fixture.packet = every_field_xmp;
+  fixture.packet = every_field_xmp();
   const MetadataReader::Result result = read(fixture);
   CHECK_FALSE(result.info_present);
   CHECK(result.xmp_readable);
@@ -164,7 +167,7 @@ TEST_CASE("an encrypted file's Info strings decrypt; /EncryptMetadata false leav
   for (const bool encrypt_metadata : {true, false}) {
     MetadataFixture fixture;
     fixture.info = "/Title " + PdfBuilder::str("Secret title");
-    fixture.packet = every_field_xmp;
+    fixture.packet = every_field_xmp();
     pdfkit::test::PdfEncryptor::Spec spec;
     spec.revision = 4;
     spec.encrypt_metadata = encrypt_metadata;
@@ -174,25 +177,31 @@ TEST_CASE("an encrypted file's Info strings decrypt; /EncryptMetadata false leav
     CHECK((file.find("A title") != std::string::npos) == !encrypt_metadata);
     auto document = open_document(file);
     const MetadataReader::Result result = MetadataReader::read(*document);
-    CHECK(*row(result, Field::title).info == "Secret title");
+    CHECK(require_value(row(result, Field::title).info) == "Secret title");
     CHECK(result.xmp_readable);
     CHECK(row(result, Field::title).xmp.front().value == "A title");
   }
 }
 
 TEST_CASE("dates normalise both ways") {
-  CHECK(*MetadataReader::pdf_date_to_iso("D:2020") == "2020-01-01T00:00:00");
-  CHECK(*MetadataReader::pdf_date_to_iso("D:20200102030405-05'30'") == "2020-01-02T03:04:05-05:30");
-  CHECK(*MetadataReader::pdf_date_to_iso("20200102030405+00'00'") == "2020-01-02T03:04:05Z");
-  CHECK(*MetadataReader::pdf_date_to_iso("D:20200102030405Z00'00'") == "2020-01-02T03:04:05Z");
+  CHECK(require_value(MetadataReader::pdf_date_to_iso("D:2020")) == "2020-01-01T00:00:00");
+  CHECK(require_value(MetadataReader::pdf_date_to_iso("D:20200102030405-05'30'")) ==
+        "2020-01-02T03:04:05-05:30");
+  CHECK(require_value(MetadataReader::pdf_date_to_iso("20200102030405+00'00'")) ==
+        "2020-01-02T03:04:05Z");
+  CHECK(require_value(MetadataReader::pdf_date_to_iso("D:20200102030405Z00'00'")) ==
+        "2020-01-02T03:04:05Z");
   CHECK_FALSE(MetadataReader::pdf_date_to_iso("yesterday").has_value());
   CHECK_FALSE(MetadataReader::pdf_date_to_iso("D:20201302").has_value());
-  CHECK(*MetadataReader::iso_date("2020-01-02T03:04:05.123+02:00") == "2020-01-02T03:04:05+02:00");
-  CHECK(*MetadataReader::iso_date("2020-01") == "2020-01-01T00:00:00");
-  CHECK(*MetadataReader::iso_date("2020-01-02T03:04Z") == "2020-01-02T03:04:00Z");
+  CHECK(require_value(MetadataReader::iso_date("2020-01-02T03:04:05.123+02:00")) ==
+        "2020-01-02T03:04:05+02:00");
+  CHECK(require_value(MetadataReader::iso_date("2020-01")) == "2020-01-01T00:00:00");
+  CHECK(require_value(MetadataReader::iso_date("2020-01-02T03:04Z")) == "2020-01-02T03:04:00Z");
   CHECK_FALSE(MetadataReader::iso_date("2020/01/02").has_value());
-  CHECK(*MetadataReader::iso_to_pdf_date("2020-01-02T03:04:05+02:00") == "D:20200102030405+02'00'");
-  CHECK(*MetadataReader::iso_to_pdf_date("2020-01-02T03:04:05Z") == "D:20200102030405Z");
+  CHECK(require_value(MetadataReader::iso_to_pdf_date("2020-01-02T03:04:05+02:00")) ==
+        "D:20200102030405+02'00'");
+  CHECK(require_value(MetadataReader::iso_to_pdf_date("2020-01-02T03:04:05Z")) ==
+        "D:20200102030405Z");
 }
 
 TEST_CASE("the PDFDoc table reads every code as the text layer reads it") {

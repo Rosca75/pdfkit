@@ -105,7 +105,8 @@ std::string content(MetadataWriter::Field field, std::string_view ns, std::strin
     const std::string kind = local == "creator" ? "Seq" : "Bag";
     std::string out = "<" + r + kind + ">";
     for (const std::string& item : split(text, local == "subject")) {
-      out += "<" + r + "li>" + XmpScanner::escape(item) + "</" + r + "li>";
+      out.append("<").append(r).append("li>").append(XmpScanner::escape(item));
+      out.append("</").append(r).append("li>");
     }
     return out + "</" + r + kind + ">";
   }
@@ -385,7 +386,7 @@ std::string MetadataWriter::rewrite_packet(std::string_view packet,
     if (!present && value && scanned.rdf_end) {
       const MetadataReader::Pair& primary = pairs.front();
       const std::string_view prefix = prefix_of(primary.ns);
-      if (std::find(declared.begin(), declared.end(), primary.ns) == declared.end()) {
+      if (std::ranges::find(declared, primary.ns) == declared.end()) {
         declared.push_back(primary.ns);
       }
       added += element(field, primary.ns, primary.local,
@@ -394,15 +395,15 @@ std::string MetadataWriter::rewrite_packet(std::string_view packet,
   }
   if (!added.empty()) {
     std::string description =
-        "<rdf:Description xmlns:rdf=\"" + std::string(XmpScanner::rdf) + "\" rdf:about=\"\"";
+        R"(<rdf:Description xmlns:rdf=")" + std::string(XmpScanner::rdf) + R"(" rdf:about="")";
     for (const std::string_view ns : declared) {
       description += " xmlns:" + std::string(prefix_of(ns)) + "=\"" + std::string(ns) + "\"";
     }
     description += ">" + added + "</rdf:Description>\n";
     splices.push_back({*scanned.rdf_end, *scanned.rdf_end, std::move(description)});
   }
-  std::stable_sort(splices.begin(), splices.end(),
-                   [](const Splice& a, const Splice& b) { return a.begin > b.begin; });
+  std::ranges::stable_sort(splices,
+                           [](const Splice& a, const Splice& b) { return a.begin > b.begin; });
   std::string out(packet);
   std::size_t limit = out.size();
   for (const Splice& splice : splices) {

@@ -26,6 +26,7 @@
 #include <doctest.h>
 
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -36,7 +37,8 @@ using pdfkit::test::open_document;
 using pdfkit::test::require_value;
 using Field = MetadataReader::Field;
 
-const std::string custom = "<my:Note xmlns:my='urn:example:custom'>Keep &amp; me</my:Note>";
+constexpr std::string_view custom =
+    "<my:Note xmlns:my='urn:example:custom'>Keep &amp; me</my:Note>";
 
 MetadataFixture both() {
   MetadataFixture fixture;
@@ -45,7 +47,7 @@ MetadataFixture both() {
   fixture.packet = MetadataFixture::xmp(
       "<dc:title><rdf:Alt><rdf:li xml:lang='x-default'>Old title</rdf:li></rdf:Alt></dc:title>\n"
       "<dc:creator><rdf:Seq><rdf:li>Old Author</rdf:li></rdf:Seq></dc:creator>\n" +
-          custom +
+          std::string(custom) +
           "\n<xmpMM:DocumentID>uuid:old-document</xmpMM:DocumentID>\n"
           "<xmpMM:History><rdf:Seq><rdf:li rdf:parseType='Resource'><stEvt:action "
           "xmlns:stEvt='http://ns.adobe.com/xap/1.0/sType/ResourceEvent#'>saved by Old Author"
@@ -82,11 +84,11 @@ TEST_CASE("a written field appears in both places; a field not set keeps both va
   const auto written =
       write(both().build(), R"({"Title": "New title", "Author": "Ann; Bob", "Producer": "P2"})");
   const MetadataReader::Result result = reread(written.pdf);
-  CHECK(*row(result, Field::title).info == "New title");
+  CHECK(require_value(row(result, Field::title).info) == "New title");
   CHECK(row(result, Field::title).xmp.front().value == "New title");
-  CHECK(*row(result, Field::author).info == "Ann; Bob");
+  CHECK(require_value(row(result, Field::author).info) == "Ann; Bob");
   CHECK(row(result, Field::author).xmp.front().items == std::vector<std::string>{"Ann", "Bob"});
-  CHECK(*row(result, Field::producer).info == "P2");
+  CHECK(require_value(row(result, Field::producer).info) == "P2");
   CHECK(row(result, Field::producer).xmp.front().value == "P2");
   for (const MetadataReader::Row& each : result.rows) {
     CHECK(each.agree.value_or(true));
@@ -99,9 +101,9 @@ TEST_CASE("a written field appears in both places; a field not set keeps both va
 
   const auto untouched = write(both().build(), R"({"Subject": "Only the subject"})");
   const MetadataReader::Result kept = reread(untouched.pdf);
-  CHECK(*row(kept, Field::title).info == "Old title");
+  CHECK(require_value(row(kept, Field::title).info) == "Old title");
   CHECK(row(kept, Field::title).xmp.front().value == "Old title");
-  CHECK(*row(kept, Field::subject).info == "Only the subject");
+  CHECK(require_value(row(kept, Field::subject).info) == "Only the subject");
   // dc:description was absent, so it is added in a description of its own.
   REQUIRE_FALSE(row(kept, Field::subject).xmp.empty());
   CHECK(row(kept, Field::subject).xmp.front().value == "Only the subject");
@@ -146,7 +148,7 @@ TEST_CASE("a value outside PDFDocEncoding is written as UTF-16BE with the mark")
   REQUIRE(info != nullptr);
   const std::string bytes = info->get("Title").string()->bytes;
   CHECK(bytes.starts_with("\xFE\xFF"));
-  CHECK(*row(reread(written.pdf), Field::title).info == "\xCE\xA9 and \xE2\x82\xAC");
+  CHECK(require_value(row(reread(written.pdf), Field::title).info) == "\xCE\xA9 and \xE2\x82\xAC");
   const auto euro = write(both().build(), R"({"Title": "5 €"})");
   auto plain = open_document(euro.pdf);
   CHECK(plain->info().dictionary()->get("Title").string()->bytes == "5 \xA0");
@@ -169,9 +171,9 @@ TEST_CASE("dates are written as a PDF date and as ISO 8601") {
       write(both().build(),
             R"({"CreationDate": "2023-04-05T06:07:08+02:00", "ModDate": "D:20240102030405Z"})");
   const MetadataReader::Result result = reread(written.pdf);
-  CHECK(*row(result, Field::creation_date).info == "D:20230405060708+02'00'");
+  CHECK(require_value(row(result, Field::creation_date).info) == "D:20230405060708+02'00'");
   CHECK(row(result, Field::creation_date).xmp.front().value == "2023-04-05T06:07:08+02:00");
-  CHECK(*row(result, Field::mod_date).info == "D:20240102030405Z");
+  CHECK(require_value(row(result, Field::mod_date).info) == "D:20240102030405Z");
   CHECK(row(result, Field::mod_date).xmp.front().value == "2024-01-02T03:04:05Z");
   CHECK(require_value(row(result, Field::creation_date).agree));
   CHECK(require_value(row(result, Field::mod_date).agree));
@@ -185,7 +187,7 @@ TEST_CASE("an unreadable packet is dropped with its warning") {
   CHECK(written.report.find("xmp_unreadable") != std::string::npos);
   const MetadataReader::Result result = reread(written.pdf);
   CHECK_FALSE(result.xmp_present);
-  CHECK(*row(result, Field::title).info == "New");
+  CHECK(require_value(row(result, Field::title).info) == "New");
   CHECK(written.set_answer.find("\"xmp\":null") != std::string::npos);
 }
 
@@ -194,7 +196,7 @@ TEST_CASE("a file without an Info dictionary gains one; without a packet none is
   const auto written = write(fixture.build(), R"({"Title": "Made"})");
   const MetadataReader::Result result = reread(written.pdf);
   CHECK(result.info_present);
-  CHECK(*row(result, Field::title).info == "Made");
+  CHECK(require_value(row(result, Field::title).info) == "Made");
   CHECK_FALSE(result.xmp_present);
 }
 

@@ -13,6 +13,7 @@
 #include "platform/utf8_sequence.hpp"
 
 #include <charconv>
+#include <ranges>
 #include <utility>
 
 namespace pdfkit::syntax {
@@ -72,9 +73,10 @@ class Scanner {
   }
 
   [[nodiscard]] std::string uri_of(std::string_view prefix) const {
-    for (auto it = bindings_.rbegin(); it != bindings_.rend(); ++it) {
-      if (it->prefix == prefix) {
-        return it->uri;
+    // The innermost declaration of the prefix wins.
+    for (const Binding& binding : std::ranges::reverse_view(bindings_)) {
+      if (binding.prefix == prefix) {
+        return binding.uri;
       }
     }
     if (prefix == "xml") {
@@ -552,7 +554,7 @@ std::string XmpScanner::unescape(std::string_view text) {
       out += '\'';
     } else if (name.starts_with("#x") || name.starts_with("#X")) {
       append_reference(out, name.substr(2), 16);
-    } else if (name.starts_with("#")) {
+    } else if (name.starts_with('#')) {
       append_reference(out, name.substr(1), 10);
     } else {
       out.append(text.substr(i, semicolon - i + 1));

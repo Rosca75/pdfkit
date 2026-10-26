@@ -10,6 +10,7 @@
 #include "syntax/xmp_scanner.hpp"
 
 #include "metadata/support/metadata_fixture.hpp"
+#include "support/require_value.hpp"
 
 #include <doctest.h>
 
@@ -74,8 +75,7 @@ TEST_CASE("each property form is found with its exact byte ranges") {
   CHECK(tool->value == "Writer <7>");
   CHECK(slice(packet, tool->value_begin, tool->value_end) == "Writer &lt;7&gt;");
 
-  REQUIRE(result.rdf_end.has_value());
-  CHECK(packet.compare(*result.rdf_end, 10, "</rdf:RDF>") == 0);
+  CHECK(packet.compare(pdfkit::test::require_value(result.rdf_end), 10, "</rdf:RDF>") == 0);
   CHECK(result.rdf_prefix == "rdf");
 }
 

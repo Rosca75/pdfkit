@@ -122,7 +122,7 @@ std::string iso(Date date) {
   out += "-" + two(date.month) + "-" + two(date.day) + "T" + two(date.hour) + ":" +
          two(date.minute) + ":" + two(date.second);
   if (date.zone == 'Z') {
-    out += "Z";
+    out += 'Z';
   } else if (date.zone != 0) {
     out += std::string(1, date.zone) + two(date.zone_hour) + ":" + two(date.zone_minute);
   }
@@ -353,7 +353,7 @@ std::optional<std::string> MetadataReader::iso_to_pdf_date(std::string_view text
   std::string out = "D:" + year + two(date->month) + two(date->day) + two(date->hour) +
                     two(date->minute) + two(date->second);
   if (date->zone == 'Z' || (date->zone != 0 && date->zone_hour == 0 && date->zone_minute == 0)) {
-    out += "Z";
+    out += 'Z';
   } else if (date->zone != 0) {
     out += std::string(1, date->zone) + two(date->zone_hour) + "'" + two(date->zone_minute) + "'";
   }
@@ -384,14 +384,13 @@ MetadataReader::Result MetadataReader::read(Document& document) {
           result.xmp_readable = true;
           result.xmp_states = !scanned.properties.empty() || scanned.rdf_end.has_value();
           for (const XmpScanner::Property& property : scanned.properties) {
-            if (std::find(result.namespaces.begin(), result.namespaces.end(), property.ns) ==
-                result.namespaces.end()) {
+            if (std::ranges::find(result.namespaces, property.ns) == result.namespaces.end()) {
               result.namespaces.push_back(property.ns);
             }
             result.history = result.history ||
                              (property.ns == XmpScanner::xmp_mm && property.local == "History");
           }
-          std::sort(result.namespaces.begin(), result.namespaces.end());
+          std::ranges::sort(result.namespaces);
         } else {
           result.xmp_fault = scanned.fault;
         }

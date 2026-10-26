@@ -58,8 +58,7 @@ void add_original(std::vector<std::string>& originals, const std::string& value)
     // ASCII letters and digits, and the lead byte of every other character.
     letters += (std::isalnum(byte) != 0 || byte >= 0xC0) ? 1 : 0;
   }
-  if (letters >= shortest_original &&
-      std::find(originals.begin(), originals.end(), value) == originals.end()) {
+  if (letters >= shortest_original && std::ranges::find(originals, value) == originals.end()) {
     originals.push_back(value);
   }
 }
