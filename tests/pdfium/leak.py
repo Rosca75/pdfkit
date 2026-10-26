@@ -166,7 +166,12 @@ SHORTEST_IMAGE_DATA = 32
 
 def image_leaks(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
     """The original encoded bytes of every treated or removed image found in the output."""
-    wanted = {t["encoded"]["sha256"]: t["identity"] for t in part.get("treatments") or [] if t.get("encoded")}
+    # A treatment that wrote exactly an original's bytes (a blur of an image
+    # whose blocks were already constant) hid nothing: those bytes are the
+    # treated image, not a survivor.
+    produced = {d for entry in part.get("images") or [] for d in entry.get("sha256") or []}
+    wanted = {t["encoded"]["sha256"]: t["identity"] for t in part.get("treatments") or []
+              if t.get("encoded") and t["encoded"]["sha256"] not in produced}
     work = run_dir / "pdfium-leak-images" / row["id"]
     answer = images_pool.ask({"path": str(common.file_path(row)), "raw": sorted(wanted), "out": str(work)})
     entry = {"input_opens": bool(answer.get("ok")), "searched": 0, "short": 0, "not_reached": [],

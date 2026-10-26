@@ -22,6 +22,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <map>
 #include <optional>
 #include <set>
 #include <utility>
@@ -162,10 +163,10 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
     return R"({"status": "ok", "code": null, "treatments": [], "region": null, "output": null})";
   }
   const std::string seed_text = "9:" + std::string(id);
-  const std::string digest =
+  const std::string seed_digest =
       Sha256::hex(reinterpret_cast<const std::uint8_t*>(seed_text.data()), seed_text.size());
   std::uint64_t state = 0;
-  (void)std::from_chars(digest.data(), digest.data() + 16, state, 16);
+  (void)std::from_chars(seed_digest.data(), seed_digest.data() + 16, state, 16);
   const std::uint64_t start = dataset_splitmix(state) % 3;
   std::string treatments = R"({"treatments": [)";
   std::size_t boxes = 0;
@@ -360,11 +361,47 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
     }
   }
   geometry += ']';
-  // The identities of the input still listed in the output: none may be.
+  // The identities of the input still listed in the output: none may be,
+  // unless a treatment wrote exactly that image's bytes (a blur of an image
+  // whose blocks were already constant writes the image again, and the same
+  // bytes may be another image of the input), which is listed as unchanged.
+  std::set<std::string> produced;
+  if (const std::optional<JsonText> report = JsonText::parse(call.text, offset)) {
+    if (const JsonText::Node* entries = report->member(report->root(), "images")) {
+      for (const std::size_t index : entries->items) {
+        if (const JsonText::Node* digests = report->member(report->node(index), "sha256")) {
+          for (const std::size_t digest : digests->items) {
+            produced.insert(report->node(digest).text);
+          }
+        }
+      }
+    }
+  }
+  std::map<std::string, std::string> encoded_of;
+  if (const std::optional<JsonText> found = JsonText::parse(answer, offset)) {
+    if (const JsonText::Node* items = found->member(found->root(), "treatments")) {
+      for (const std::size_t index : items->items) {
+        const JsonText::Node& item = found->node(index);
+        const JsonText::Node* identity = found->member(item, "identity");
+        const JsonText::Node* encoded = found->member(item, "encoded");
+        const JsonText::Node* digest = encoded != nullptr ? found->member(*encoded, "sha256") : nullptr;
+        if (identity != nullptr && digest != nullptr) {
+          encoded_of[identity->text] = digest->text;
+        }
+      }
+    }
+  }
   std::vector<std::string> survivors;
+  std::vector<std::string> unchanged;
   const std::set<std::string> left = listed_identities(pdf);
   for (const Image& image : images) {
-    if (left.contains(image.identity)) {
+    if (!left.contains(image.identity)) {
+      continue;
+    }
+    const auto digest = encoded_of.find(image.identity);
+    if (digest != encoded_of.end() && produced.contains(digest->second)) {
+      unchanged.push_back(image.identity);
+    } else {
       survivors.push_back(image.identity);
     }
   }
@@ -384,6 +421,7 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
          R"(, "bytes": )" + std::to_string(pdf.size()) + R"(, "pages": )" + pages +
          R"(, "rectangles": )" + rectangles + R"(, "geometry": )" + geometry +
          R"(, "images": )" + treated + R"(, "survivors": )" + quoted_list(survivors) +
+         R"(, "unchanged": )" + quoted_list(unchanged) +
          R"(, "reopen": )" + dataset_reopen(pdf) + "}";
 }
 

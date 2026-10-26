@@ -273,7 +273,9 @@ def check_file(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
         return result
     seen = answer["images"]
     for digest, identity in originals.items():
-        if digest in seen:
+        # A treatment that wrote exactly an original's bytes (a blur of an
+        # image whose blocks were already constant) left nothing it hid.
+        if digest in seen and digest not in new_digests:
             result["left"].append({"identity": identity, "pages": seen[digest]["pages"][:10]})
     by_identity = {t["identity"]: t for t in treatments}
     for digest, identity in sorted(new_digests.items()):
