@@ -168,8 +168,10 @@ against editing and not against reading, and trying passwords is out of scope.
   of the first 16 encrypted bytes modulo 3, at least 64 rounds and until the last
   byte is not greater than the round number minus 32); the file key is
   `/UE` decrypted with AES-256 in CBC with a zero IV and no padding under the key
-  hashed with the key salt; `/Perms` is checked and a mismatch is a warning, not
-  a refusal. SASLprep reduces to nothing for the empty password.
+  hashed with the key salt. `/Perms` is checked: one that does not decrypt to
+  "adb" means the file key is wrong and is refused `password_required`, as PDFium
+  refuses it, while a missing `/Perms` or one naming other permissions than `/P`
+  is a repair note. SASLprep reduces to nothing for the empty password.
 - **Crypt filters**: `/CF` with `/StdCF` (`/CFM` `/V2` RC4, `/AESV2`, `/AESV3`),
   `/StmF` and `/StrF` choosing them, `/Identity` meaning no decryption, a stream
   whose own `/Filter` names `/Crypt` with `/Name` using that filter.
@@ -177,9 +179,11 @@ against editing and not against reading, and trying passwords is out of scope.
   object stream (the stream as a whole is decrypted), the `/Encrypt` dictionary's
   own strings, the `/ID` array, and the XMP metadata stream when
   `/EncryptMetadata` is false.
-- **Refusals**: a non-empty user password is `password_required`; a handler other
-  than `/Standard` (a public-key or vendor handler) is
-  `unsupported_security_handler` (§19).
+- **Refusals**: a non-empty user password, or a revision 5 or 6 `/Perms` that
+  does not decrypt, is `password_required`; a handler other than `/Standard` (a
+  public-key or vendor handler), or a revision, version, crypt filter or method
+  the standard handler does not define, is `unsupported_security_handler`
+  (§19).
 - **Output**: every file pdfkit writes is unencrypted, because a redacted copy is
   a new document and the original's restrictions were set for the original.
 
@@ -322,8 +326,8 @@ the loader, because one bad font must not lose a page.
   with surrogate pairs kept whole; a malformed entry is skipped and counted,
   because one bad line is not a reason to lose the map.
 - A predefined CMap other than the identities ships no data, so a code of such a
-  font with no `/ToUnicode` is unreadable and counted (CJK data is a later data
-  addition). Its codes are split by the codespace its name implies (the
+  font with no `/ToUnicode` is unreadable and counted (no CJK CMap data is
+  shipped). Its codes are split by the codespace its name implies (the
   Shift-JIS, EUC, GBK, Big5 and UHC lead bytes, else two bytes), so they are
   counted as the encoding writes them. The Unicode CMaps (`Uni...-UCS2-`,
   `-UTF16-`, `-UTF8-`, `-UTF32-`) are the exception: their codes are the
@@ -602,8 +606,8 @@ treatments are limited to keep and remove (§14).
   axis, ported from PDFium under BSD-3), because the naive complement
   (`R = (1-C)(1-K)`) differs from the independent reader by 10 to 20 per
   channel on real CMYK images; no colour management is vendored, so an
-  `ICCBased` profile is read as its device space (`OPEN-QUESTIONS.md` §2
-  holds the owner's confirmation).
+  `ICCBased` profile is read as its device space (both decisions wait on the
+  owner in `OPEN-QUESTIONS.md`).
 - Masks: `/SMask` (a grey image, with `/Matte` un-premultiplied), `/Mask` as a
   colour-key range array or as a stencil image; a mask whose size differs from
   the base is kept at its own size.
@@ -614,8 +618,10 @@ treatments are limited to keep and remove (§14).
 
 `pdfkit_image_data` answers, per identity: for a `DCTDecode` source, the
 original JPEG bytes unchanged, because re-encoding a JPEG loses quality and adds
-nothing; for every other source, a PNG (greyscale or RGB, 8-bit, or 16-bit when
-the source is 16-bit) written by the library's own PNG writer over zlib; the mask
+nothing; for every other source, and for a DCT source asked with `decode_jpeg`,
+a PNG (1-bit greyscale for a bitonal image, greyscale or RGB at 8 bits, 16 when
+the source is 16-bit, with an alpha channel when the image carries one) written
+by the library's own PNG writer over zlib; the mask
 (soft or stencil) as a separate PNG when asked for, because combining masks of a
 different size is a resampling decision the caller should make. An image inside
 a pattern or a soft mask is listed with `image_in_pattern` and its occurrences
@@ -795,7 +801,7 @@ position the original gave it (CLAUDE.md §5).
   way; a duplicate's both operators are edited.
 - **Width side channel**: the following glyphs keep their positions, which
   leaks the removed span's width (CLAUDE.md §5); re-anchoring the rest of the
-  line is a later switch and never the default.
+  line would be an opt-in switch and is never the default.
 - **Across lines**: a match spanning a line break removes the glyphs on every
   line and draws the placeholder once, at the first line's first removed glyph;
   the later lines' holes stay holes; an attached hyphen goes with the match.
@@ -910,8 +916,9 @@ because the samples stay in the file.
 ## 15. The channel table
 
 The channels are listed in one source file, `src/writer/channel_table.cpp`, one
-row per channel, each row naming what the writer does, the report key of
-`pdfkit_channels` and the planted-marker unit test that proves it, because the
+row per channel, each row naming the report key of `pdfkit_channels`, how the
+channel is detected and what the writer strips, with a planted-marker unit test
+per row in `tests/unit/writer/channel_table_test.cpp`, because the
 public record of redaction failures is a record of channels nobody listed and a
 channel added later must be a row with a test, not a sentence. The rows:
 
@@ -1036,7 +1043,8 @@ channel: it is copied as it is until the metadata writer rewrites it (§10).
   identifier is a function of the content.
 - **Unencrypted** always (§2).
 - The output re-opens in pdfkit with no repair and in PDFium; the dataset tier
-  asserts both.
+  asserts the first and the PDFium tier (`compare.py --check write`) the
+  second.
 
 ## 18. The self-check
 
@@ -1103,8 +1111,8 @@ Every refusal carries the three fields of CLAUDE.md §3.3 (`failed`,
 |---|---|---|
 | `not_pdf` | no `%PDF-` in the first 1,024 bytes and no page object found by the scan | that the bytes are not a PDF or are truncated, and to re-export the file |
 | `no_page` | a PDF header but no object with `/Type /Page` | that the file is probably truncated, and to re-export it from its application |
-| `password_required` | the user password is not empty | that a password is needed, and to remove it in the PDF application |
-| `unsupported_security_handler` | `/Encrypt` names a handler other than `/Standard`, or a revision outside 2 to 6 | the handler and revision found, and to remove the protection in the producing application |
+| `password_required` | the user password is not empty, or a revision 5 or 6 `/Perms` does not decrypt with the file key | that a password is needed, and to remove it in the PDF application |
+| `unsupported_security_handler` | `/Encrypt` names a handler other than `/Standard`, a revision outside 2 to 6, a version outside 1, 2, 4 and 5, or a crypt filter or method the handler does not define | the handler and revision found, and to remove the protection in the producing application |
 | `limit_exceeded` | a stream, the document, an image or an allocation past a limit of §3.2 | the object, the limit, and to re-save or split the file or raise the limit at open |
 | `page_ceiling` | the page count is above the configured ceiling | the count and the ceiling, and to split the file or raise the ceiling at open |
 | `undecodable_image` | `pdfkit_image_data` asked for an image whose encoding does not decode, or `pdfkit_redact_images` for a box, blur or region box of it (the call is refused, the document is not) | the identity, the encoding, the object and the fault, and that only keep and remove apply |
