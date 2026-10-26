@@ -118,9 +118,9 @@ TEST_CASE("a JPEG 2000 image's in-data alpha becomes a soft mask, opaque under t
   const auto listed = pdfkit::test::list_images(file);
   const std::string identity =
       listed.find("images")->as_array().at(0).find("identity")->as_string();
-  const pdfkit::test::ImageRedaction result = pdfkit::test::treat(
-      file, R"({"treatments": [{"identity": ")" + identity +
-                R"(", "treatment": "box", "rectangle": [0, 0, 8, 8]}]})");
+  const pdfkit::test::ImageRedaction result =
+      pdfkit::test::treat(file, R"({"treatments": [{"identity": ")" + identity +
+                                    R"(", "treatment": "box", "rectangle": [0, 0, 8, 8]}]})");
   INFO(result.answer);
   INFO(result.report);
   REQUIRE(result.write_status == PDFKIT_OK);
@@ -137,8 +137,9 @@ TEST_CASE("a JPEG 2000 image's in-data alpha becomes a soft mask, opaque under t
         if (x < 8 && y < 8) {
           REQUIRE(samples.buffer.at(x, y, 0) == (mask ? 255 : 0));
         } else if (mask) {
-          REQUIRE(samples.buffer.at(x, y, 0) ==
-                  static_cast<std::uint16_t>((static_cast<int>(y * 16 + x) * 37 + 3 * 91) % 200 + 20));
+          REQUIRE(
+              samples.buffer.at(x, y, 0) ==
+              static_cast<std::uint16_t>((static_cast<int>(y * 16 + x) * 37 + 3 * 91) % 200 + 20));
         }
       }
     }

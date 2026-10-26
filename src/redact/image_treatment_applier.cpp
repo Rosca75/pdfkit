@@ -287,7 +287,7 @@ class Stage {
   }
 
   // The bytes of a treated inline image's operation, or nothing (the draw
-  // goes) when it no longer decodes; digest receives the SHA-256 of its data
+  // goes) when it does not decode at write time; digest receives the SHA-256 of its data
   // as written between ID and the white space before EI.
   std::string treat_inline(const Dictionary& written, platform::ByteSpan data,
                            const Object& colour_spaces, const Treatment& treatment,

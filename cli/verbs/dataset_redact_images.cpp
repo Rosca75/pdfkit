@@ -96,8 +96,8 @@ std::vector<Image> images_of(const std::string& listed) {
     image.decodable = decodable != nullptr && decodable->text == "true";
     const JsonText::Node* mask = json->member(entry, "image_mask");
     const JsonText::Node* bits = json->member(entry, "bits_per_component");
-    image.bitonal = (mask != nullptr && mask->text == "true") ||
-                    (bits != nullptr && bits->raw == "1");
+    image.bitonal =
+        (mask != nullptr && mask->text == "true") || (bits != nullptr && bits->raw == "1");
     if (const JsonText::Node* encoding = json->member(entry, "encoding")) {
       image.encoding = std::string(encoding->raw);
     }
@@ -180,8 +180,8 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
                std::min(image.width, image.height) < smallest_bitonal_blur) {
       image.kind = "box";
     }
-    std::string entry = R"({"identity": )" + json_quote(image.identity) +
-                        R"(, "treatment": )" + json_quote(image.kind);
+    std::string entry = R"({"identity": )" + json_quote(image.identity) + R"(, "treatment": )" +
+                        json_quote(image.kind);
     if (image.kind == "box") {
       image.captioned = boxes % 2 == 1;
       if (image.captioned) {
@@ -277,13 +277,12 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
         }
         draws += "]";
         described += (i == 0 ? "" : ", ") + std::string(R"({"identity": )") +
-                     json_quote(images[i].identity) + R"(, "kind": )" +
-                     json_quote(images[i].kind) +
+                     json_quote(images[i].identity) + R"(, "kind": )" + json_quote(images[i].kind) +
                      R"(, "caption": )" + (images[i].captioned ? "true" : "false") +
-                     R"(, "encoding": )" + images[i].encoding +
-                     R"(, "width": )" + raw("width") + R"(, "height": )" + raw("height") +
-                     R"(, "pixels": )" + raw("pixels") + R"(, "block": )" + raw("block") +
-                     R"(, "encoded": )" + raw("encoded") + R"(, "draws": )" + draws + "}";
+                     R"(, "encoding": )" + images[i].encoding + R"(, "width": )" + raw("width") +
+                     R"(, "height": )" + raw("height") + R"(, "pixels": )" + raw("pixels") +
+                     R"(, "block": )" + raw("block") + R"(, "encoded": )" + raw("encoded") +
+                     R"(, "draws": )" + draws + "}";
       }
     }
   }
@@ -384,7 +383,8 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
         const JsonText::Node& item = found->node(index);
         const JsonText::Node* identity = found->member(item, "identity");
         const JsonText::Node* encoded = found->member(item, "encoded");
-        const JsonText::Node* digest = encoded != nullptr ? found->member(*encoded, "sha256") : nullptr;
+        const JsonText::Node* digest =
+            encoded != nullptr ? found->member(*encoded, "sha256") : nullptr;
         if (identity != nullptr && digest != nullptr) {
           encoded_of[identity->text] = digest->text;
         }
@@ -415,14 +415,13 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
   if (!write_output_file("dataset", path + relative, data, pdf.size())) {
     return R"({"status": "error", "code": "output_failed", "message": "the output could not be written"})";
   }
-  return R"({"status": "ok", "code": null, "treatments": )" + described +
-         R"(, "region": )" + region_member + R"(, "output": )" + json_quote(relative) +
-         R"(, "sha256": )" + json_quote(Sha256::hex(data, pdf.size())) +
-         R"(, "bytes": )" + std::to_string(pdf.size()) + R"(, "pages": )" + pages +
-         R"(, "rectangles": )" + rectangles + R"(, "geometry": )" + geometry +
-         R"(, "images": )" + treated + R"(, "survivors": )" + quoted_list(survivors) +
-         R"(, "unchanged": )" + quoted_list(unchanged) +
-         R"(, "reopen": )" + dataset_reopen(pdf) + "}";
+  return R"({"status": "ok", "code": null, "treatments": )" + described + R"(, "region": )" +
+         region_member + R"(, "output": )" + json_quote(relative) + R"(, "sha256": )" +
+         json_quote(Sha256::hex(data, pdf.size())) + R"(, "bytes": )" + std::to_string(pdf.size()) +
+         R"(, "pages": )" + pages + R"(, "rectangles": )" + rectangles + R"(, "geometry": )" +
+         geometry + R"(, "images": )" + treated + R"(, "survivors": )" + quoted_list(survivors) +
+         R"(, "unchanged": )" + quoted_list(unchanged) + R"(, "reopen": )" + dataset_reopen(pdf) +
+         "}";
 }
 
 }  // namespace pdfkit::cli::verbs

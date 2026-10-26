@@ -170,11 +170,10 @@ std::vector<ImageTreatmentPlan::Answer> ImageTreatmentPlan::add(
       }
     }
     // A JPEG is written as a JPEG again, so its mosaic keeps to JPEG blocks.
-    const syntax::Object* written =
-        treatment.inline_image ? &entry->dictionary : &entry->stream;
+    const syntax::Object* written = treatment.inline_image ? &entry->dictionary : &entry->stream;
     const syntax::Dictionary* fields = written->dictionary_or_stream_dictionary();
-    const bool jpeg = fields != nullptr &&
-                      images::ImageDecoder::encoding(document, *fields) == "DCTDecode";
+    const bool jpeg =
+        fields != nullptr && images::ImageDecoder::encoding(document, *fields) == "DCTDecode";
     if (request.kind == Kind::blur) {
       MosaicBlur::require_blurrable(entry->bitonal, treatment.width, treatment.height,
                                     "pdfkit_redact_images " + where);
