@@ -15,7 +15,8 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/${presetName}",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "PDFKIT_COMPILER_CACHE": "AUTO"
       }
     },
     {
