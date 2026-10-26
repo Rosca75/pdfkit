@@ -16,6 +16,7 @@
 #include "platform/crypto/sha2.hpp"
 #include "platform/error.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <utility>
