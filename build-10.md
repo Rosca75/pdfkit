@@ -248,7 +248,150 @@ tag someone has fetched is a release someone may hold.
 
 ## 9. Deviations recorded by this phase
 
-1. (none yet)
+1. **Two parts, by the team lead's instruction.** Part A (this push, run in
+   parallel with phase 9): the metadata functions, the dataset at 953 rows
+   with every metadata tag filled, the ABI tier, the packaging, and the
+   metadata gate. Part B, after phase 9 merges: the rebase, every phase's gate
+   re-run on the final dataset into one table, the documentation sweep, the
+   archive of finished build files and the tag rule of §4. The base was green
+   (`python build/check.py --fast` and the unit tier on `11508c3`); no repair
+   commit.
+2. **Files beyond §2**, each for one class or one concern:
+   `src/syntax/pdf_doc_encoding.{hpp,cpp}` (`PdfDocEncoding`: the Annex D
+   table the writer layer needs and cannot reach in the fonts layer, checked
+   code by code against the text layer's reading),
+   `tests/unit/metadata/support/metadata_fixture.*` (the one-page fixture
+   with Info entries and a packet, and a write through the C ABI),
+   `cli/verbs/dataset_metadata.*` (the dataset verb's `metadata` and
+   `set_metadata` members), `dataset/tools/synth/metadata/` (the three
+   unreadable packets), `tests/abi/python/test_abi.py`; the .NET project is
+   `tests/abi/dotnet/PdfkitAbi.csproj` (renamed from `AbiHello.csproj`).
+   Edits outside the owned paths, each additive: `src/writer/channel_table.cpp`
+   (item 4), `src/writer/document_id.*` and `file_writer.cpp` (the XMP
+   identifiers patched with the `/ID`), `src/redact/write_pipeline.cpp`
+   (items 5 to 7), `src/redact/self_check.cpp` (item 8),
+   `src/api/catalogue.cpp`, `cli/verbs/dataset.cpp` and `dataset_redact.*`
+   (item 10), `tests/unit/writer/channel_table_test.cpp` (the identifiers
+   now stay, regenerated), `tests/pdfium/pdfium.py` (a `meta` request with
+   the eight Info fields), `tests/pdfium/leak.py` (`--metadata`, item 8),
+   `dataset/tools/synth/run.py` (the `synth.metadata` package),
+   `dataset/tools/common.py`, `add.py` and their tests, `tests/dataset/run.py`
+   and its test (items 9 and 11), `CLAUDE.md` §7.3 (the `metadata` group).
+3. **The tests were written beside the code, not seen red first**: each
+   step's unit tests were written after its classes, in the same step, and
+   passed on their first run; the dataset found the faults the tests had
+   missed (items 6, 7 and 12), each fixed with a test that fails without the
+   fix.
+4. **The XMP identifiers stay, regenerated** (the first option of the
+   `build-7.md` note, `OPEN-QUESTIONS.md` §2.12 item 3): the metadata stage
+   writes `xmpMM:DocumentID` and `xmpMM:InstanceID` as placeholders, the
+   channel strip keeps those two only when they hold the placeholder, and the
+   file writer patches them with `xmp.did:` and `xmp.iid:` and the first and
+   second 16 bytes of the output's SHA-256 (the `/ID` is the first 16). The
+   metadata stage removes every other media-management property by
+   namespace, so `xapMM:` properties, which the strip's literal prefix
+   missed, go too.
+5. **The metadata stage runs on every write**, whatever the plan, for the
+   identifiers and the history; a write without metadata values leaves the
+   Info dictionary as it is.
+6. **A value outside the field list that repeats a redacted string goes**
+   (`OPEN-QUESTIONS.md` §2.12 item 1): a custom Info entry, an XMP property no
+   field pairs with and the packet's `x:xmptk` are removed when an original
+   value of a rewritten field, or a string the text redaction removes, occurs
+   in them under the default folding. The first dataset run refused 296 of
+   the 802 metadata rewrites for such repeats (`xmp:MetadataDate`,
+   `pdfx:Identifier`, `photoshop:headline`, `x:xmptk`), which no function
+   could rewrite. `docs/DESIGN.md` §10 says so.
+7. **An original of fewer than three letters or digits is not a self-check
+   needle** (`OPEN-QUESTIONS.md` §2.12 item 2); every other original value of
+   a rewritten field (the Info value, each paired XMP value and each array
+   item) is, on every page, unless the plan also searches the page text for
+   it, which keeps the changed-pages-only reading of `build-8.md` §9 item 8.
+8. **The self-check's metadata surfaces, refined**: the `info` surface reads
+   the strings of an Info entry's arrays and dictionaries (the string walk
+   leaves the Info object to it), and the `xmp` surface leaves out the
+   namespace declarations' URIs ("http", "adobe", "rights" refused 9 text
+   redactions in the first run); `tests/pdfium/leak.py` reads XMP the same
+   way.
+9. **The manifest columns** are `expect_metadata` (`read`,
+   `known_gap:<reason>`, `n/a`; it held `agree` or `n/a`, every row `n/a`)
+   and `expect_set_metadata` (`clean`, `known_gap:<reason>`, `n/a`), placed
+   before `notes`; whether Info and XMP agree is the file's tag. The tags are
+   `meta_info_only`, `meta_xmp_only`, `meta_both_agree`,
+   `meta_both_disagree`, `meta_utf16`, `meta_xmp_custom_namespace`,
+   `meta_xmp_history` and `meta_xmp_unreadable` (the taxonomy spells tags
+   with underscores), group `metadata`, minimum 3, detector `pdfkit`: a
+   dataset run's outcome, written into the manifest by
+   `tests/dataset/gates/phase10.py --write-manifest`.
+10. **The dataset jobs**: the `set_metadata` member writes `[_n_]` (n the
+    field's place in the field list), not `REDACTED <FIELD>`, because no
+    searched original can occur in a value with no letter ("Word" occurred in
+    "REDACTED KEYWORDS" and refused two files), and nothing is drawn, so no
+    seed; it also searches the page text for every original it rewrites, as a
+    caller must when the title is also the first heading. The `redact_text`
+    member rewrites, to a fixed point, the fields that hold one of its words
+    or an original of a field it rewrote, and searches their originals too
+    (`tests/dataset/outcome.md`).
+11. **The dataset tier's per-file timeout is 30 s per started block of 200
+    pages** (`OPEN-QUESTIONS.md` §2.12 item 4): the verb now reads every page
+    three times, and dccc-0135 (910 pages) takes 29 s alone.
+12. **Writer details the dataset showed**: a rewritten element keeps its own
+    start tag (pikepdf declares `xmlns:dc` on `dc:creator` itself, and the
+    first writer dropped the binding); a packet that states nothing (an
+    empty stream, an empty `rdf:RDF`) is dropped; a file without a packet
+    gains none (`OPEN-QUESTIONS.md` §2.12 item 5); a field set to `null` is
+    removed from both places; a date given in either form is written in each
+    place's form, any other value as given.
+13. **`pdfkit_metadata` answers more than §2 named**: `xmp_values` (every
+    paired property present, with an array's `items`), `info_iso` and
+    `xmp_iso` on the date rows, `utf16le`, `xmp_namespaces` and
+    `xmp_history` (`docs/ABI.md` §4.13 and §4.14). The ABI version stays 1
+    (`OPEN-QUESTIONS.md` §2.12 item 6).
+14. **The dataset at 953 rows**: every tag at its minimum but `gen_word_pdfa`
+    and `gen_edge` (Word and Edge cannot run unattended on the laptop,
+    `OPEN-QUESTIONS.md` §2.2); the three `meta_xmp_unreadable` files are
+    `synth-0901` to `synth-0903`, numbered clear of phase 9's synthesised
+    rows, which share the dataset folder from `synth-0263` on. No public set
+    was scouted: every metadata tag but the unreadable packet is far above
+    its minimum in the existing files.
+15. **Budgets** are the first release package plus 25 % (DLL 5,121,024,
+    exe 616,960, zip 2,445,579 bytes on 2026-10-26, before phase 9's code);
+    Part B measures them again on the merged tree. `build/package.py
+    --verify` rebuilds from clean and packages twice.
+16. **The ABI tier's cases** are the smallest opening manifest file of 28
+    tags, one file per refusal code the manifest expects, a repaired file and
+    the CLI's fixture (a redact job with a text and a metadata section); both
+    callers make the same 492 calls over 28 files.
+17. **The redact verb's refusal of a section this build lacks** is kept as
+    it is (it reads `is_implemented`, so it now refuses only an `images`
+    section); phase 9 removes it with its images section.
+18. **The metadata gate as run in Part A** (run `p10-gate1`, release build
+    of the tree committed as `0602043`, 953 files): `python
+    tests/dataset/run.py --runs 2 --workers 4 --run-id p10-gate1` (1,042 s,
+    every expectation column passing, no crash, no hang, both runs
+    identical); `python tests/dataset/gates/phase10.py --run p10-gate1
+    --write-manifest`; `python tests/pdfium/metadata.py --run p10-gate1`;
+    `python tests/pdfium/leak.py --run p10-gate1 --metadata`. Dataset 953
+    rows (500 to 1,000), tags 151 of 153 at their minimum (`gen_word_pdfa`
+    and `gen_edge`, `OPEN-QUESTIONS.md` §2.2); metadata read on 807 of 807
+    files holding any (4 of them report an unreadable packet, as they must);
+    Info fields equal to PDFium's 3,042 of 3,042, one file's two dates a
+    named PDFium difference (`tests/pdfium/metadata_causes.tsv`:
+    pdfium-0033, a linearised file whose main trailer names no /Info), six
+    files PDFium does not open; rewrites carrying the written values 805 of
+    805; originals found in an output or by PDFium 0 outside 11 files the
+    manifest now names (`known_gap:pdfium_reads_*`, `OPEN-QUESTIONS.md`
+    §2.12 item 7); the text redaction job's leak check 0 of 902 files (16
+    removed-code sequences in other fonts' strings, informational, as in
+    phase 8). `expect_redact_text`: 83 of the 85
+    `known_gap:metadata_holds_word` rows are `clean`; dccc-0044 (the word
+    "ROSÉ", which the self-check's diacritic folding finds in the title
+    "2019 Rose" and the job's byte comparison of fields does not) and
+    pdfpig-0009 (the word in a stream) stay, renamed
+    `known_gap:word_in_info_xmp` and `known_gap:word_in_stream`. The earlier gates were not re-run in Part A
+    (Part B re-runs every one on the merged tree). The leak check's byte scan
+    no longer counts a number original inside a longer number (`1994` in a
+    path's `466.1994`), which the self-check never reads either.
 
 ### Deviations of earlier phases that affect this one
 

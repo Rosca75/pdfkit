@@ -336,3 +336,102 @@ and each taken while this question stands; `build-8.md` §9 records them and
      word and turn those rows `clean` — recommended.** About 1 hour inside
      phase 10, $15.
    - (b) Keep them as gaps. No cost.
+
+### 2.12 Metadata rewriting: what goes with a rewrite, what the self-check skips, the dataset's time limit (raised by phase 10)
+
+Phase 10 took these decisions unattended, each the recommended answer and
+each taken while this question stands; `build-10.md` §9 records them and
+`docs/DESIGN.md` §10, §15 and §18 say so. Do you confirm them?
+
+1. **A value outside the field list that repeats a redacted string is
+   removed.** When a write redacts a string (an original value of a rewritten
+   field, or a string the text redaction removes), every custom Info entry,
+   every XMP property no field pairs with (`xmp:MetadataDate`, `dc:rights`,
+   `pdfx:Identifier`, `photoshop:headline` and the like) and the packet's
+   toolkit attribute `x:xmptk` that holds it, under the default folding, goes
+   from the output; every other custom key and property stays byte for byte.
+   The first dataset run refused 296 of 802 metadata rewrites for such
+   repeats (the original modification date in `xmp:MetadataDate`, an author's
+   name in `pdfx:Identifier`), and no catalogue function can rewrite those
+   values, so without this the caller has no way to an output.
+   - **(a) Keep the targeted removal — recommended.** No cost.
+   - (b) Strip every custom Info key and every XMP property outside the
+     field list on every write (an allow-list, as the catalog and pages
+     have). About 2 hours and $30; PDF/A and PDF/UA identification
+     (`pdfaid:`, `pdfuaid:`) would need an exception, and a document loses
+     custom properties no redaction touched.
+   - (c) Keep custom values and let the self-check refuse. No cost; 296 of
+     the dataset's rewrites, and any real document with such a property,
+     cannot be written.
+2. **An original value of fewer than three letters or digits is not
+   searched for** by the self-check ("A.B", "PC", "1"), because it occurs in
+   almost any text and would refuse every output rather than find a leak.
+   - **(a) Keep three — recommended.** No cost.
+   - (b) Search every original, however short. No development cost; such a
+     rewrite is refused whenever the page text holds the letters.
+   - (c) Raise the threshold to four. No development cost; a three-letter
+     name ("Ann", "Bob") is then not proven gone.
+3. **The XMP identifiers stay, regenerated.** The channel strip keeps
+   `xmpMM:DocumentID` and `xmpMM:InstanceID` only when they hold the
+   placeholder the metadata stage writes, and the file writer patches both
+   from the output's hash with the `/ID` (`xmp.did:` and `xmp.iid:` plus 32
+   hexadecimal digits); every other media-management property goes, whatever
+   its prefix (`xapMM:` included, which the strip's literal prefix missed).
+   A packet without identifiers gains none.
+   - **(a) Keep them — recommended.** No cost.
+   - (b) Drop the identifiers with the rest of the namespace, as the writer
+     did before this phase. About 0.5 hours and $10.
+4. **The dataset tier's per-file timeout grows with the page count**: 30 s
+   for each started block of 200 pages (dccc-0135, 910 pages, gets 150 s),
+   because the dataset verb now reads every page three times (the text, the
+   text redaction and the metadata rewrite); alone, dccc-0135 takes 29 s and
+   dccc-0129 16 s, and under four workers the first probe timed both out. A
+   file that loops still meets the limit.
+   - **(a) Keep the scaled limit — recommended.** No cost.
+   - (b) Keep 30 s and merge the text redaction and metadata jobs into one
+     edit plan, saving one read. About 2 to 3 hours and $40 to $60; the
+     phase 8 gate would then measure a different job, and dccc-0135 stays
+     near the limit under load.
+   - (c) Keep 30 s and count the large files as hangs. No cost; the hang
+     measure of every gate fails.
+5. **A packet that states nothing is dropped, and a file without a packet
+   gains none.** A rewrite writes the Info dictionary (creating one when
+   needed) and the packet the file has; it does not create a packet.
+   - **(a) Keep it — recommended.** No cost.
+   - (b) Create a minimal packet holding the set fields when the file has
+     none. About 1 to 2 hours and $20 to $30.
+6. **The ABI version stays 1.** `CLAUDE.md` §3.3 raises `pdfkit_abi_version`
+   on every addition, and every phase since the first added JSON fields
+   (this one: `xmp_namespaces`, `xmp_history` and `items` in
+   `pdfkit_metadata`) while it stayed 1, because nothing has been released
+   for a caller to bind to.
+   - **(a) Keep 1 for the first release and raise it from then on —
+     recommended.** About 0.2 hours to say so in `CLAUDE.md` §3.3 during the
+     documentation sweep.
+   - (b) Raise it to 2 now. About 0.5 hours and $10 (the constant, the ABI
+     tier's expectation, `docs/ABI.md`).
+7. **PDFium finds a rewritten field's original in 11 outputs whose page
+   text pdfkit reads in another order** (run `p10-gate1`; each row is now a
+   named `known_gap:pdfium_reads_*` of `expect_set_metadata`, and the leak
+   measure counts none of them). The metadata rewrite job searches the page
+   text for every original it rewrites; the search runs over pdfkit's
+   reading order, so a multi-word title that pdfkit reads across two
+   interleaved columns (dccc-0107, dccc-0139, opf-0010, opf-0018,
+   tika-0016), across the lines a non-embedded CJK font runs off the page
+   (dccc-0012, dccc-0046; `build-5.md` §9 item 18), in Arabic presentation
+   forms where the Info value holds the base letters (pdfbox-0004; the
+   compatibility folding of §2.11 item 1), around a right-to-left word
+   (pypdf-0019, pypdf-0021) or as the TeX logo's lowered E (qpdf-0038) is
+   not matched, and PDFium, reading in its own order, finds it in the
+   output. pdfkit's own self-check reads pdfkit's order and passes. This is
+   the leak rule of `build-8.md` §5 met by a phrase rather than a word; the
+   seeded words of the text redaction job show no such survivor (902 files,
+   0 PDFium hits).
+   - **(a) A fix session on the phrase search before the release —
+     recommended**: search a string also over each content stream's drawing
+     order (the glyph records as drawn, words joined by their gaps), as the
+     code search already does inside one operand, and in the self-check
+     likewise. About 4 to 8 hours and $70 to $140.
+   - (b) Continue with the 11 rows as known gaps and say in the release
+     notes that a phrase pdfkit reads across columns may survive in another
+     reader's order. No extra cost now.

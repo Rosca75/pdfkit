@@ -322,8 +322,8 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `missing_references` | the distinct object numbers referenced but missing, written as `null` |
 | `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
 | `rectangles` | per output page a text redaction changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line with the glyphs drawn after it on that line, and each placeholder drawn, widened by a sixth of the glyph size) and the `placeholders` drawn there; empty when nothing was redacted |
-| `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match; `{"status": "passed", "strings": n}` when the output was re-read and none of the n redacted strings survives (`docs/DESIGN.md` §18); a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface and page, and no PDF is returned |
-| `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode and was dropped |
+| `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match and no rewritten metadata field; `{"status": "passed", "strings": n}` when the output was re-read and none of the n redacted strings (the text matches' strings, and the original values of the metadata fields rewritten) survives (`docs/DESIGN.md` §18); a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface and page, and no PDF is returned |
+| `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode or scan and was dropped |
 
 ### 4.8 pdfkit_image_data (catalogue 3.2)
 
@@ -551,6 +551,75 @@ operands, `object` naming it); `page` is null for a surface outside the pages.
 Failures: `invalid_argument` for a null `out`, malformed or unknown keys, a
 string without `text`; the open's refusal (`not_pdf`, `password_required` and
 the rest) under `PDFKIT_E_REFUSED` when the bytes do not open.
+
+### 4.13 pdfkit_metadata (catalogue 4)
+
+`pdfkit_metadata(doc, options_json, out)` reads the Info dictionary and the
+catalog's XMP packet side by side (`docs/DESIGN.md` §10). It takes no option
+(`NULL` or `{}`; any key is `invalid_argument`) and never fails on a valid
+handle: a packet that does not scan is reported, with the warning
+`xmp_unreadable`, and its fields read as absent.
+
+```json
+{"info": true, "xmp": "read", "xmp_fault": null, "agree": false, "utf16le": 0,
+ "xmp_namespaces": ["http://ns.adobe.com/pdf/1.3/", "http://purl.org/dc/elements/1.1/"],
+ "xmp_history": false,
+ "fields": [
+  {"field": "Title", "info": "Report", "info_encoding": "pdf_doc", "xmp": "Report",
+   "xmp_property": "dc:title",
+   "xmp_values": [{"property": "dc:title", "value": "Report", "items": ["Report"]}],
+   "agree": true},
+  {"field": "CreationDate", "info": "D:20200102030405Z", "info_encoding": "pdf_doc",
+   "xmp": "2020-01-02T03:04:05Z", "xmp_property": "xmp:CreateDate",
+   "xmp_values": [{"property": "xmp:CreateDate", "value": "2020-01-02T03:04:05Z", "items": []}],
+   "info_iso": "2020-01-02T03:04:05Z", "xmp_iso": "2020-01-02T03:04:05Z", "agree": true}
+ ],
+ "warnings": []}
+```
+
+| Key | Holds |
+|---|---|
+| `info` | whether the trailer names an Info dictionary |
+| `xmp`, `xmp_fault` | `absent`, `read` or `unreadable`, and for `unreadable` why the packet did not scan |
+| `agree` | false when any field's two values disagree |
+| `utf16le` | the Info strings written UTF-16LE with a mark, which the reader tolerates |
+| `xmp_namespaces`, `xmp_history` | the namespaces of the packet's properties, sorted, and whether it holds an `xmpMM:History` |
+| `fields` | one row per field of the field list, always eight, in the order `Title`, `Author`, `Subject`, `Keywords`, `Creator`, `Producer`, `CreationDate`, `ModDate` |
+| `info`, `info_encoding` | the Info value as UTF-8 (`null` when absent) and the form its string was written in: `pdf_doc`, `utf16be`, `utf16le` or `utf8` |
+| `xmp`, `xmp_property` | the first paired XMP value present and the property it came from, whatever prefix the packet writes reported under the usual one (`dc:title`, `dc:creator`, `dc:description`, `pdf:Keywords` then `dc:subject`, `xmp:CreatorTool`, `pdf:Producer`, `xmp:CreateDate`, `xmp:ModifyDate`) |
+| `xmp_values` | every paired property present: its value (an `rdf:Alt`'s `x-default` item, an `rdf:Seq`'s or `rdf:Bag`'s items joined with `; `) and an array's items |
+| `info_iso`, `xmp_iso` | for the two dates only: each value in ISO 8601 when it parses, else `null` |
+| `agree` (per field) | whether the Info value and the first XMP value say the same (dates compared in ISO 8601, author and keyword lists item by item); `null` when either is absent |
+
+### 4.14 pdfkit_set_metadata (catalogue 7)
+
+`pdfkit_set_metadata(edit, fields_json, out)` records field values on the
+edit plan; `pdfkit_write` writes them at its metadata stage
+(`docs/DESIGN.md` §10). `fields_json` is one object keyed by the field
+names of §4.13, each a string (the new value; a date may be given as a PDF
+date or in ISO 8601 and is written in each place's form) or `null` (the field
+is removed from both places). A later call's value of a field replaces an
+earlier one. The answer lists every field the plan holds as it will be
+written:
+
+```json
+{"fields": [
+  {"field": "Title", "removed": false, "info": "New title", "info_encoding": "pdf_doc",
+   "xmp": "New title", "xmp_properties": ["dc:title"]},
+  {"field": "Author", "removed": true, "info": null, "info_encoding": null, "xmp": null,
+   "xmp_properties": ["dc:creator"]}
+]}
+```
+
+`xmp_properties` names the properties the write rewrites (those the packet
+holds) or adds (the first the field pairs with, when it holds none); it is
+empty, and `xmp` `null`, when the file has no packet that states anything
+(none is created) or one that does not scan (it is dropped). Each original
+value of a field set, of three letters or digits or more, becomes a string
+the self-check searches the output for. Failures: `invalid_argument` for a
+missing `fields_json` or `out`, a key outside the field list (the message
+names the list; names are case-sensitive) and a value that is neither a
+string nor `null`.
 
 ## 5. Versioning
 
