@@ -277,6 +277,21 @@ void Scanner::open(Frame frame, const std::vector<Attribute>& attributes, bool e
   std::vector<XmpScanner::Property>& properties = result_.properties;
   switch (parent) {
     case Role::other:
+      for (const Attribute& candidate : attributes) {
+        if (candidate.qname == "xmlns" || candidate.qname.starts_with("xmlns:")) {
+          continue;
+        }
+        XmpScanner::Property other;
+        std::tie(other.ns, other.local) = resolve(candidate.qname, false);
+        other.qname = candidate.qname;
+        other.form = XmpScanner::Form::attribute;
+        other.begin = candidate.name_begin;
+        other.end = candidate.value_end + 1;
+        other.value_begin = candidate.value_begin;
+        other.value_end = candidate.value_end;
+        other.value = candidate.value;
+        result_.others.push_back(std::move(other));
+      }
       frame.role = is_rdf(frame.qname, "RDF", true) ? Role::rdf_root : Role::other;
       if (frame.role == Role::rdf_root) {
         saw_rdf_ = true;

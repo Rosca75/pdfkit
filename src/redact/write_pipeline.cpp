@@ -69,7 +69,15 @@ void WritePipeline::metadata(EditPlan& plan, writer::ObjectGraph& graph,
                              writer::WriteReport& report) {
   // Runs on every write: a plan without metadata values still has the
   // packet's identifiers replaced and its media-management history removed.
-  writer::MetadataWriter::apply(graph, plan.metadata(), plan.metadata_originals(), report.warnings);
+  // A value outside the field list that repeats a redacted string, a
+  // metadata original or a string the text redaction removes, goes.
+  std::vector<std::string> redacted = plan.metadata_originals();
+  for (const MatchFinder::Match& needle : plan.text().needles) {
+    if (!needle.search.empty()) {
+      redacted.push_back(needle.search);
+    }
+  }
+  writer::MetadataWriter::apply(graph, plan.metadata(), redacted, report.warnings);
 }
 
 void WritePipeline::strip_channels(writer::ObjectGraph& graph, writer::WriteReport& report) {

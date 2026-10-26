@@ -20,6 +20,7 @@
 #include "syntax/metadata_reader.hpp"
 #include "syntax/object.hpp"
 #include "syntax/stream.hpp"
+#include "syntax/xmp_scanner.hpp"
 #include "writer/output_scan.hpp"
 
 #include <doctest.h>
@@ -29,6 +30,7 @@
 namespace {
 
 using pdfkit::syntax::MetadataReader;
+using pdfkit::syntax::XmpScanner;
 using pdfkit::test::MetadataFixture;
 using pdfkit::test::open_document;
 using pdfkit::test::require_value;
@@ -215,6 +217,24 @@ TEST_CASE("a rewritten element keeps its start tag; an empty element gains its c
   CHECK(result.packet.find("<dc:creator xmlns:dc='http://purl.org/dc/elements/1.1/'>") !=
         std::string::npos);
   CHECK(result.packet.find("<pdf:Keywords>k1</pdf:Keywords>") != std::string::npos);
+}
+
+TEST_CASE("the toolkit attribute goes when it repeats a rewritten producer") {
+  MetadataFixture fixture;
+  fixture.info = "/Producer (Maker Toolkit 2.5)";
+  fixture.packet =
+      "<x:xmpmeta xmlns:x='adobe:ns:meta/' x:xmptk='Maker Toolkit 2.5, http://maker.example'>"
+      "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description "
+      "rdf:about='' xmlns:pdf='http://ns.adobe.com/pdf/1.3/'><pdf:Producer>Maker Toolkit 2.5"
+      "</pdf:Producer></rdf:Description></rdf:RDF></x:xmpmeta>";
+  const XmpScanner::Result scanned = XmpScanner::scan(fixture.packet);
+  REQUIRE(scanned.others.size() == 1);
+  CHECK(scanned.others[0].local == "xmptk");
+  const auto written = write(fixture.build(), R"({"Producer": "[_6_]"})");
+  const std::string packet = reread(written.pdf).packet;
+  CHECK(packet.find("xmptk") == std::string::npos);
+  CHECK(packet.find("<x:xmpmeta xmlns:x='adobe:ns:meta/'>") != std::string::npos);
+  CHECK(packet.find("<pdf:Producer>[_6_]</pdf:Producer>") != std::string::npos);
 }
 
 TEST_CASE("a packet that states nothing is dropped") {

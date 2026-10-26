@@ -255,7 +255,7 @@ bool paired_with_a_field(const XmpScanner::Property& property) {
 
 void write_info(ObjectGraph& graph, const MetadataWriter::Values& values,
                 const std::vector<std::u32string>& originals) {
-  if (values.empty()) {
+  if (values.empty() && originals.empty()) {
     return;
   }
   const Object entry = graph.trailer().get("Info");
@@ -263,8 +263,8 @@ void write_info(ObjectGraph& graph, const MetadataWriter::Values& values,
   if (const Dictionary* existing = graph.resolve(entry).dictionary()) {
     info = *existing;
   }
-  // An entry outside the field list that repeats an original value of a
-  // rewritten field goes, because nothing else can rewrite it.
+  // An entry outside the field list that repeats a redacted string goes,
+  // because nothing else can rewrite it.
   std::vector<std::string> repeats;
   for (const auto& [key, item] : info.entries()) {
     if (MetadataReader::field(key)) {
@@ -275,6 +275,9 @@ void write_info(ObjectGraph& graph, const MetadataWriter::Values& values,
     if (holds(text, originals)) {
       repeats.push_back(key);
     }
+  }
+  if (values.empty() && repeats.empty()) {
+    return;
   }
   for (const std::string& key : repeats) {
     info.erase(key);
@@ -325,14 +328,19 @@ std::vector<MetadataWriter::Written> MetadataWriter::preview(const Values& value
 std::string MetadataWriter::rewrite_packet(std::string_view packet,
                                            const XmpScanner::Result& scanned, const Values& values,
                                            std::span<const std::string> originals) {
-  const std::vector<std::u32string> folded =
-      values.empty() ? std::vector<std::u32string>() : fold_all(originals);
+  const std::vector<std::u32string> folded = fold_all(originals);
   std::vector<Splice> splices;
+  for (const XmpScanner::Property& other : scanned.others) {
+    // The toolkit attribute often names the producer.
+    if (holds(other.value, folded)) {
+      splices.push_back(removal(packet, other));
+    }
+  }
   for (const XmpScanner::Property& property : scanned.properties) {
     if (property.ns != XmpScanner::xmp_mm && !paired_with_a_field(property) &&
         holds(property_text(packet, property), folded)) {
-      // A property no field pairs with that repeats an original value of a
-      // rewritten field goes, because nothing else can rewrite it.
+      // A property no field pairs with that repeats a redacted string goes,
+      // because nothing else can rewrite it.
       splices.push_back(removal(packet, property));
       continue;
     }
@@ -412,7 +420,7 @@ std::string MetadataWriter::rewrite_packet(std::string_view packet,
 void MetadataWriter::apply(ObjectGraph& graph, const Values& values,
                            std::span<const std::string> originals,
                            std::vector<ChannelTable::Warning>& warnings) {
-  write_info(graph, values, values.empty() ? std::vector<std::u32string>() : fold_all(originals));
+  write_info(graph, values, fold_all(originals));
   const std::uint32_t root = graph.root();
   const Object catalog_value = graph.get(root);
   const Dictionary* catalog = catalog_value.dictionary();

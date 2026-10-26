@@ -11,9 +11,11 @@
 // the rdf:RDF end tag; a field set to no value is removed from both places;
 // a field not set keeps its value in both. A value outside the field list (a
 // custom Info key, an XMP property no field pairs with, such as
-// xmp:MetadataDate or a custom namespace's) that repeats the original value
-// of a rewritten field is removed, because no function can rewrite it and the
-// self-check would refuse the output for it. Whatever the caller set, the
+// xmp:MetadataDate or a custom namespace's, the packet's toolkit attribute)
+// that repeats a redacted string (an original value of a rewritten field, a
+// string the text redaction removes) is removed, because no function can
+// rewrite it and the self-check would refuse the output for it. Whatever the
+// caller set, the
 // packet loses every property of the media-management namespace but its
 // identifiers, whose values become placeholders the file writer patches from
 // the output's hash (writer::DocumentId), because the original's history and
@@ -61,10 +63,11 @@ class MetadataWriter {
 
   // Applies values to graph's Info dictionary and catalog packet and
   // replaces the packet's identifiers with their placeholders; originals are
-  // the source's values of the fields set, and an Info entry outside the
-  // field list or an XMP property no field pairs with that repeats one of
-  // them is removed. The warnings met (xmp_unreadable) are appended to
-  // warnings.
+  // the redacted strings (the source's values of the fields set and the
+  // strings the text redaction removes), and an Info entry outside the field
+  // list, an XMP property no field pairs with or an attribute around the
+  // descriptions that repeats one of them is removed. The warnings met
+  // (xmp_unreadable) are appended to warnings.
   static void apply(ObjectGraph& graph, const Values& values,
                     std::span<const std::string> originals,
                     std::vector<ChannelTable::Warning>& warnings);

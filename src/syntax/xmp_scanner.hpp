@@ -77,6 +77,10 @@ class XmpScanner {
     // Why the packet is unreadable.
     std::string fault;
     std::vector<Property> properties;
+    // The attributes of the elements around the descriptions (x:xmpmeta's
+    // x:xmptk, the toolkit that wrote the packet), declarations left out, in
+    // the attribute form.
+    std::vector<Property> others;
     // Where the rdf:RDF element's end tag starts, and the prefix its name is
     // written with, so a new rdf:Description can be added before it.
     std::optional<std::size_t> rdf_end;
