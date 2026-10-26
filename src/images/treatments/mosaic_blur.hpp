@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// MosaicBlur is the blur treatment, docs/DESIGN.md section 14: the rectangle
-// is cut into square blocks from its top-left corner, each block at least 8
-// pixels and at least a sixteenth of the image's smaller dimension on a side,
-// and every block is filled with its mean, because a mosaic of that size holds
+// MosaicBlur is the blur treatment, docs/DESIGN.md section 14: the image is
+// cut into square blocks from its top-left corner, each block at least 8
+// pixels and at least a sixteenth of the image's smaller dimension on a side
+// (a whole number of 8-pixel JPEG blocks for a JPEG, so the re-encoded image
+// keeps every block constant), and every block inside the rectangle is
+// filled with its mean, because a mosaic of that size holds
 // no recoverable detail where a convolution blur can be inverted. The mean is
 // taken per component on the raw samples (the decode and colour conversions
 // are monotone per component), except in an Indexed space, whose samples are
@@ -31,15 +33,18 @@ class MosaicBlur {
   static constexpr std::uint32_t minimum_block = 8;
   static constexpr std::uint32_t minimum_bitonal_side = 128;
 
-  // The block side for an image of width by height.
-  [[nodiscard]] static std::uint32_t block_size(std::uint32_t width, std::uint32_t height) noexcept;
+  // The block side for an image of width by height; jpeg rounds it up to a
+  // multiple of 8.
+  [[nodiscard]] static std::uint32_t block_size(std::uint32_t width, std::uint32_t height,
+                                                bool jpeg) noexcept;
 
   // Throws platform::Error (invalid_argument) naming what and offering a box
   // when a bitonal image is too small to blur.
   static void require_blurrable(bool bitonal, std::uint32_t width, std::uint32_t height,
                                 std::string_view what);
 
-  // Fills every block of rect (cut to the image) with its mean. meaning tells
+  // Fills the part of every block inside rect (cut to the image) with its
+  // mean; the grid starts at the image's top-left corner. meaning tells
   // an Indexed space apart; its other spaces average the raw samples.
   static void apply(PixelBuffer& buffer, const PixelBuffer::Rect& rect, std::uint32_t block,
                     const BoxPainter::Meaning& meaning);

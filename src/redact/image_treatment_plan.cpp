@@ -9,6 +9,7 @@
 
 #include "redact/image_treatment_plan.hpp"
 
+#include "images/image_decoder.hpp"
 #include "images/image_identity.hpp"
 #include "images/treatments/mosaic_blur.hpp"
 #include "images/treatments/region_mapper.hpp"
@@ -168,6 +169,12 @@ std::vector<ImageTreatmentPlan::Answer> ImageTreatmentPlan::add(
                "REDACTED");
       }
     }
+    // A JPEG is written as a JPEG again, so its mosaic keeps to JPEG blocks.
+    const syntax::Object* written =
+        treatment.inline_image ? &entry->dictionary : &entry->stream;
+    const syntax::Dictionary* fields = written->dictionary_or_stream_dictionary();
+    const bool jpeg = fields != nullptr &&
+                      images::ImageDecoder::encoding(document, *fields) == "DCTDecode";
     if (request.kind == Kind::blur) {
       MosaicBlur::require_blurrable(entry->bitonal, treatment.width, treatment.height,
                                     "pdfkit_redact_images " + where);
@@ -224,7 +231,7 @@ std::vector<ImageTreatmentPlan::Answer> ImageTreatmentPlan::add(
     answer.height = treatment.height;
     if (request.kind == Kind::blur) {
       treatment.blurs = rects;
-      treatment.block = MosaicBlur::block_size(treatment.width, treatment.height);
+      treatment.block = MosaicBlur::block_size(treatment.width, treatment.height, jpeg);
       answer.block = treatment.block;
     } else if (boxes) {
       for (const PixelRect& rect : rects) {

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// The mosaic. A block at the rectangle's right or bottom edge is cut short by
-// the rectangle and averages what it holds. Means round half up, so a block of
-// a bitonal image half black and half white becomes white; the result depends
-// on the samples alone.
+// The mosaic. The grid of blocks starts at the image's top-left corner, so
+// every block of a JPEG-aligned size holds whole 8 by 8 JPEG blocks, and a
+// block the rectangle cuts averages the part inside it. Means round half up,
+// so a block of a bitonal image half black and half white becomes white; the
+// result depends on the samples alone.
 
 #include "images/treatments/mosaic_blur.hpp"
 
@@ -19,9 +20,11 @@
 
 namespace pdfkit::images::treatments {
 
-std::uint32_t MosaicBlur::block_size(std::uint32_t width, std::uint32_t height) noexcept {
+std::uint32_t MosaicBlur::block_size(std::uint32_t width, std::uint32_t height,
+                                     bool jpeg) noexcept {
   const std::uint32_t smaller = std::min(width, height);
-  return std::max(minimum_block, (smaller + 15) / 16);
+  const std::uint32_t block = std::max(minimum_block, (smaller + 15) / 16);
+  return jpeg ? ((block + 7) / 8) * 8 : block;
 }
 
 void MosaicBlur::require_blurrable(bool bitonal, std::uint32_t width, std::uint32_t height,
@@ -61,10 +64,13 @@ void MosaicBlur::apply(PixelBuffer& buffer, const PixelBuffer::Rect& rect, std::
   }
   std::vector<std::uint64_t> sums(components);
   std::vector<std::uint16_t> mean(components);
-  for (std::uint32_t top = area.top; top < area.bottom; top += block) {
-    const std::uint32_t bottom = std::min(area.bottom, top + block);
-    for (std::uint32_t left = area.left; left < area.right; left += block) {
-      const std::uint32_t right = std::min(area.right, left + block);
+  for (std::uint32_t row = area.top - (area.top % block); row < area.bottom; row += block) {
+    const std::uint32_t top = std::max(row, area.top);
+    const std::uint32_t bottom = std::min(area.bottom, row + block);
+    for (std::uint32_t column = area.left - (area.left % block); column < area.right;
+         column += block) {
+      const std::uint32_t left = std::max(column, area.left);
+      const std::uint32_t right = std::min(area.right, column + block);
       const std::uint64_t count = std::uint64_t{right - left} * (bottom - top);
       if (indexed) {
         BoxPainter::Colour total{};

@@ -44,9 +44,12 @@ PixelBuffer gradient(std::uint32_t width, std::uint32_t height, std::uint32_t co
 }  // namespace
 
 TEST_CASE("the block is at least 8 pixels and a sixteenth of the smaller side") {
-  CHECK(MosaicBlur::block_size(50, 40) == 8U);
-  CHECK(MosaicBlur::block_size(1000, 400) == 25U);
-  CHECK(MosaicBlur::block_size(130, 2000) == 9U);
+  CHECK(MosaicBlur::block_size(50, 40, false) == 8U);
+  CHECK(MosaicBlur::block_size(1000, 400, false) == 25U);
+  CHECK(MosaicBlur::block_size(130, 2000, false) == 9U);
+  // A JPEG's block is a whole number of 8-pixel JPEG blocks.
+  CHECK(MosaicBlur::block_size(130, 2000, true) == 16U);
+  CHECK(MosaicBlur::block_size(50, 40, true) == 8U);
 }
 
 TEST_CASE("every block is constant, holds its mean, and the outside is untouched") {
@@ -59,10 +62,17 @@ TEST_CASE("every block is constant, holds its mean, and the outside is untouched
   const PixelBuffer::Rect rect{4, 6, 44, 37};
   const std::uint32_t block = 8;
   MosaicBlur::apply(after, rect, block, meaning);
-  for (std::uint32_t top = rect.top; top < rect.bottom; top += block) {
-    for (std::uint32_t left = rect.left; left < rect.right; left += block) {
-      const std::uint32_t bottom = std::min(rect.bottom, top + block);
-      const std::uint32_t right = std::min(rect.right, left + block);
+  // The grid starts at the image's corner: rows 0, 8, 16, ..., cut by the
+  // rectangle.
+  for (std::uint32_t row = 0; row < rect.bottom; row += block) {
+    for (std::uint32_t column = 0; column < rect.right; column += block) {
+      const std::uint32_t top = std::max(row, rect.top);
+      const std::uint32_t left = std::max(column, rect.left);
+      const std::uint32_t bottom = std::min(rect.bottom, row + block);
+      const std::uint32_t right = std::min(rect.right, column + block);
+      if (top >= bottom || left >= right) {
+        continue;
+      }
       for (std::uint32_t c = 0; c < 3; ++c) {
         std::uint64_t sum = 0;
         for (std::uint32_t y = top; y < bottom; ++y) {

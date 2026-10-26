@@ -143,7 +143,12 @@ class Stage {
       if (known != inline_cache_.end()) {
         return known->second;
       }
-      std::string replaced = treat_inline(written, data, colour_spaces, treatments.at(identity));
+      std::string digest;
+      std::string replaced =
+          treat_inline(written, data, colour_spaces, treatments.at(identity), digest);
+      if (!digest.empty()) {
+        images_[identity].sha256.push_back(std::move(digest));
+      }
       inline_cache_.emplace(identity, replaced);
       return replaced;
     };
@@ -280,9 +285,11 @@ class Stage {
   }
 
   // The bytes of a treated inline image's operation, or nothing (the draw
-  // goes) when it no longer decodes.
+  // goes) when it no longer decodes; digest receives the SHA-256 of its data
+  // as written between ID and the white space before EI.
   std::string treat_inline(const Dictionary& written, platform::ByteSpan data,
-                           const Object& colour_spaces, const Treatment& treatment) {
+                           const Object& colour_spaces, const Treatment& treatment,
+                           std::string& digest) {
     ImageDecoder::SamplesResult result =
         ImageDecoder::samples_inline(document_, written, data, colour_spaces);
     if (!result.samples) {
@@ -325,15 +332,19 @@ class Stage {
     }
     out += encoded.jpeg ? " /F [/AHx /DCT] ID " : " /F [/AHx /Fl] ID ";
     constexpr std::string_view digits = "0123456789ABCDEF";
+    std::string text;
     for (std::size_t i = 0; i < bytes.size(); ++i) {
       const auto byte = std::to_integer<unsigned>(bytes[i]);
-      out += digits[byte >> 4U];
-      out += digits[byte & 0x0FU];
+      text += digits[byte >> 4U];
+      text += digits[byte & 0x0FU];
       if (i % 64 == 63) {
-        out += '\n';
+        text += '\n';
       }
     }
-    out += ">\nEI";
+    text += '>';
+    digest = hex(std::as_bytes(std::span(text)));
+    out += text;
+    out += "\nEI";
     return out;
   }
 

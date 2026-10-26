@@ -115,7 +115,12 @@ std::uint32_t CaptionDrawer::draw(PixelBuffer& buffer, const PixelBuffer::Rect& 
       static_cast<int>(area.top) + ((static_cast<int>(area.height()) - extent_y + 1) / 2) - min_y;
   int pen = 0;
   for (const char character : caption) {
-    const BitmapGlyph& entry = *glyph(height, character);
+    // Every character was found at this height when the line was measured.
+    const BitmapGlyph* found = glyph(height, character);
+    if (found == nullptr) {
+      continue;
+    }
+    const BitmapGlyph& entry = *found;
     for (std::uint32_t row = 0; row < entry.height; ++row) {
       for (std::uint32_t column = 0; column < entry.width; ++column) {
         const std::uint8_t byte =

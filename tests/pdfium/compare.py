@@ -15,9 +15,11 @@
 # their inputs (render.py, exact pixels, annotations off) and compares PDFium's
 # text of an identity write with its text of the input, writing
 # pdfium-write.json, pdfium-select.json and pdfium-write-text.json into the run;
-# `--check redact` renders every page of each text redaction's output against its
+# `--check redact` renders every page of each text redaction's (and each image
+# treatment's) output against its
 # input outside the reported rectangles (one pixel of dilation) and counts the
-# placeholders PDFium reads against those drawn, into pdfium-redact.json.
+# placeholders PDFium reads against those drawn, into pdfium-redact.json (the
+# text redactions) and pdfium-redact-images.json (the image treatments).
 
 from __future__ import annotations
 
@@ -438,11 +440,19 @@ def redact_entry(pool, before: Path, after: Path, part: dict) -> dict:
 
 
 def redact_check(run_id: str, rows: list[dict], workers: int) -> int:
-    """Pixel stability outside the reported rectangles and the placeholder count of every
-    redact_text output of a run; writes pdfium-redact.json."""
+    """Pixel stability outside the reported rectangles of every text redaction
+    (pdfium-redact.json) and every image treatment (pdfium-redact-images.json)
+    output of a run, and the placeholder count of the text redactions."""
+    redact_member_check(run_id, rows, workers, "redact_text", "pdfium-redact.json")
+    redact_member_check(run_id, rows, workers, "redact_images", "pdfium-redact-images.json")
+    return 0
+
+
+def redact_member_check(run_id: str, rows: list[dict], workers: int, member: str, report: str) -> int:
+    """The redact check over the outputs of one outcome member."""
     run_dir, found = load_outcomes(run_id, rows)
-    jobs = [(row, outcome["redact_text"]) for row, outcome in found
-            if (outcome.get("redact_text") or {}).get("status") == "ok" and outcome["redact_text"].get("output")]
+    jobs = [(row, outcome[member]) for row, outcome in found
+            if (outcome.get(member) or {}).get("status") == "ok" and outcome[member].get("output")]
     entries = {}
     with render.render_pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
         futures = {row["id"]: threads.submit(redact_entry, pool, common.file_path(row), run_dir / part["output"],
@@ -460,13 +470,13 @@ def redact_check(run_id: str, rows: list[dict], workers: int) -> int:
                "placeholder_share": round(seen / drawn, 6) if drawn else None,
                "unstable_files": sorted(k for k, e in entries.items() if e["unstable"]),
                "placeholder_files": sorted(k for k, e in entries.items() if e["placeholder_pages"])}
-    (run_dir / "pdfium-redact.json").write_text(
+    (run_dir / report).write_text(
         json.dumps({"files": dict(sorted(entries.items())), "summary": summary}, indent=1), encoding="utf-8")
-    print(json.dumps({"check": "redact"} | summary | {"unstable_files": len(summary["unstable_files"]),
-                                                      "placeholder_files": len(summary["placeholder_files"])},
-                     indent=1))
+    print(json.dumps({"check": "redact", "member": member} | summary
+                     | {"unstable_files": len(summary["unstable_files"]),
+                        "placeholder_files": len(summary["placeholder_files"])}, indent=1))
     if not entries:
-        print("SKIPPED redact check: no outcome of this run carries a redact_text output", file=sys.stderr)
+        print(f"SKIPPED redact check: no outcome of this run carries a {member} output", file=sys.stderr)
     return 0
 
 

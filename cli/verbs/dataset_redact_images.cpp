@@ -57,6 +57,8 @@ struct Image {
   std::vector<std::pair<std::string, std::vector<double>>> draws;
   std::string kind;
   bool captioned = false;
+  // The encoding as pdfkit_images writes it, a JSON string.
+  std::string encoding = "null";
 };
 
 double number(const JsonText::Node* node) {
@@ -95,6 +97,9 @@ std::vector<Image> images_of(const std::string& listed) {
     const JsonText::Node* bits = json->member(entry, "bits_per_component");
     image.bitonal = (mask != nullptr && mask->text == "true") ||
                     (bits != nullptr && bits->raw == "1");
+    if (const JsonText::Node* encoding = json->member(entry, "encoding")) {
+      image.encoding = std::string(encoding->raw);
+    }
     image.width = number(json->member(entry, "width"));
     image.height = number(json->member(entry, "height"));
     if (const JsonText::Node* draws = json->member(entry, "occurrences")) {
@@ -274,6 +279,7 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
                      json_quote(images[i].identity) + R"(, "kind": )" +
                      json_quote(images[i].kind) +
                      R"(, "caption": )" + (images[i].captioned ? "true" : "false") +
+                     R"(, "encoding": )" + images[i].encoding +
                      R"(, "width": )" + raw("width") + R"(, "height": )" + raw("height") +
                      R"(, "pixels": )" + raw("pixels") + R"(, "block": )" + raw("block") +
                      R"(, "encoded": )" + raw("encoded") + R"(, "draws": )" + draws + "}";
