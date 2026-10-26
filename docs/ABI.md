@@ -706,9 +706,9 @@ The redact job file is a JSON object: `input` and `output` (paths), an optional
 `pdfkit_write` succeeds. The `text` section is the argument of
 `pdfkit_redact_text` (`{"matches": [...]}`, §4.11) and the `images` section
 the argument of `pdfkit_redact_images` (`{"treatments": [...]}`, §4.15); a
-self-check refusal exits 3 and writes no file. While a build lacks
-`pdfkit_set_metadata`, a job with a `metadata` section is refused as a usage
-error naming the section, before the input is read.
+self-check refusal exits 3 and writes no file. A job with a section whose
+function the build lacks is refused as a usage error naming the section and
+the function, before the input is read.
 
 The dataset verb writes one outcome per file into `<folder>/outcomes/<id>.json`,
 a folder the caller creates (the harness does), in the shape

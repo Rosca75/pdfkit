@@ -46,7 +46,7 @@ class Specimen:
 
 
 def pattern_table() -> dict:
-    """Every pattern of synth.patterns, synth.channels (the planted-marker patterns), synth.redaction
+    """Every pattern of synth.patterns, synth.channels (the planted-marker patterns), synth.redaction,
     synth.metadata and synth.images."""
     import synth.channels
     import synth.images
