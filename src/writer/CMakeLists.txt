@@ -8,6 +8,7 @@ target_sources(pdfkit_core PRIVATE
   channel_table.cpp
   document_id.cpp
   file_writer.cpp
+  metadata_writer.cpp
   object_graph.cpp
   page_selector.cpp
   placeholder_font.cpp

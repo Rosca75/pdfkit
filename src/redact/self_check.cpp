@@ -152,8 +152,21 @@ enum class Kind : std::uint8_t { scan, content, skip };
         ++next;
       }
       if (next < xml.size() && xml[next] == '=') {
+        const std::string_view name = xml.substr(i, end - i);
         out += ' ';
         i = next + 1;
+        // A namespace declaration's value is a URI of the format's
+        // vocabulary ("http://ns.adobe.com/xap/1.0/"), not the document's
+        // text, so it is skipped with its quotes.
+        if (name == "xmlns" || name.starts_with("xmlns:")) {
+          while (i < xml.size() && xml[i] != '"' && xml[i] != '\'' && xml[i] != '>') {
+            ++i;
+          }
+          if (i < xml.size() && xml[i] != '>') {
+            const std::size_t close = xml.find(xml[i], i + 1);
+            i = close == std::string_view::npos ? xml.size() : close + 1;
+          }
+        }
       } else {
         out.append(xml.substr(i, end - i));
         i = end;
@@ -335,10 +348,14 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     info_number = reference->number;
   }
   if (const Dictionary* info = document->info().dictionary()) {
+    // Every string of every entry, the strings of an array or dictionary
+    // value included, because the string walk below leaves the Info
+    // dictionary's own object to this surface.
     for (const auto& [key, value] : info->entries()) {
-      const Object resolved = document->resolve(value);
-      if (const Object::String* string = resolved.string()) {
-        search.text(text::TextString::to_utf8(string->bytes), std::nullopt, "info", info_number);
+      std::vector<std::string> strings;
+      strings_of(document->resolve(value), 0, strings);
+      for (const std::string& string : strings) {
+        search.text(string, std::nullopt, "info", info_number);
       }
     }
   }

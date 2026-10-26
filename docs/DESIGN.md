@@ -631,23 +631,46 @@ are not numbered.
   Keywords–pdf:Keywords (and dc:subject), Creator–xmp:CreatorTool,
   Producer–pdf:Producer, CreationDate–xmp:CreateDate, ModDate–xmp:ModifyDate.
 - **Reading**: an Info string is UTF-16BE when it starts with the BOM `FE FF`,
-  UTF-8 when it starts with `EF BB BF` (PDF 2.0), PDFDocEncoding otherwise; dates
-  are kept as written and also normalised to ISO 8601 when they parse. The XMP
-  packet is the catalog's `/Metadata` stream, scanned as XML for the named
-  elements (`rdf:Alt` taking `x-default` first, `rdf:Seq` and `rdf:Bag` items
-  joined with `; `).
+  UTF-8 when it starts with `EF BB BF` (PDF 2.0), UTF-16LE (tolerated and
+  counted) after `FF FE`, PDFDocEncoding otherwise; dates are kept as written
+  and also normalised to ISO 8601 when they parse. The XMP packet is the
+  catalog's `/Metadata` stream, scanned as XML with every prefix resolved
+  through the declarations in scope (so the old `xap:` prefix reads as `xmp:`)
+  for the properties of every `rdf:Description`, in element or attribute form
+  (`rdf:Alt` taking `x-default` first, `rdf:Seq` and `rdf:Bag` items joined
+  with `; `). A packet in UTF-16, one whose tags do not close or match, one
+  with an unterminated quote, comment or section, or one with no `rdf:RDF` is
+  unreadable, with the reason named; an empty packet states nothing.
 - **Side by side**: one row per pair, with both values and whether they agree,
   because viewers show whichever they prefer and a file whose two statements
   disagree says two things.
-- **Writing**: a field the caller sets is written to both places; a field not
-  set keeps its value in both. Info strings are written as UTF-16BE with BOM
-  when not representable in PDFDocEncoding. The XMP packet is edited in place:
-  the text of the named elements is replaced (XML-escaped) and every other byte
-  kept, so custom namespaces survive; a packet that will not scan is dropped with
-  `xmp_unreadable` rather than guessed at. `xmpMM:History` is removed, and
-  `xmpMM:DocumentID` and `xmpMM:InstanceID` are regenerated, as is the trailer
-  `/ID`, from the SHA-256 of the output's content (§17), because the original's
-  identifiers identify the original.
+- **Writing**: a field the caller sets is written to both places; a field set
+  to `null` is removed from both; a field not set keeps its value in both.
+  Info strings are written as UTF-16BE with BOM when not representable in
+  PDFDocEncoding; a date is written as a PDF date in the Info dictionary and
+  in ISO 8601 in the packet when it parses as either, and as given otherwise.
+  An Info dictionary is created when a field is set and the file has none; a
+  packet is not. The XMP packet is edited in place: the content of every
+  property the field pairs with is replaced (XML-escaped, its start tag and so
+  any namespace it declares kept) and every other byte kept, so custom
+  namespaces survive; a property the packet lacks is added in an
+  `rdf:Description` of its own before the `rdf:RDF` end tag; a packet that
+  will not scan is dropped with `xmp_unreadable` rather than guessed at, and
+  one that states nothing is dropped in silence. **A value outside the field
+  list that repeats a redacted string goes** (author decision, open as
+  `OPEN-QUESTIONS.md` §2.12): a custom Info entry, an XMP property no field
+  pairs with (`xmp:MetadataDate`, `dc:rights`, a custom namespace's) and the
+  packet's toolkit attribute `x:xmptk` are removed when one of the redacted
+  strings (the original values of the rewritten fields, the strings the text
+  redaction removes) occurs in them under the default folding, because no
+  function can rewrite them and the self-check would refuse the output. On
+  every write, whatever the plan, the packet loses every property of the
+  media-management namespace, whatever its prefix, but `xmpMM:DocumentID` and
+  `xmpMM:InstanceID`, whose values are regenerated, as is the trailer `/ID`,
+  from the SHA-256 of the output's content (§17: written as placeholders and
+  patched, `xmp.did:` and `xmp.iid:` plus the first and second 16 bytes of the
+  hash in hexadecimal), because the original's identifiers identify the
+  original; a packet without identifiers gains none.
 
 ## 11. Matching
 
@@ -829,7 +852,7 @@ channel added later must be a row with a test, not a sentence. The rows:
 | the structure tree `/StructTreeRoot`, `/MarkInfo`, page `/StructParents`, `/Tabs` | removed | `/ActualText`, `/Alt`, `/E` and `/T` strings are read aloud and copied out |
 | optional content `/OCProperties` | kept minimal: groups renamed `OC1` to `OCn` in a stable order, the default configuration's ON/OFF state and `/Order` kept, `/Usage`, `/Intent` and alternate configurations dropped (author decision) | removing it would make OFF layers visible; group names can name things |
 | page labels `/PageLabels` | removed | a label can carry a name or a reference |
-| XMP history `xmpMM:History`, identifiers | removed with every other `xmpMM` (media management) property of the catalog's packet, the rest of the packet kept byte for byte; a packet that does not decode is dropped (`xmp_unreadable`); the identifiers are regenerated by the metadata writer (§10) | a history names the operator and software of every save |
+| XMP history `xmpMM:History`, identifiers | removed with every other `xmpMM` (media management) property of the catalog's packet, the rest of the packet kept byte for byte; a packet that does not decode is dropped (`xmp_unreadable`); `xmpMM:DocumentID` and `xmpMM:InstanceID` are kept only holding the placeholder the metadata writer puts there, which the file writer patches with the output's identifier (§10) | a history names the operator and software of every save |
 | article threads `/Threads` and page beads `/B` | removed | a thread title names things |
 | web capture `/SpiderInfo` and page `/ID` | removed | a capture records source URLs |
 | portfolios `/Collection` | removed (the cover document's pages are kept) | a portfolio is a container of other documents |
@@ -940,13 +963,18 @@ channel: it is copied as it is until the metadata writer rewrites it (§10).
 Before `pdfkit_write` hands an output back, the library re-reads it with its own
 reader and searches every text surface for every redacted string, under each
 string's folding options (for glyph-range matches, the matched text as
-extracted is the string):
+extracted is the string; for a rewritten metadata field, each of its source
+values in the Info dictionary and the packet, an array's items included, under
+the default folding, when it holds three letters or digits or more, because a
+shorter one occurs in almost any text):
 
 - the glyph text of every page in reading order, hidden blocks included (an
   occurrence drawn wholly in the placeholder font is the placeholder);
 - every `/ActualText`, `/Alt` and `/E` in marked content;
-- the Info dictionary's strings and the XMP packet's text (its character data
-  and attribute values, entities read);
+- the Info dictionary's strings (those of an array or dictionary value
+  included) and the XMP packet's text (its character data and attribute
+  values, entities read, the namespace declarations' URIs left out, because
+  they are the format's vocabulary);
 - every string object reachable in the file, less the strings of font
   dictionaries (a CIDSystemInfo's registry and ordering), which are the font
   format's vocabulary;
@@ -965,7 +993,8 @@ For a plan of search strings alone, whose strings were searched on every
 page by the same reader when the matches were added, the page text is read
 again on the pages the redaction changed (an edit, or an edited form drawn);
 an unchanged page reads as it did. Every other surface is searched on every
-page, and a plan with a glyph range reads every page's text.
+page, and a plan with a glyph range, or with a metadata value the plan does
+not also search for in the text, reads every page's text.
 
 Before a surface is searched every placeholder of the plan is cut out of it,
 so a placeholder holding a redacted string is not a survivor. For a glyph

@@ -53,11 +53,12 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_text` | `agree` (pdfkit's text must agree with PDFium's), `known_gap:<reason>` (a disagreement known in advance, with its reason), or `n/a` (no text, or no reader can open it) |
 | `expect_images` | `decoded` (every image decodes), `partial:<reason>`, or `n/a` (no image) |
 | `expect_redact` | `stable` (a redaction leaves the page pixel-stable outside the changed rectangles) or `n/a` |
-| `expect_metadata` | `agree` (the Info and XMP values agree with the extraction) or `n/a` |
+| `expect_metadata` | `read` (pdfkit_metadata reads the Info dictionary and the XMP packet), `known_gap:<reason>` (`known_gap:xmp_unreadable` for a packet that does not scan, which the reader reports and never guesses at) or `n/a` (neither is present, or the file is refused); whether the two places agree is the file's `meta_*` tag, not an expectation |
 | `expect_fonts` | the decoding ladder over every shown code, read from the `text` outcome's per-page `unreadable` counts and filled by `tests/pdfium/text_agreement.py --write-manifest`: `loads` (every shown code decodes), `unreadable:<count>` (codes no rung of the decoding ladder reads), or `n/a` (no text, or the file is refused) |
 | `expect_write` | `identical` (the identity write re-opens in pdfkit without repair with the same page count, and PDFium renders every page as the input renders), `known_gap:<reason>` (a difference known in advance, with its reason) or `n/a` (a file pdfkit refuses) |
 | `expect_select` | `ok` (a seeded random proper subset of the pages, written in a shuffled order, re-opens without repair with that many pages, and each output page renders as its source page), `known_gap:<reason>` or `n/a` (one page, or a file pdfkit refuses) |
 | `expect_redact_text` | `clean` (the seeded text redaction of `tests/dataset/outcome.md` passes the self-check and its output re-opens without repair with the input's page count; PDFium's text and the output's bytes hold no redacted word and the pages are pixel-stable outside the reported rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` (the self-check refuses for a reason the job does not redact, such as a word that is also in the metadata) or `n/a` (a file pdfkit refuses) |
+| `expect_set_metadata` | `clean` (the metadata rewrite of `tests/dataset/outcome.md` passes the self-check, re-opens without repair with the input's page count, and its Info dictionary and XMP packet carry the written values; PDFium's text and Info fields and the output's bytes hold no original value, which `tests/pdfium/leak.py --metadata` measures), `known_gap:<reason>` or `n/a` (no field present, or a file pdfkit refuses) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |
 
 A new catalogue function adds its expectation column here and in
@@ -87,8 +88,13 @@ overrides them from provenance:
   `partial:<encodings that failed>` (joined by `+`) otherwise, and `n/a` for
   a file not opened; a file whose resources reach no image keeps its value (an
   inline image is not reached that way); `--check` compares a run with it.
-- `expect_redact` and `expect_metadata`: `n/a` until the phases that deliver
-  redaction and metadata set them.
+- `expect_redact`: `n/a` until the phase that delivers image redaction sets it.
+- `expect_metadata`, `expect_set_metadata` and the tags of the `metadata`
+  group: `n/a` and no tag for a new row, until `python
+  tests/dataset/gates/phase10.py --run <id> --write-manifest` fills them from a
+  dataset run's `metadata` and `set_metadata` outcomes; the same command turns
+  an `expect_redact_text` known gap `clean` when the run shows it clean, and
+  names the surface of one that stays (`known_gap:word_in_<surfaces>`).
 - `expect_write`: `identical` when `expect_open` is `opens` or `repaired`, `n/a`
   otherwise (`common.default_expect_write`); a difference found by a run is
   recorded as `known_gap:<reason>` by hand.
@@ -158,11 +164,18 @@ with their status and a note.
 ## 6. The taxonomy
 
 `dataset/taxonomy.tsv` has the columns `tag`, `group`, `minimum`,
-`description` and `detector` (`autotag`, `synth`, `mutate`, `office` or
-`manual`: what finds or makes the tag first). The groups are those of
-`CLAUDE.md` §7.3: `damage`, `encryption`, `fonts`, `layout`, `hidden`,
-`images`, `channels` (one tag per row of the channel table of `docs/DESIGN.md`
-chapter 15), `generators` and `traps`. The minimum is 5 for the structural
+`description` and `detector` (`autotag`, `synth`, `mutate`, `office`,
+`pdfkit` or `manual`: what finds or makes the tag first; `pdfkit` is a dataset
+run's outcome, read by `tests/dataset/gates/phase10.py --write-manifest`). The
+groups are those of `CLAUDE.md` §7.3: `damage`, `encryption`, `fonts`,
+`layout`, `hidden`, `images`, `channels` (one tag per row of the channel table
+of `docs/DESIGN.md` chapter 15), `generators`, `traps`, and `metadata` (where
+the metadata lives, how its two places compare and how the packet is written:
+`meta_info_only`, `meta_xmp_only`, `meta_both_agree`, `meta_both_disagree`,
+`meta_utf16`, `meta_xmp_custom_namespace`, `meta_xmp_history`,
+`meta_xmp_unreadable`, whose three files are synthesised by
+`dataset/tools/synth/metadata/`, as public files rarely hold a broken packet).
+The minimum is 5 for the structural
 damages and the font decoding paths, 1 for the rare cases (`vertical`,
 `right_to_left`, `aesv3_r5`, `img_jbig2`, `img_jbig2_globals`, `img_jpx`,
 `type3`, `deniable_removal`, and the generators only the owner's laptop can

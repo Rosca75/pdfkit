@@ -122,13 +122,24 @@ std::vector<std::string> dataset_redaction_words(std::string_view id, std::strin
 }
 
 std::string dataset_redact(pdfkit_document* document, std::string_view id,
-                           const std::string& text_member, const std::string& out_dir) {
+                           const std::string& text_member, const DatasetMetadata& metadata,
+                           const std::string& out_dir) {
   std::size_t offset = 0;
   const std::optional<JsonText> member = JsonText::parse(text_member, offset);
   const JsonText::Node* text = member ? member->member(member->root(), "text") : nullptr;
   std::vector<std::string> strings =
       dataset_redaction_words(id, text != nullptr ? std::string_view(text->text) : "");
   strings.emplace_back(dataset_redaction_marker);
+  // The fields holding a word are rewritten, and their original values
+  // searched in the page text too, after the words.
+  std::vector<std::string> rewritten;
+  std::vector<std::string> originals;
+  const std::string fields = dataset_metadata_rewrite(metadata, strings, rewritten, originals);
+  for (const std::string& original : originals) {
+    if (std::ranges::find(strings, original) == strings.end()) {
+      strings.push_back(original);
+    }
+  }
   std::string matches = R"({"matches": [)";
   for (std::size_t i = 0; i < strings.size(); ++i) {
     matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(strings[i]) +
@@ -144,6 +155,9 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
     call = take(pdfkit_redact_text(edit, matches.c_str(), &out), out);
     answer = call.text;
   }
+  if (call.status == PDFKIT_OK && !fields.empty()) {
+    call = take(pdfkit_set_metadata(edit, fields.c_str(), &out), out);
+  }
   std::string pdf;
   if (call.status == PDFKIT_OK) {
     pdfkit_buffer bytes{nullptr, 0, nullptr};
@@ -153,7 +167,8 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
   }
   pdfkit_edit_free(edit);
   if (call.status != PDFKIT_OK) {
-    return "{" + dataset_failure(call.status, call.text) + ", \"strings\": " + list(strings) + "}";
+    return "{" + dataset_failure(call.status, call.text) + ", \"strings\": " + list(strings) +
+           ", \"metadata\": " + list(rewritten) + "}";
   }
 
   // The counts and the removed codes, from the answer of pdfkit_redact_text.
@@ -283,7 +298,7 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
          ", \"self_check\": " + self_check + ", \"rectangles\": " + rectangles +
          ", \"placeholders\": " + placeholders + ", \"geometry\": " + geometry +
          ", \"codes\": " + list(std::vector<std::string>(codes.begin(), codes.end())) +
-         ", \"reopen\": " + dataset_reopen(pdf) + "}";
+         ", \"metadata\": " + list(rewritten) + ", \"reopen\": " + dataset_reopen(pdf) + "}";
 }
 
 }  // namespace pdfkit::cli::verbs

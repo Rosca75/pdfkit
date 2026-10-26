@@ -105,7 +105,8 @@ def expectations(entry: dict) -> tuple[dict, list[str]]:
     # expect_fonts stays n/a until tests/pdfium/text_agreement.py --write-manifest
     # measures the new file.
     expect = {"expect_open": "opens", "expect_text": "agree", "expect_images": "decoded",
-              "expect_redact": "n/a", "expect_metadata": "n/a", "expect_fonts": "n/a"}
+              "expect_redact": "n/a", "expect_metadata": "n/a", "expect_fonts": "n/a",
+              "expect_set_metadata": "n/a"}
     handler = facts.get("security_handler")
     if probe.get("error") == "password" or "user_password" in tags:
         expect["expect_open"] = "refused:password_required"

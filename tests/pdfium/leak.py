@@ -17,7 +17,11 @@
 #     and ICC profiles, which hold no text; an occurrence inside a PDF name
 #     token (a resource name, a marked-content tag) is not text, nor are an
 #     inline image's samples, and an XMP packet is read without its element
-#     and attribute names.
+#     and attribute names and its namespace declarations' URIs.
+# With --metadata, the outputs of the metadata rewrite are searched the same
+# way for the original values of the rewritten fields, and PDFium's reading
+# of their Info fields too; that report goes to
+# <run>/pdfium-leak-metadata.json.
 # The removed codes pdfkit reports are searched too (binary and
 # hexadecimal) and reported as `codes`, not counted: a code means a glyph
 # only in its own font, and the same codes in another font's string draw
@@ -51,6 +55,8 @@ TYPE0_ENCODING = re.compile(rb"/Subtype\s*/Type0\b.*?/Encoding\s+(\d+)\s+\d+\s+R
 # An inline image's data, which holds samples, not text.
 INLINE_IMAGE = re.compile(rb"\bBI\b.*?\bID\s.*?\sEI\b", re.S)
 XML_NAMES = re.compile(rb"</?[?!]?[A-Za-z_:][-\w:.]*|[A-Za-z_:][-\w:.]*\s*=")
+# A namespace declaration with its URI, the format's vocabulary.
+XMLNS = re.compile(rb"xmlns(?::[-\w.]+)?\s*=\s*(['\"]).*?\1", re.S)
 ICC = re.compile(rb"/(?:ICCBased|DestOutputProfile)\s+(\d+)\s+\d+\s+R")
 
 
@@ -80,12 +86,21 @@ def in_name(blob: bytes, at: int) -> bool:
     return start > 0 and blob[start - 1:start] == b"/"
 
 
+def in_number(blob: bytes, at: int, length: int) -> bool:
+    """Whether a needle of digits at `at` is part of a longer number (a path's 466.1994), which is a
+    content stream's operand, not text."""
+    before = blob[at - 1:at] if at > 0 else b""
+    after = blob[at + length:at + length + 1]
+    return bool(re.fullmatch(rb"[0-9.\-]", before or b"x")) or bool(re.fullmatch(rb"[0-9.]", after or b"x"))
+
+
 def found(blob: bytes, needle: bytes, fold_case: bool) -> bool:
     haystack = blob.lower() if fold_case else blob
     target = needle.lower() if fold_case else needle
+    numeric = re.fullmatch(rb"[0-9]+", needle) is not None
     at = haystack.find(target)
     while at >= 0:
-        if not in_name(blob, at):
+        if not in_name(blob, at) and not (numeric and in_number(blob, at, len(target))):
             return True
         at = haystack.find(target, at + 1)
     return False
@@ -106,7 +121,7 @@ def byte_hits(path: Path, strings: list[str], codes: list[str]) -> list[dict]:
             continue
         blob = scan.decoded(obj) or b""
         if obj.has(rb"/Type\s*/Metadata\b"):
-            blob = XML_NAMES.sub(b" ", blob)
+            blob = XML_NAMES.sub(b" ", XMLNS.sub(b" ", blob))
         elif b"BI" in blob:
             blob = INLINE_IMAGE.sub(b" ", blob)
         blobs.append((obj.num, blob))
@@ -144,11 +159,57 @@ def check_file(pool, row: dict, run_dir: Path, part: dict) -> dict:
     return entry
 
 
+def check_metadata(pool, row: dict, run_dir: Path, part: dict) -> dict:
+    """The original values of a metadata rewrite in its output: PDFium's text, its
+    Info fields (FPDF_GetMetaText) and the bytes, as check_file searches them."""
+    output = run_dir / part["output"]
+    strings = [s for s in part.get("originals", []) if s]
+    probe = pool.probe(output, ["text", "meta"])
+    entry = {"opens": bool(probe.get("ok")), "hits": []}
+    if probe.get("ok"):
+        entry["hits"] += text_hits([t or "" for t in probe.get("text", [])], strings)
+        for tag, value in (probe.get("meta") or {}).items():
+            folded = fold(value or "")
+            entry["hits"] += [{"string": s, "surface": "pdfium_meta", "field": tag}
+                              for s in strings if fold(s) and fold(s) in folded]
+    entry["hits"] += byte_hits(output, strings, [])
+    return entry
+
+
+def metadata_leaks(run_dir: Path, rows: list[dict], workers: int) -> int:
+    """The leak check of every set_metadata output; writes pdfium-leak-metadata.json."""
+    jobs = []
+    for row in rows:
+        path = run_dir / "outcomes" / f"{row['id']}.json"
+        if not path.exists():
+            continue
+        part = json.loads(path.read_text(encoding="utf-8")).get("set_metadata") or {}
+        if part.get("status") == "ok" and part.get("output"):
+            jobs.append((row, part))
+    results = {}
+    with pdfium.Pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
+        futures = {row["id"]: threads.submit(check_metadata, pool, row, run_dir, part) for row, part in jobs}
+        for row_id, future in futures.items():
+            results[row_id] = future.result()
+    leaking = {k: v["hits"] for k, v in results.items() if v["hits"]}
+    summary = {"files": len(results), "leaking_files": len(leaking),
+               "pdfium_text_hits": sum(1 for v in leaking.values() for h in v if h["surface"] == "pdfium_text"),
+               "pdfium_meta_hits": sum(1 for v in leaking.values() for h in v if h["surface"] == "pdfium_meta"),
+               "byte_hits": sum(1 for v in leaking.values() for h in v if h["surface"].startswith("bytes")),
+               "unopened": sorted(k for k, v in results.items() if not v["opens"])}
+    (run_dir / "pdfium-leak-metadata.json").write_text(
+        json.dumps({"summary": summary, "leaks": dict(sorted(leaking.items()))}, indent=1), encoding="utf-8")
+    print(json.dumps({"metadata": summary | {"leaking": sorted(leaking)[:50]}}, indent=1))
+    return 1 if leaking else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True, help="the dataset run id")
     parser.add_argument("--id", action="append", help="only these ids")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--metadata", action="store_true",
+                        help="also search every metadata rewrite's output for the original values")
     args = parser.parse_args()
     try:
         if not pdfium.default_dll().exists():
@@ -188,7 +249,8 @@ def main() -> int:
     print(json.dumps(summary | {"leaking": sorted(leaking)[:50]}, indent=1))
     if not results:
         print("SKIPPED leak check: no outcome of this run carries a redact_text output", file=sys.stderr)
-    return 1 if leaking else 0
+    metadata = metadata_leaks(run_dir, rows, args.workers) if args.metadata else 0
+    return 1 if leaking or metadata else 0
 
 
 if __name__ == "__main__":

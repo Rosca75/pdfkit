@@ -1,4 +1,4 @@
 artefact	max_bytes	note
-pdfkit.dll	8388608	the shared library, compiler runtime linked in
-pdfkit.exe	1048576	the command-line tool, which links the DLL
-zip	6291456	dist/pdfkit-<version>-windows-x64.zip
+pdfkit.dll	6401280	the shared library, compiler runtime linked in: 5,121,024 bytes at the first release package (2026-10-26) plus 25%
+pdfkit.exe	771200	the command-line tool, which links the DLL: 616,960 bytes at the first release package plus 25%
+zip	3056974	dist/pdfkit-<version>-windows-x64.zip: 2,445,579 bytes at the first release package plus 25%

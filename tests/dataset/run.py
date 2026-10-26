@@ -31,9 +31,15 @@ sys.path.insert(0, str(REPO / "dataset" / "tools"))
 import common  # noqa: E402
 
 TIMEOUT = 30.0
+# The verb reads every page of a file three times (the text, the text
+# redaction and the metadata rewrite), so the timeout grows by TIMEOUT for each
+# further block of PAGES_PER_TIMEOUT pages the manifest counts; a file that
+# loops still meets it.
+PAGES_PER_TIMEOUT = 200
 COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "images",
            "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
-           "expect_select": "select", "expect_fonts": "text", "expect_redact_text": "redact_text"}
+           "expect_select": "select", "expect_fonts": "text", "expect_redact_text": "redact_text",
+           "expect_set_metadata": "set_metadata"}
 # The names --checks accepts are the outcome keys the columns read, each once.
 CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
 
@@ -61,15 +67,22 @@ def find_pdfkit(explicit: str | None) -> list[str] | None:
     return None
 
 
+def timeout_for(row: dict) -> float:
+    """TIMEOUT for each started block of PAGES_PER_TIMEOUT pages (one at least)."""
+    pages = int(row["pages"]) if str(row.get("pages", "")).isdigit() else 0
+    return TIMEOUT * max(1, -(-pages // PAGES_PER_TIMEOUT))
+
+
 def run_one(command: list[str], row: dict, out_dir: Path) -> dict:
     """Runs the verb on one file; returns the outcome bytes or the failure."""
     path = common.file_path(row)
     args = command + ["dataset", "--file", str(path), "--id", row["id"], "--out", str(out_dir)]
     started = time.monotonic()
+    limit = timeout_for(row)
     try:
-        proc = subprocess.run(args, capture_output=True, timeout=TIMEOUT)
+        proc = subprocess.run(args, capture_output=True, timeout=limit)
     except subprocess.TimeoutExpired:
-        return {"id": row["id"], "result": "hang", "seconds": TIMEOUT}
+        return {"id": row["id"], "result": "hang", "seconds": limit}
     seconds = round(time.monotonic() - started, 3)
     target = out_dir / "outcomes" / f"{row['id']}.json"
     if proc.returncode == 0 and target.exists():
@@ -111,7 +124,8 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return "fail", "not run because open did not succeed"
     # A text redaction the manifest names a known gap (its self-check refuses a
     # surface the job does not redact, such as metadata) passes apart.
-    if column == "expect_redact_text" and expected.startswith("known_gap:"):
+    if column in ("expect_redact_text", "expect_set_metadata", "expect_metadata") \
+            and expected.startswith("known_gap:"):
         return "pass", "known_gap"
     if status != "ok":
         return "fail", f"{status} {part.get('code')} {part.get('message', '')}"[:160]
@@ -119,8 +133,8 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return "fail", f"{len(part['undecodable'])} images undecodable"
     if column == "expect_redact" and part.get("stable") is not True:
         return "fail", "redaction not pixel-stable"
-    if column == "expect_metadata" and part.get("agree") is not True:
-        return "fail", "metadata disagrees"
+    if column == "expect_metadata" and part.get("xmp") == "unreadable":
+        return "fail", "the XMP packet did not scan"
     if column == "expect_text" and expected.startswith("known_gap:"):
         return "pass", "known_gap"
     if column == "expect_fonts":
@@ -136,6 +150,15 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         if part.get("self_check") != "passed":
             return "fail", f"the self-check did not pass: {part.get('self_check')}"
         return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
+    if column == "expect_set_metadata":
+        # Every field rewritten reads back with its written value in both places;
+        # fields that held only white space leave the self-check nothing to search.
+        if part.get("self_check") != "passed" and part.get("originals"):
+            return "fail", f"the self-check did not pass: {part.get('self_check')}"
+        if part.get("mismatches"):
+            return "fail", "fields not written as asked: " + ", ".join(part["mismatches"])
+        pages = (outcome.get("open") or {}).get("pages")
+        return judge_output(part, pages, pages, expected)
     return "pass", ""
 
 

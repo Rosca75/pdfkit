@@ -1,0 +1,21 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 The pdfkit authors -->
+<!-- The .NET caller of the ABI tier: a console test that declares every exported
+     symbol of include/pdfkit/pdfkit.h with LibraryImport and calls each catalogue
+     function over the files tests/abi/run.py hands it. It references no package,
+     so nothing is fetched; the LibraryImport source generator ships with the SDK
+     and needs unsafe code for the pointers it marshals. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PlatformTarget>x64</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>PdfkitAbi</AssemblyName>
+    <RootNamespace>Pdfkit.Abi</RootNamespace>
+  </PropertyGroup>
+</Project>

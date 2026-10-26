@@ -18,6 +18,7 @@
 #include "sha256.hpp"
 #include "support.hpp"
 #include "verbs/dataset_images.hpp"
+#include "verbs/dataset_metadata.hpp"
 #include "verbs/dataset_redact.hpp"
 #include "verbs/dataset_text.hpp"
 #include "verbs/dataset_write.hpp"
@@ -251,15 +252,23 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   const DatasetWrite written = opened.status == PDFKIT_OK
                                    ? dataset_write(document, id, page_count, out_dir)
                                    : dataset_write_skipped();
+  const DatasetMetadata metadata =
+      opened.status == PDFKIT_OK ? dataset_metadata(document)
+                                 : DatasetMetadata{R"({"status": "skipped", "code": null})", {}};
   const std::string redact_text = opened.status == PDFKIT_OK
-                                      ? dataset_redact(document, id, text, out_dir)
+                                      ? dataset_redact(document, id, text, metadata, out_dir)
                                       : R"({"status": "skipped", "code": null})";
+  const std::string set_metadata = opened.status == PDFKIT_OK
+                                       ? dataset_set_metadata(document, id, metadata, out_dir)
+                                       : R"({"status": "skipped", "code": null})";
   pdfkit_close(document);
   for (const std::string_view key : later_keys) {
     if (key == "text") {
       writer.raw(key, text);
     } else if (key == "images") {
       writer.raw(key, images);
+    } else if (key == "metadata") {
+      writer.raw(key, metadata.member);
     } else {
       writer.raw(key, key == "channels" ? std::string_view(written.channels) : "null");
     }
@@ -267,6 +276,7 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   writer.raw("write", written.write);
   writer.raw("select", written.select);
   writer.raw("redact_text", redact_text);
+  writer.raw("set_metadata", set_metadata);
   writer.close_object();
   return writer.finish();
 }

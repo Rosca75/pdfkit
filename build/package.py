@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import subprocess
 import sys
@@ -21,6 +22,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRESET = "mingw-release"
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
+
+
+def without_member_dates(data: bytes) -> bytes:
+    """An ar archive (the import library) with every member's date set to 0.
+
+    The linker writes the build's time into each member header of the import
+    library it makes, so two builds of one tree differ there and nowhere else.
+    A member header is 60 bytes after the 8-byte magic: name (16), date (12),
+    owner (6), group (6), mode (8), size (10) and the two-byte end marker, and
+    the member's data follows, padded to an even length (the System V ar
+    format, recalled; two clean builds pack to one zip with it)."""
+    if not data.startswith(b"!<arch>\n"):
+        return data
+    out = bytearray(data)
+    at = 8
+    while at + 60 <= len(out):
+        header = out[at:at + 60]
+        if header[58:60] != b"`\n":
+            break
+        out[at + 16:at + 28] = b"0".ljust(12)
+        size = int(header[48:58].decode("ascii").strip() or "0")
+        at += 60 + size + (size & 1)
+    return bytes(out)
 
 
 def project_version() -> str:
@@ -52,15 +76,38 @@ def over_budget(name: str, size: int, limits: dict[str, int]) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skip-build", action="store_true", help="package out/mingw-release as is")
+    parser.add_argument("--verify", action="store_true",
+                        help="then rebuild the preset from clean, package again and fail unless the "
+                             "two zips are byte-identical")
     args = parser.parse_args()
     if not args.skip_build:
         subprocess.run(["cmake", "--preset", PRESET], cwd=ROOT, check=True)
         subprocess.run(["cmake", "--build", "--preset", PRESET], cwd=ROOT, check=True)
+    first = package()
+    if first is None:
+        return 1
+    if not args.verify:
+        return 0
+    subprocess.run(["cmake", "--build", "--preset", PRESET, "--clean-first"], cwd=ROOT, check=True)
+    second = package()
+    if second is None:
+        return 1
+    if first != second:
+        print(f"package: two packagings differ (SHA-256 {first} then {second}); expected one set of "
+              f"bytes per tree; fix: find what the build or the zip writes from time or path",
+              file=sys.stderr)
+        return 1
+    print(f"package: two packagings, one rebuilt from clean, are byte-identical (SHA-256 {first})")
+    return 0
+
+
+def package() -> str | None:
+    """Checks and packs out/<preset>; the zip's SHA-256, or None on a failure."""
     out = ROOT / "out" / PRESET
     check = subprocess.run([sys.executable, str(ROOT / "build" / "check_artefact.py"), str(out)],
                            cwd=ROOT, check=False)
     if check.returncode != 0:
-        return 1
+        return None
     files = {
         "pdfkit.dll": out / "pdfkit.dll",
         "pdfkit.lib": out / "pdfkit.lib",
@@ -91,15 +138,20 @@ def main() -> int:
             info = zipfile.ZipInfo(name, date_time=FIXED_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            archive.writestr(info, files[name].read_bytes())
+            data = files[name].read_bytes()
+            if name.endswith(".lib"):
+                data = without_member_dates(data)
+            archive.writestr(info, data)
     problem = over_budget("zip", target.stat().st_size, limits)
     if problem:
         print(problem, file=sys.stderr)
-        return 1
+        return None
     print(f"package: wrote {target.relative_to(ROOT).as_posix()} ({target.stat().st_size} bytes)")
     for name in sorted(files):
         print(f"  {name}: {files[name].stat().st_size} bytes")
-    return 0
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    print(f"  sha256: {digest}")
+    return digest
 
 
 if __name__ == "__main__":

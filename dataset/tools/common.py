@@ -23,6 +23,7 @@ MANIFEST_COLUMNS = (
     "id", "set", "source", "licence", "sha256", "bytes", "pages", "producer",
     "tags", "expect_open", "expect_text", "expect_images", "expect_redact",
     "expect_metadata", "expect_fonts", "expect_write", "expect_select", "expect_redact_text",
+    "expect_set_metadata",
     "notes",
 )
 TAXONOMY_COLUMNS = ("tag", "group", "minimum", "description", "detector")
@@ -38,7 +39,10 @@ EXPECTATIONS = {
     "expect_text": ("text", ("agree", "known_gap:", "n/a")),
     "expect_images": ("images", ("decoded", "partial:", "n/a")),
     "expect_redact": ("redact", ("stable", "n/a")),
-    "expect_metadata": ("metadata", ("agree", "n/a")),
+    # The metadata read side by side, and the rewrite of every field it holds
+    # (tests/dataset/outcome.md); both filled from a run by the metadata gate's
+    # --write-manifest, with the metadata tags.
+    "expect_metadata": ("metadata", ("read", "known_gap:", "n/a")),
     # The decoding ladder's unreadable codes, read from the text outcome; filled by
     # tests/pdfium/text_agreement.py --write-manifest.
     "expect_fonts": ("text", ("loads", "unreadable:", "n/a")),
@@ -46,6 +50,7 @@ EXPECTATIONS = {
     "expect_select": ("select", ("ok", "known_gap:", "n/a")),
     # The seeded text redaction of every readable file (tests/dataset/outcome.md).
     "expect_redact_text": ("redact_text", ("clean", "known_gap:", "n/a")),
+    "expect_set_metadata": ("set_metadata", ("clean", "known_gap:", "n/a")),
 }
 
 # The refusal codes of docs/DESIGN.md chapter 19 an `expect_open` may name.

@@ -63,7 +63,7 @@ class CommittedTablesTest(unittest.TestCase):
     def test_taxonomy_holds_every_group(self):
         groups = {t["group"] for t in common.read_taxonomy()}
         self.assertEqual(groups, {"damage", "encryption", "fonts", "layout", "hidden", "images", "channels",
-                                  "generators", "traps"})
+                                  "generators", "traps", "metadata"})
 
     def test_rare_tags_have_minimum_one(self):
         minimum = {t["tag"]: t["minimum"] for t in common.read_taxonomy()}

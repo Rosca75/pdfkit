@@ -375,8 +375,10 @@ kerning-split words, ligatures, hyphenation across lines and pages,
 multi-column, rotated, vertical, right-to-left, tables, headers and footers),
 hidden text (per class of §4), images (per encoding, per colour space, soft
 mask, stencil, inline, shared across pages, in a form), hidden channels (per
-row of the channel table), generators (per producer), and redaction traps
-(overlapped text, incremental updates, deniable removal).
+row of the channel table), generators (per producer), redaction traps
+(overlapped text, incremental updates, deniable removal), and metadata (Info
+only, XMP only, both agreeing or disagreeing, UTF-16 strings, custom
+namespaces, XMP history, a packet that does not scan).
 `python dataset/tools/report.py` prints the count per tag and fails when a tag
 is under its minimum.
 
