@@ -97,7 +97,10 @@ def expectations(row: dict, outcome: dict) -> dict:
         out["expect_metadata"] = "known_gap:xmp_unreadable"
     else:
         out["expect_metadata"] = "read"
-    if rewrite.get("status") in (None, "skipped"):
+    if row.get("expect_set_metadata", "").startswith("known_gap:pdfium_"):
+        # A cause the analyst wrote from PDFium's reading of the output stays.
+        pass
+    elif rewrite.get("status") in (None, "skipped"):
         out["expect_set_metadata"] = "n/a"
     elif harness.check("expect_set_metadata", "clean", outcome)[0] == "pass":
         out["expect_set_metadata"] = "clean"
@@ -168,8 +171,9 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
                      {"fix": f"python tests/pdfium/metadata.py --run {run_dir.name}"})
     else:
         stats = compared["summary"]
-        measures.share("Info fields agreeing with PDFium's FPDF_GetMetaText", stats["agreeing"], stats["fields"],
-                       PDFIUM_AGREE, {"differences": compared.get("differences", {})})
+        measures.share("Info fields agreeing with PDFium's FPDF_GetMetaText (named PDFium differences "
+                       "apart)", stats["agreeing"], stats["fields"], PDFIUM_AGREE,
+                       {"differences": compared.get("differences", {}), "known_gaps": compared.get("named", {})})
 
     rewrites = {k: o["set_metadata"] for k, o in outcomes.items()
                 if (o.get("set_metadata") or {}).get("status") == "ok"}
@@ -186,9 +190,16 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
         measures.add("original values of rewritten fields found in an output or by PDFium", None, "not run",
                      "0", False, {"fix": f"python tests/pdfium/leak.py --run {run_dir.name} --metadata"})
     else:
-        leaks = {k: v for k, v in (leak.get("leaks") or {}).items() if k in ids}
-        measures.zero("original values of rewritten fields found in an output or by PDFium",
-                      sum(len(v) for v in leaks.values()), {"leaks": leaks})
+        # A leak in a file the manifest names a known gap is explained, listed
+        # and not counted, as the text redaction's gate counts its own.
+        gaps = {r["id"]: r.get("expect_set_metadata", "") for r in rows
+                if r.get("expect_set_metadata", "").startswith("known_gap:")}
+        leaks = {k: v for k, v in (leak.get("leaks") or {}).items() if k in ids and k not in gaps}
+        explained = {k: {"gap": gaps[k], "hits": len(v)} for k, v in (leak.get("leaks") or {}).items()
+                     if k in gaps}
+        measures.zero("original values of rewritten fields found in an output or by PDFium "
+                      "(known gaps apart)", sum(len(v) for v in leaks.values()),
+                      {"leaks": leaks, "known_gaps": explained})
 
     nondeterministic = [i for i in summary.get("nondeterministic", []) if i in ids]
     runs = summary.get("runs", 1)
@@ -233,7 +244,7 @@ def markdown(result: dict) -> str:
     lines += ["", f"Gate: {'PASSED' if result['passed'] else 'FAILED'}"]
     for row in result["rows"]:
         detail = {k: v for k, v in row["detail"].items() if v}
-        if detail and not row["pass"]:
+        if detail and (not row["pass"] or "known_gaps" in detail):
             lines += ["", f"### {row['measure']}", "", "```", json.dumps(detail, indent=1)[:20000], "```"]
     return "\n".join(lines) + "\n"
 

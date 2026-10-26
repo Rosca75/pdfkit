@@ -11,8 +11,9 @@
 # marks PDFium leaves in a UTF-16 value are set aside; an absent field is
 # the empty string on both sides, which is how PDFium reports one. A
 # difference is written with both values, so the report names each one as a
-# reader fault or a PDFium difference. The report goes to
-# <run>/pdfium-metadata.json.
+# reader fault or a PDFium difference; a file whose difference is explained
+# in tests/pdfium/metadata_causes.tsv is listed with its cause and not
+# counted. The report goes to <run>/pdfium-metadata.json.
 """Compare the Info fields with PDFium: python tests/pdfium/metadata.py --run <id> [--pdfkit <exe>]."""
 
 from __future__ import annotations
@@ -101,18 +102,34 @@ def main() -> int:
         futures = {row["id"]: threads.submit(compare, pool, exe, row) for row in chosen}
         for row_id, future in futures.items():
             results[row_id] = future.result()
+    causes = read_causes()
     compared = {k: v for k, v in results.items() if v["compared"]}
-    fields = sum(v["fields"] for v in compared.values())
-    differing = {k: v["differences"] for k, v in compared.items() if v["differences"]}
+    named = {k: {"cause": causes[k], "differences": v["differences"]} for k, v in compared.items()
+             if v["differences"] and k in causes}
+    counted = {k: v for k, v in compared.items() if k not in named}
+    fields = sum(v["fields"] for v in counted.values())
+    differing = {k: v["differences"] for k, v in counted.items() if v["differences"]}
     summary = {"files": len(results), "compared": len(compared),
                "not_compared": sorted(k for k, v in results.items() if not v["compared"]),
                "fields": fields, "agreeing": fields - sum(len(v) for v in differing.values()),
-               "differing_files": len(differing)}
+               "differing_files": len(differing), "named_files": sorted(named)}
     (run_dir / "pdfium-metadata.json").write_text(
-        json.dumps({"summary": summary, "differences": dict(sorted(differing.items()))}, indent=1),
+        json.dumps({"summary": summary, "differences": dict(sorted(differing.items())),
+                    "named": dict(sorted(named.items()))}, indent=1),
         encoding="utf-8")
     print(json.dumps(summary, indent=1))
     return 0 if not differing else 1
+
+
+def read_causes() -> dict[str, str]:
+    """The files whose differences are named PDFium differences, from metadata_causes.tsv."""
+    path = HERE / "metadata_causes.tsv"
+    causes = {}
+    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
+        cells = line.split("\t")
+        if len(cells) >= 3:
+            causes[cells[0]] = f"{cells[1]}: {cells[2]}"
+    return causes
 
 
 if __name__ == "__main__":

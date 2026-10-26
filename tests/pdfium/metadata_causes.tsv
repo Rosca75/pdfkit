@@ -1,0 +1,2 @@
+id	cause	evidence
+pdfium-0033	pdfium	a linearised file whose first-page trailer names /Info 27 0 R and whose main trailer, at the end, names none; PDFium reads the main trailer and reports no CreationDate or ModDate, pdfkit reads the trailer chain and finds the dictionary

@@ -86,12 +86,21 @@ def in_name(blob: bytes, at: int) -> bool:
     return start > 0 and blob[start - 1:start] == b"/"
 
 
+def in_number(blob: bytes, at: int, length: int) -> bool:
+    """Whether a needle of digits at `at` is part of a longer number (a path's 466.1994), which is a
+    content stream's operand, not text."""
+    before = blob[at - 1:at] if at > 0 else b""
+    after = blob[at + length:at + length + 1]
+    return bool(re.fullmatch(rb"[0-9.\-]", before or b"x")) or bool(re.fullmatch(rb"[0-9.]", after or b"x"))
+
+
 def found(blob: bytes, needle: bytes, fold_case: bool) -> bool:
     haystack = blob.lower() if fold_case else blob
     target = needle.lower() if fold_case else needle
+    numeric = re.fullmatch(rb"[0-9]+", needle) is not None
     at = haystack.find(target)
     while at >= 0:
-        if not in_name(blob, at):
+        if not in_name(blob, at) and not (numeric and in_number(blob, at, len(target))):
             return True
         at = haystack.find(target, at + 1)
     return False
