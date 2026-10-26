@@ -55,6 +55,12 @@ std::string json(const MetadataReader::Result& result) {
   }
   writer.key("agree").boolean(agree);
   writer.key("utf16le").unsigned_integer(result.utf16le);
+  writer.key("xmp_namespaces").begin_array();
+  for (const std::string& ns : result.namespaces) {
+    writer.string(ns);
+  }
+  writer.end_array();
+  writer.key("xmp_history").boolean(result.history);
   writer.key("fields").begin_array();
   for (const MetadataReader::Row& row : result.rows) {
     writer.begin_object();
@@ -84,6 +90,11 @@ std::string json(const MetadataReader::Result& result) {
       writer.begin_object();
       writer.key("property").string(value.property);
       writer.key("value").string(value.value);
+      writer.key("items").begin_array();
+      for (const std::string& item : value.items) {
+        writer.string(item);
+      }
+      writer.end_array();
       writer.end_object();
     }
     writer.end_array();

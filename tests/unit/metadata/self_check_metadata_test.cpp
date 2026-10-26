@@ -2,13 +2,16 @@
 // Copyright 2026 The pdfkit authors
 //
 // Tests of the self-check's metadata needles: the original value of a
-// rewritten field planted in a second place (a custom Info key, a string
-// object a page holds, a custom XMP element, the page text) is found and the
-// write refused naming the surface; a rewrite whose originals are nowhere
-// else passes and says so in the report.
+// rewritten field planted in a second place is removed with the rewrite when
+// no function could rewrite it (a custom Info key, an XMP property no field
+// pairs with) and is found and refused, naming the surface, where it stays
+// (a field the caller did not set, the page text, a content stream's
+// comment); a rewrite whose originals are nowhere else passes and says so in
+// the report.
 
 #include "metadata/support/metadata_fixture.hpp"
 #include "redact/self_check.hpp"
+#include "writer/output_scan.hpp"
 
 #include <doctest.h>
 
@@ -47,30 +50,63 @@ TEST_CASE("a rewrite whose originals are nowhere else passes the self-check") {
   CHECK(written.report.find("\"status\":\"passed\"") != std::string::npos);
 }
 
-TEST_CASE("an original value left in a custom Info key is refused as info") {
+TEST_CASE("a custom Info key or XMP property repeating an original goes with the rewrite") {
   MetadataFixture made = fixture();
-  made.info += " /Company (Quarterly Zebulon Report)";
-  check_refused(made, R"({"Title": "REDACTED TITLE"})", "info");
-}
-
-TEST_CASE("an original value left in a custom XMP element is refused as xmp") {
-  MetadataFixture made = fixture();
+  made.info += " /Company (Quarterly Zebulon Report) /Nested [(x) (Ann Planted)] /Kept (Other)";
   made.packet = MetadataFixture::xmp(
       "<dc:title><rdf:Alt><rdf:li xml:lang='x-default'>Quarterly Zebulon Report</rdf:li>"
       "</rdf:Alt></dc:title>\n"
-      "<my:Copy xmlns:my='urn:example:custom'>Quarterly zebulon report</my:Copy>\n");
-  check_refused(made, R"({"Title": "REDACTED TITLE"})", "xmp");
+      "<my:Copy xmlns:my='urn:example:custom'>A quarterly ZEBULON report copy</my:Copy>\n"
+      "<my:Other xmlns:my='urn:example:custom'>Unrelated</my:Other>\n",
+      "xmp:MetadataDate='Quarterly Zebulon Report'");
+  const MetadataFixture::Write written = MetadataFixture::write(
+      made.build(), R"({"Title": "REDACTED TITLE", "Author": "REDACTED AUTHOR"})");
+  INFO(written.report);
+  REQUIRE(written.write_status == PDFKIT_OK);
+  const std::string all = pdfkit::test::everything(written.pdf);
+  CHECK(all.find("Company") == std::string::npos);
+  CHECK(all.find("Nested") == std::string::npos);
+  CHECK(all.find("my:Copy") == std::string::npos);
+  CHECK(all.find("MetadataDate") == std::string::npos);
+  CHECK(all.find("/Kept") != std::string::npos);
+  CHECK(all.find("<my:Other xmlns:my='urn:example:custom'>Unrelated</my:Other>") !=
+        std::string::npos);
 }
 
-TEST_CASE("an original value in the page text or a page's string object is refused") {
+TEST_CASE("an original value a field not rewritten repeats is refused in the info and xmp") {
+  // A field the caller did not set keeps its value, so its repeat is refused
+  // and the caller sets that field too.
+  MetadataFixture made = fixture();
+  made.info += " /Subject (Quarterly Zebulon Report)";
+  check_refused(made, R"({"Title": "REDACTED TITLE"})", "info");
+
+  MetadataFixture packet = fixture();
+  packet.packet = MetadataFixture::xmp(
+      "<dc:title><rdf:Alt><rdf:li xml:lang='x-default'>Quarterly Zebulon Report</rdf:li>"
+      "</rdf:Alt></dc:title>\n"
+      "<dc:description><rdf:Alt><rdf:li xml:lang='x-default'>Quarterly Zebulon Report</rdf:li>"
+      "</rdf:Alt></dc:description>\n");
+  check_refused(packet, R"({"Title": "REDACTED TITLE"})", "xmp");
+}
+
+TEST_CASE("an original of fewer than three letters or digits is not searched for") {
+  MetadataFixture made;
+  made.info = "/Author (A.B)";
+  made.content = "BT /F1 12 Tf 72 700 Td (A.B wrote this) Tj ET";
+  const MetadataFixture::Write written =
+      MetadataFixture::write(made.build(), R"({"Author": "REDACTED AUTHOR"})");
+  INFO(written.report);
+  CHECK(written.write_status == PDFKIT_OK);
+}
+
+TEST_CASE("an original value in the page text or a content stream's comment is refused") {
   MetadataFixture text = fixture();
   text.content = "BT /F1 12 Tf 72 700 Td (By Ann Planted) Tj ET";
   check_refused(text, R"({"Author": "REDACTED AUTHOR"})", "text");
 
-  MetadataFixture object = fixture();
-  object.content = "BT /F1 12 Tf 72 700 Td (Body) Tj ET";
-  object.info += " /Nested [(Ann Planted)]";
-  check_refused(object, R"({"Author": "REDACTED AUTHOR"})", "info");
+  MetadataFixture comment = fixture();
+  comment.content = "% drawn for Ann Planted\nBT /F1 12 Tf 72 700 Td (Body) Tj ET";
+  check_refused(comment, R"({"Author": "REDACTED AUTHOR"})", "stream");
 }
 
 TEST_CASE("the original value removed from the page text by a text redaction passes") {

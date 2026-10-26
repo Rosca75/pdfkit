@@ -25,6 +25,7 @@
 #include "writer/metadata_writer.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,12 +46,20 @@ std::string field_list() {
   return out;
 }
 
+// The shortest original the self-check searches for, in letters and digits:
+// a value of one or two (an initial, "PC", "1") reads as part of any text, so
+// searching for it would refuse every output rather than find a leak.
+constexpr std::size_t shortest_original = 3;
+
 void add_original(std::vector<std::string>& originals, const std::string& value) {
-  bool blank = true;
+  std::size_t letters = 0;
   for (const char c : value) {
-    blank = blank && (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+    const auto byte = static_cast<unsigned char>(c);
+    // ASCII letters and digits, and the lead byte of every other character.
+    letters += (std::isalnum(byte) != 0 || byte >= 0xC0) ? 1 : 0;
   }
-  if (!blank && std::find(originals.begin(), originals.end(), value) == originals.end()) {
+  if (letters >= shortest_original &&
+      std::find(originals.begin(), originals.end(), value) == originals.end()) {
     originals.push_back(value);
   }
 }
@@ -77,7 +86,7 @@ std::string json(const pdfkit::redact::EditPlan& plan, const MetadataReader::Res
       writer.string(field.info_encoding);
     }
     writer.key("xmp");
-    if (field.removed || !source.xmp_readable) {
+    if (field.removed || !source.xmp_states) {
       writer.null();
     } else {
       writer.string(field.xmp);
@@ -85,7 +94,7 @@ std::string json(const pdfkit::redact::EditPlan& plan, const MetadataReader::Res
     // The properties the write touches: those the packet holds, or the
     // first the field pairs with, added, when it holds none.
     writer.key("xmp_properties").begin_array();
-    if (source.xmp_readable) {
+    if (source.xmp_states) {
       const MetadataReader::Row& row = source.rows[static_cast<std::size_t>(field.field)];
       for (const MetadataReader::XmpValue& value : row.xmp) {
         writer.string(value.property);

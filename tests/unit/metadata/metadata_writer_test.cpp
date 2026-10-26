@@ -196,6 +196,38 @@ TEST_CASE("a file without an Info dictionary gains one; without a packet none is
   CHECK_FALSE(result.xmp_present);
 }
 
+TEST_CASE("a rewritten element keeps its start tag; an empty element gains its content") {
+  MetadataFixture fixture;
+  fixture.info = "/Author (Old) /Keywords (old)";
+  // As pikepdf writes them: the namespace declared on the property element.
+  fixture.packet =
+      "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF "
+      "xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description rdf:about=''>"
+      "<dc:creator xmlns:dc='http://purl.org/dc/elements/1.1/'><rdf:Seq><rdf:li/></rdf:Seq>"
+      "</dc:creator></rdf:Description><rdf:Description rdf:about='' "
+      "xmlns:pdf='http://ns.adobe.com/pdf/1.3/'><pdf:Keywords /></rdf:Description>"
+      "</rdf:RDF></x:xmpmeta>";
+  const auto written = write(fixture.build(), R"({"Author": "New One", "Keywords": "k1"})");
+  const MetadataReader::Result result = reread(written.pdf);
+  REQUIRE_FALSE(row(result, Field::author).xmp.empty());
+  CHECK(row(result, Field::author).xmp.front().value == "New One");
+  CHECK(row(result, Field::keywords).xmp.front().value == "k1");
+  CHECK(result.packet.find("<dc:creator xmlns:dc='http://purl.org/dc/elements/1.1/'>") !=
+        std::string::npos);
+  CHECK(result.packet.find("<pdf:Keywords>k1</pdf:Keywords>") != std::string::npos);
+}
+
+TEST_CASE("a packet that states nothing is dropped") {
+  MetadataFixture fixture;
+  fixture.info = "/Title (Old title)";
+  fixture.packet = "\n";
+  const auto written = write(fixture.build(), R"({"Title": "U"})");
+  CHECK_FALSE(reread(written.pdf).xmp_present);
+  CHECK(written.report.find("xmp_unreadable") == std::string::npos);
+  CHECK(written.set_answer.find("\"xmp\":null") != std::string::npos);
+  CHECK(written.set_answer.find("\"xmp_properties\":[]") != std::string::npos);
+}
+
 TEST_CASE("the preview names each field's written forms") {
   pdfkit::writer::MetadataWriter::Values values;
   values[Field::title] = "T";

@@ -83,10 +83,17 @@ class MetadataReader {
     bool info_present = false;
     bool xmp_present = false;
     bool xmp_readable = false;
+    // Whether the packet read holds a property or an rdf:RDF to add one to; a
+    // packet that states nothing is written as no packet.
+    bool xmp_states = false;
     std::string xmp_fault;
     std::vector<Row> rows;
     // Info strings written UTF-16LE with a mark.
     std::size_t utf16le = 0;
+    // The namespaces of the packet's properties, sorted, each once.
+    std::vector<std::string> namespaces;
+    // Whether the packet holds an xmpMM:History.
+    bool history = false;
     // The packet's decoded bytes, when it decoded.
     std::string packet;
   };

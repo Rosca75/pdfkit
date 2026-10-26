@@ -15,6 +15,7 @@
 #include "syntax/stream.hpp"
 #include "syntax/xmp_scanner.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <utility>
 
@@ -381,6 +382,16 @@ MetadataReader::Result MetadataReader::read(Document& document) {
         scanned = XmpScanner::scan(result.packet);
         if (scanned.readable) {
           result.xmp_readable = true;
+          result.xmp_states = !scanned.properties.empty() || scanned.rdf_end.has_value();
+          for (const XmpScanner::Property& property : scanned.properties) {
+            if (std::find(result.namespaces.begin(), result.namespaces.end(), property.ns) ==
+                result.namespaces.end()) {
+              result.namespaces.push_back(property.ns);
+            }
+            result.history = result.history ||
+                             (property.ns == XmpScanner::xmp_mm && property.local == "History");
+          }
+          std::sort(result.namespaces.begin(), result.namespaces.end());
         } else {
           result.xmp_fault = scanned.fault;
         }

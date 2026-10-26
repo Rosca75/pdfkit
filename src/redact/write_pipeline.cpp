@@ -16,6 +16,7 @@
 #include "writer/metadata_writer.hpp"
 #include "writer/page_selector.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <set>
 #include <utility>
@@ -68,7 +69,7 @@ void WritePipeline::metadata(EditPlan& plan, writer::ObjectGraph& graph,
                              writer::WriteReport& report) {
   // Runs on every write: a plan without metadata values still has the
   // packet's identifiers replaced and its media-management history removed.
-  writer::MetadataWriter::apply(graph, plan.metadata(), report.warnings);
+  writer::MetadataWriter::apply(graph, plan.metadata(), plan.metadata_originals(), report.warnings);
 }
 
 void WritePipeline::strip_channels(writer::ObjectGraph& graph, writer::WriteReport& report) {
@@ -111,23 +112,38 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
     unique.insert(match.placeholder);
   }
   const std::vector<std::string> placeholders(unique.begin(), unique.end());
+  // Whether the plan's text matches already search for original with the
+  // default folding.
+  const auto searched = [&text](const std::string& original) {
+    return std::ranges::any_of(text.matches, [&original](const MatchFinder::Match& match) {
+      const MatchFinder::Folding defaults;
+      return match.kind == MatchFinder::Match::Kind::search && match.search == original &&
+             match.folding.hyphenation == defaults.hyphenation &&
+             match.folding.text.case_fold == defaults.text.case_fold &&
+             match.folding.text.diacritics == defaults.text.diacritics &&
+             match.folding.text.whitespace == defaults.text.whitespace;
+    });
+  };
   // Every original value of a rewritten field is a redacted string under the
-  // default folding (docs/DESIGN.md section 18).
+  // default folding (docs/DESIGN.md section 18), once.
   std::vector<MatchFinder::Match> needles = text.needles;
   for (const std::string& original : plan.metadata_originals()) {
-    MatchFinder::Match needle;
-    needle.kind = MatchFinder::Match::Kind::search;
-    needle.search = original;
-    needles.push_back(std::move(needle));
+    if (!searched(original)) {
+      MatchFinder::Match needle;
+      needle.kind = MatchFinder::Match::Kind::search;
+      needle.search = original;
+      needles.push_back(std::move(needle));
+    }
   }
   // With search strings alone, every source page was searched with every
   // string when the matches were added, so a page the redaction left as it
   // was (no edit, no edited form drawn) reads as it did then and holds no
   // occurrence; its text is not read again. The page text of every changed
-  // page and every other surface of every page is. A metadata value was
-  // searched on no page, so with one every page's text is read.
+  // page and every other surface of every page is. A metadata value the plan
+  // does not also search for was searched on no page, so with one every
+  // page's text is read.
   std::optional<std::set<std::uint32_t>> changed;
-  if (!text.glyph_ranges && plan.metadata_originals().empty()) {
+  if (!text.glyph_ranges && std::ranges::all_of(plan.metadata_originals(), searched)) {
     std::set<std::uint32_t> forms;
     for (const auto& [number, work] : text.pages) {
       for (const auto& [form, target] : work.forms) {

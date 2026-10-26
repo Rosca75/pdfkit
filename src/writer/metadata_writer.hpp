@@ -9,7 +9,11 @@
 // ranges and keeping every other byte, so custom namespaces survive. A
 // property the packet lacks is added in an rdf:Description of its own before
 // the rdf:RDF end tag; a field set to no value is removed from both places;
-// a field not set keeps its value in both. Whatever the caller set, the
+// a field not set keeps its value in both. A value outside the field list (a
+// custom Info key, an XMP property no field pairs with, such as
+// xmp:MetadataDate or a custom namespace's) that repeats the original value
+// of a rewritten field is removed, because no function can rewrite it and the
+// self-check would refuse the output for it. Whatever the caller set, the
 // packet loses every property of the media-management namespace but its
 // identifiers, whose values become placeholders the file writer patches from
 // the output's hash (writer::DocumentId), because the original's history and
@@ -27,6 +31,7 @@
 
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -55,16 +60,21 @@ class MetadataWriter {
   [[nodiscard]] static std::vector<Written> preview(const Values& values);
 
   // Applies values to graph's Info dictionary and catalog packet and
-  // replaces the packet's identifiers with their placeholders; the warnings
-  // met (xmp_unreadable) are appended to warnings.
+  // replaces the packet's identifiers with their placeholders; originals are
+  // the source's values of the fields set, and an Info entry outside the
+  // field list or an XMP property no field pairs with that repeats one of
+  // them is removed. The warnings met (xmp_unreadable) are appended to
+  // warnings.
   static void apply(ObjectGraph& graph, const Values& values,
+                    std::span<const std::string> originals,
                     std::vector<ChannelTable::Warning>& warnings);
 
   // packet with values applied and the media-management properties edited,
   // as apply writes it; scanned is the packet's scan, which must be readable.
   [[nodiscard]] static std::string rewrite_packet(std::string_view packet,
                                                   const syntax::XmpScanner::Result& scanned,
-                                                  const Values& values);
+                                                  const Values& values,
+                                                  std::span<const std::string> originals);
 };
 
 }  // namespace pdfkit::writer

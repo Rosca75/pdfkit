@@ -94,6 +94,12 @@ TEST_CASE("pdfkit_metadata answers one row per field side by side") {
   CHECK(fields[6].find("agree")->as_bool());
   CHECK(fields[0].find("info_iso") == nullptr);
   CHECK(answer.find("warnings")->as_array().empty());
+  const auto& namespaces = answer.find("xmp_namespaces")->as_array();
+  REQUIRE(namespaces.size() == 3);
+  CHECK(namespaces[0].as_string() == "http://ns.adobe.com/pdf/1.3/");
+  CHECK_FALSE(answer.find("xmp_history")->as_bool());
+  CHECK(fields[0].find("xmp_values")->as_array()[0].find("items")->as_array()[0].as_string() ==
+        "Same");
 
   REQUIRE(pdfkit_metadata(opened.doc, R"({"pages": [1]})", &out) == PDFKIT_E_INVALID_ARGUMENT);
   check_error(take(out), "invalid_argument", "pages");
