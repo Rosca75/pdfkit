@@ -315,9 +315,14 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     }
     ++result.pages_read;
     const text::PageText page = reader.read(source.number);
-    MatchFinder finder(page);
+    MatchFinder finder(page, {placeholder_fonts.begin(), placeholder_fonts.end()});
     for (const MatchFinder::Match& needle : needles) {
-      for (const MatchFinder::Occurrence& found : finder.find(needle, 0)) {
+      // The reading order and every other order a reader reads the page in.
+      std::vector<MatchFinder::Occurrence> occurrences = finder.find(needle, 0);
+      for (MatchFinder::Occurrence& other : finder.find_orders(needle, 0)) {
+        occurrences.push_back(std::move(other));
+      }
+      for (const MatchFinder::Occurrence& found : occurrences) {
         bool own = false;
         for (std::size_t p = found.first; p < found.last && !own; ++p) {
           const text::GlyphRecord& record = page.content.glyphs[page.order[p]];

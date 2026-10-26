@@ -5,7 +5,8 @@
 // output, docs/DESIGN.md sections 11 to 13. add() checks the matches (a
 // placeholder outside the alphabet, a glyph range from another document or
 // past its page, all refused before anything is recorded), reads the pages
-// they concern with the text layer, finds the occurrences (MatchFinder),
+// they concern with the text layer, finds the occurrences (MatchFinder: in
+// the reading order, in every other order a reader uses, and in the codes),
 // and computes each page's work: the glyphs to remove (a match's glyphs, the
 // duplicates folded into them and every glyph of an /ActualText span one of
 // them belongs to), the placeholder of each occurrence fitted into its hole

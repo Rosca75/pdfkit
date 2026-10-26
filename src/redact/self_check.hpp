@@ -5,8 +5,10 @@
 // every text surface for every redacted string under that string's folding,
 // docs/DESIGN.md section 18, so a redaction that left a string anywhere is
 // refused rather than handed back. The surfaces:
-//   - the text of every page in reading order, hidden blocks included
-//     ("text"); an occurrence drawn wholly in the placeholder font is the
+//   - the text of every page in reading order and in every other order a
+//     reader uses (MatchFinder::find_orders), hidden blocks included
+//     ("text"), because a phrase another reader puts together survives for
+//     that reader; an occurrence drawn wholly in the placeholder font is the
 //     placeholder itself and does not count;
 //   - every /ActualText, /Alt and /E of marked content ("actual_text",
 //     "alt", "expansion");

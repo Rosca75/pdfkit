@@ -14,6 +14,10 @@
 // character, so "Quarter-" / "field" matches "Quarterfield" and the hyphen
 // goes with the match. A match is one range from its first glyph to its
 // last, so it crosses operators, fonts, TJ numbers, lines and the hyphen.
+// find_orders() searches the orders other readers read the page in (the
+// glyphs as drawn, and each row of glyphs on one baseline read along it in
+// either direction), so a phrase pdfkit's reading order splits is still
+// found wherever another reader puts its words side by side.
 // merge() applies the overlap rule: overlapping or adjacent occurrences with
 // one placeholder become one, and where placeholders differ the occurrence
 // that starts earlier keeps the overlap.
@@ -27,6 +31,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -68,8 +73,12 @@ class MatchFinder {
     std::string placeholder;
   };
 
-  // page must outlive the finder.
-  explicit MatchFinder(const text::PageText& page);
+  // page must outlive the finder. The glyphs of the fonts named in
+  // left_out (the placeholder faces, when a written output is searched) are
+  // left out of the other orders of find_orders, because a placeholder
+  // squeezed into or overflowing its hole lies among the kept glyphs along
+  // the baseline, and its letters are no text of the document.
+  explicit MatchFinder(const text::PageText& page, std::set<std::string> left_out = {});
 
   // The occurrences of a search match on the page, in reading order; a
   // string that folds to nothing finds nothing.
@@ -84,6 +93,21 @@ class MatchFinder {
   // reading order), which the self-check's scan of string operands and an
   // extractor reading the codes as Latin-1 would find.
   [[nodiscard]] std::vector<Occurrence> find_codes(const Match& match, std::size_t index);
+
+  // The occurrences of a search match that another reader's order exposes
+  // and find() does not, docs/DESIGN.md section 11: the page's glyphs read
+  // in the order they were drawn, and the page's rows (the lines of every
+  // block whose baselines agree, so across a column gap) read along the
+  // baseline from either end. In these orders a word gap is read from the
+  // positions (a space glyph, or a glyph that does not start where the one
+  // before it ended, on its baseline or within half the size of it), and
+  // under the whitespace folding a space of the string matches a word gap or
+  // none, because readers disagree on the gaps they infer; inside a word of
+  // the string no gap is allowed. Each found run is split into the stretches
+  // that are contiguous in reading order, the first carrying the
+  // placeholder, and the glyphs find() or an earlier run already covers are
+  // left out. The hyphenation join is the reading order's alone.
+  [[nodiscard]] std::vector<Occurrence> find_orders(const Match& match, std::size_t index);
 
   // The byte forms of a search string the raw scans look for: its UTF-8, its
   // Latin-1 when every character fits, and its UTF-16BE, its white space
@@ -123,13 +147,35 @@ class MatchFinder {
     std::vector<std::size_t> unit;  // per folded code point, its unit
   };
 
+  // One of the other orders folded: without its white space under the
+  // whitespace folding, gap naming the characters a word gap precedes.
+  struct OrderHaystack {
+    std::u32string text;
+    std::vector<std::size_t> unit;
+    std::vector<bool> gap;
+  };
+
   [[nodiscard]] const Haystack& haystack(const Folding& folding);
   void build(bool hyphenation, std::vector<Unit>& units) const;
+  // The reading-order position of each draw index.
+  void index_positions();
+  void build_orders();
+  // Whether the other orders read the glyph of draw index draw (a duplicate
+  // copy is read with its partner), and its code points appended to units,
+  // a separator first when gap says a word gap precedes it.
+  [[nodiscard]] bool in_orders(std::size_t draw) const;
+  void add_units(std::vector<Unit>& units, std::size_t draw, bool& gap) const;
+  [[nodiscard]] const std::vector<OrderHaystack>& order_haystacks(const Folding& folding);
 
   const text::PageText* page_;
+  std::set<std::string> left_out_;
   std::vector<Unit> plain_;
   std::vector<Unit> joined_;
   std::map<unsigned, Haystack> folded_;
+  // The other orders' units (the drawing order, the rows read forwards and
+  // backwards), built on first use of find_orders, and their folded forms.
+  std::vector<std::vector<Unit>> orders_;
+  std::map<unsigned, std::vector<OrderHaystack>> order_folded_;
   // The reading-order position of each draw index, built on first use.
   std::vector<std::size_t> position_;
   // The code bytes of each string operand (consecutive records of one walk,

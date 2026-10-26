@@ -750,6 +750,10 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
       const MatchFinder::Match& match = matches[i];
       if (match.kind == MatchFinder::Match::Kind::search) {
         std::vector<MatchFinder::Occurrence> here = finder.find(match, base + i);
+        // The string in another reader's order of the page.
+        for (MatchFinder::Occurrence& other : finder.find_orders(match, base + i)) {
+          here.push_back(std::move(other));
+        }
         // The codes that spell the string where the text does not read it.
         for (const MatchFinder::Occurrence& coded : finder.find_codes(match, base + i)) {
           const bool read = std::ranges::any_of(here, [&coded](const auto& other) {
