@@ -35,6 +35,8 @@ ERRORS = {
 FPDF_ANNOT = 0x01
 FPDF_PAGEOBJ_IMAGE = 3
 DEFAULT_TIMEOUT = 30.0
+# The Info keys FPDF_GetMetaText answers (fpdf_doc.h), the metadata field list.
+META_TAGS = ("Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate")
 
 
 def default_dll() -> Path:
@@ -250,6 +252,8 @@ def handle_request(library: Library, request: dict) -> dict:
             result["security_revision"] = doc.security_revision()
             result["producer"] = doc.meta("Producer")
             result["creator"] = doc.meta("Creator")
+        if "meta" in ops:
+            result["meta"] = {tag: doc.meta(tag) for tag in META_TAGS}
         if "text" in ops:
             texts = []
             for index in range(min(result["pages"], max_pages)):

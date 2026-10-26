@@ -3,7 +3,8 @@
 //
 // The dataset verb's members for catalogue functions 4 and 7
 // (tests/dataset/outcome.md): the metadata read side by side, and a job that
-// rewrites every field the file holds to "REDACTED <FIELD>" and searches the
+// rewrites every field the file holds to "[_n_]" (n the field's place in the
+// field list, a value no searched original can occur in) and searches the
 // page text for every original value of those fields, because the
 // self-check refuses an output in which an original survives anywhere; the
 // output goes to <dir>/outputs/<id>.metadata.pdf and is read back to check
@@ -35,11 +36,13 @@ struct DatasetMetadata {
 
 // The fields_json of pdfkit_set_metadata rewriting every field of metadata
 // one of whose values holds one of strings (ASCII letters compared without
-// case), each to "REDACTED <FIELD>"; empty when none does. names receives the
-// fields.
+// case), each to "[_n_]"; empty when none does. names receives the fields and
+// originals their values the self-check searches for (three letters or digits
+// or more), each once, which the job also searches the page text for.
 [[nodiscard]] std::string dataset_metadata_rewrite(const DatasetMetadata& metadata,
                                                    const std::vector<std::string>& strings,
-                                                   std::vector<std::string>& names);
+                                                   std::vector<std::string>& names,
+                                                   std::vector<std::string>& originals);
 
 // The one-line JSON value of the outcome's "set_metadata" for an open
 // document; out_dir is the run folder.

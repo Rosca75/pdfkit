@@ -130,6 +130,16 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
   std::vector<std::string> strings =
       dataset_redaction_words(id, text != nullptr ? std::string_view(text->text) : "");
   strings.emplace_back(dataset_redaction_marker);
+  // The fields holding a word are rewritten, and their original values
+  // searched in the page text too, after the words.
+  std::vector<std::string> rewritten;
+  std::vector<std::string> originals;
+  const std::string fields = dataset_metadata_rewrite(metadata, strings, rewritten, originals);
+  for (const std::string& original : originals) {
+    if (std::ranges::find(strings, original) == strings.end()) {
+      strings.push_back(original);
+    }
+  }
   std::string matches = R"({"matches": [)";
   for (std::size_t i = 0; i < strings.size(); ++i) {
     matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(strings[i]) +
@@ -145,8 +155,6 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
     call = take(pdfkit_redact_text(edit, matches.c_str(), &out), out);
     answer = call.text;
   }
-  std::vector<std::string> rewritten;
-  const std::string fields = dataset_metadata_rewrite(metadata, strings, rewritten);
   if (call.status == PDFKIT_OK && !fields.empty()) {
     call = take(pdfkit_set_metadata(edit, fields.c_str(), &out), out);
   }

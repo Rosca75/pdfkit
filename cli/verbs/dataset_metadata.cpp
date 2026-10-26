@@ -2,11 +2,12 @@
 // Copyright 2026 The pdfkit authors
 //
 // The metadata members of a dataset outcome. The rewrite job sets each field
-// the file holds to "REDACTED " and the field's name in capitals, and adds
-// every original value of those fields as a text search with the default
-// folding and the placeholder [REDACTED], so an original the page text also
-// holds is redacted there rather than refused; its result is read back
-// through pdfkit_metadata, field by field, in both places.
+// the file holds to "[_n_]" (n its place in the field list), and adds every
+// original value of those fields the self-check searches for as a text
+// search with the default folding and the placeholder [REDACTED], so an
+// original the page text also holds is redacted there rather than refused;
+// its result is read back through pdfkit_metadata, field by field, in both
+// places.
 
 #include "verbs/dataset_metadata.hpp"
 
@@ -17,6 +18,7 @@
 #include "verbs/dataset_write.hpp"
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <set>
 
@@ -58,12 +60,27 @@ std::string lower(std::string_view text) {
   return out;
 }
 
+// The value the jobs write into field: "[_" and the field's place in the
+// field list, then "_]". It holds one digit and no letter, so no original the
+// self-check searches for (three letters or digits at least) can occur in it,
+// as an original "Word" occurs in a value such as "REDACTED KEYWORDS".
 std::string written_value(std::string_view field) {
-  std::string out = "REDACTED ";
-  for (const char c : field) {
-    out += (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
-  }
-  return out;
+  constexpr std::array<std::string_view, 8> names = {
+      "Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate"};
+  const auto found = std::ranges::find(names, field);
+  const auto place = static_cast<char>('1' + (found - names.begin()));
+  return std::string("[_") + place + "_]";
+}
+
+// Whether the self-check searches for an original value: three letters or
+// digits or more (a character outside ASCII counts by its lead byte).
+bool searchable(std::string_view value) {
+  const auto letters = std::ranges::count_if(value, [](char c) {
+    const auto byte = static_cast<unsigned char>(c);
+    return (byte >= '0' && byte <= '9') || ((byte | 0x20U) >= 'a' && (byte | 0x20U) <= 'z') ||
+           byte >= 0xC0;
+  });
+  return letters >= 3;
 }
 
 // The rows of a pdfkit_metadata answer: field, Info value, XMP values.
@@ -169,19 +186,38 @@ DatasetMetadata dataset_metadata(pdfkit_document* document) {
 
 std::string dataset_metadata_rewrite(const DatasetMetadata& metadata,
                                      const std::vector<std::string>& strings,
-                                     std::vector<std::string>& names) {
+                                     std::vector<std::string>& names,
+                                     std::vector<std::string>& originals) {
+  // A field holding a word is rewritten, and so is a field holding an
+  // original value of a rewritten field, until no further field holds one.
+  std::vector<std::string> searched = strings;
   std::string fields;
-  for (const auto& [field, values] : metadata.fields) {
-    const bool holds = std::ranges::any_of(values, [&strings](const std::string& value) {
-      const std::string folded = lower(value);
-      return std::ranges::any_of(strings, [&folded](const std::string& string) {
-        return !string.empty() && folded.find(lower(string)) != std::string::npos;
+  bool grew = true;
+  while (grew) {
+    grew = false;
+    for (const auto& [field, values] : metadata.fields) {
+      if (std::ranges::find(names, field) != names.end()) {
+        continue;
+      }
+      const bool holds = std::ranges::any_of(values, [&searched](const std::string& value) {
+        const std::string folded = lower(value);
+        return std::ranges::any_of(searched, [&folded](const std::string& string) {
+          return !string.empty() && folded.find(lower(string)) != std::string::npos;
+        });
       });
-    });
-    if (holds) {
+      if (!holds) {
+        continue;
+      }
+      grew = true;
       names.push_back(field);
       fields += (fields.empty() ? "" : ", ") + json_quote(field) + ": " +
                 json_quote(written_value(field));
+      for (const std::string& value : values) {
+        if (searchable(value) && std::ranges::find(originals, value) == originals.end()) {
+          originals.push_back(value);
+          searched.push_back(value);
+        }
+      }
     }
   }
   return fields.empty() ? std::string() : "{" + fields + "}";
@@ -199,15 +235,8 @@ std::string dataset_set_metadata(pdfkit_document* document, std::string_view id,
     names.push_back(field);
     fields +=
         (fields.empty() ? "" : ", ") + json_quote(field) + ": " + json_quote(written_value(field));
-    // The self-check searches an original of three letters or digits or more,
-    // so the job searches the page text for those.
     for (const std::string& value : values) {
-      const auto letters = std::ranges::count_if(value, [](char c) {
-        const auto byte = static_cast<unsigned char>(c);
-        return (byte >= '0' && byte <= '9') || ((byte | 0x20U) >= 'a' && (byte | 0x20U) <= 'z') ||
-               byte >= 0xC0;
-      });
-      if (letters >= 3) {
+      if (searchable(value)) {
         originals.insert(value);
       }
     }
