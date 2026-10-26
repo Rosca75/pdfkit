@@ -114,7 +114,7 @@ void ImageListing::read(const std::vector<std::uint32_t>& pages) {
         }
       }
       entry.occurrences.push_back(
-          {draw.page, draw.ordinal, draw.box, draw.form_path, draw.optional_content_off});
+          {draw.page, draw.ordinal, draw.box, draw.form_path, draw.optional_content_off, draw.ctm});
     }
     for (const text::PageContent::Unwalked& unwalked : content.unwalked) {
       if (unwalked.resources.is_null()) {
@@ -163,6 +163,11 @@ void ImageListing::probe(Entry& entry) {
       result = ImageDecoder::decode(*document_, *entry.stream.stream(), ImageDecoder::Part::base);
     }
     entry.fault = result.image ? std::string() : result.fault;
+    if (result.image) {
+      entry.width = result.image->width;
+      entry.height = result.image->height;
+      entry.bitonal = result.image->bits == 1 && result.image->channels == 1;
+    }
   } catch (const platform::Error& error) {
     if (error.code() != platform::ErrorCode::limit_exceeded) {
       throw;

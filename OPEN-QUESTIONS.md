@@ -435,3 +435,47 @@ each taken while this question stands; `build-10.md` §9 records them and
    - (b) Continue with the 11 rows as known gaps and say in the release
      notes that a phrase pdfkit reads across columns may survive in another
      reader's order. No extra cost now.
+
+### 2.13 Image treatment: what counts as hidden, and what a damaged inline image takes with it (raised by phase 9)
+
+Phase 9 took these four decisions unattended, each the recommended answer
+and each taken while this question stands; `build-9.md` §9 records them and
+`docs/DESIGN.md` §14 says so. Do you confirm them?
+
+1. **A treatment that writes exactly an image's original bytes is not a
+   survivor.** A blur of an image whose blocks were already constant (a
+   uniform 20 by 20 image in dccc-0120, a test file of large flat colour
+   blocks in qpdf-0033) writes the image again byte for byte, so its
+   identity, and in qpdf-0033 another image's identical bytes, are still in
+   the output. Nothing the blur would hide is there; the dataset job, the
+   PDFium image check and the leak search report these as `unchanged`.
+   - **(a) Keep it — recommended.** No cost.
+   - (b) Make every treatment change the bytes (re-encode with another zlib
+     level or add a marker key). About 1 hour and $15; the pixels stay the
+     same, so it changes what the check sees, not what a reader sees.
+2. **An inline image the content lexer cannot end runs to the end of its
+   stream, and a removal takes all of it.** opf-0024 page 14 holds bytes the
+   lexer reads as three inline images with no `/Width` and no `EI` it
+   accepts; pdfkit's own text stops there in the input already, PDFium reads
+   five more lines. The seeded job removes undecodable images, so the output
+   loses those lines in PDFium's reading too (`known_gap:unterminated_inline_image`).
+   - **(a) Keep it: what pdfkit cannot read it does not keep — recommended.**
+     No cost.
+   - (b) End such an image at the first white-space-delimited `EI`, as PDFium
+     does, and keep the bytes after it. About 2 hours and $30; bytes pdfkit
+     cannot read stay in the output, which can hold image data.
+3. **The box colour is given as red, green and blue** and painted as the
+   sample value of the image's own space that reads nearest (an Indexed
+   image's nearest palette entry, a rich black in CMYK), not as component
+   values of the image's space, so one job colours every image alike.
+   - **(a) Keep it — recommended.** No cost.
+   - (b) Also accept component values in the image's space. About 2 hours and
+     $30.
+4. **A treated inline image is written as its samples under the one filter
+   `/AHx`, a JPEG source included**, because binary data can hold the `EI`
+   that ends it and one filter is the form every reader of inline images
+   handles. An inline image is small (ISO 32000-1 advises under 4 KB), so the
+   size costs little.
+   - **(a) Keep it — recommended.** No cost.
+   - (b) Turn a large treated inline image into an XObject. About 3 hours and
+     $45.

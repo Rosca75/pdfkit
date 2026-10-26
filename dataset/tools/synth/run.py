@@ -2,7 +2,7 @@
 # Copyright 2026 The pdfkit authors
 #
 # Writes every synthesised pattern and registers the files. Each pattern module
-# under synth/patterns/, synth/channels/, synth/redaction/ and synth/metadata/ holds PATTERNS, a table from pattern name to a function
+# under synth/patterns/, synth/channels/, synth/redaction/, synth/metadata/ and synth/images/ holds PATTERNS, a table from pattern name to a function
 # returning specimens: the bytes, the tags the pattern stands for, the text the
 # page draws and the text pdfkit's decoding ladder will report (they differ only
 # where the file lies, as a wrong ToUnicode does). The expected text agreement
@@ -40,18 +40,22 @@ class Specimen:
     notes: str = ""
     overrides: dict = field(default_factory=dict)
     drop_tags: list[str] = field(default_factory=list)
+    # The licence of a specimen built from another dataset file's bytes; empty
+    # for the synthesiser's own (Apache-2.0).
+    licence: str = ""
 
 
 def pattern_table() -> dict:
-    """Every pattern of synth.patterns, synth.channels (the planted-marker patterns), synth.redaction
-    and synth.metadata."""
+    """Every pattern of synth.patterns, synth.channels (the planted-marker patterns), synth.redaction,
+    synth.metadata and synth.images."""
     import synth.channels
+    import synth.images
     import synth.metadata
     import synth.patterns
     import synth.redaction
 
     table = {}
-    for package in (synth.patterns, synth.channels, synth.redaction, synth.metadata):
+    for package in (synth.patterns, synth.channels, synth.redaction, synth.metadata, synth.images):
         for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda i: i.name):
             module = importlib.import_module(f"{package.__name__}.{info.name}")
             for name, fn in getattr(module, "PATTERNS", {}).items():
@@ -153,6 +157,8 @@ def main() -> int:
             notes = "; ".join(n for n in [specimen.notes, f"text: {text_note}" if text_note else ""] if n)
             per_file[path] = {"tags": specimen.tags, "drop_tags": specimen.drop_tags,
                               "overrides": overrides, "notes": notes, "source": f"synth:{name}"}
+            if specimen.licence:
+                per_file[path]["licence"] = specimen.licence
             summary.append({"file": path.name, "pdfium": probe.get("ok"), "f1": score,
                             "new": analysis[str(path)]["sha256"] not in known})
         if not args.dry_run:

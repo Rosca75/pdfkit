@@ -439,6 +439,16 @@ From `build-7.md` §9:
 - The dataset outcome gains `channels`, `write` and `select`; outputs go to `<run>/outputs/`, named relative to the run folder (`tests/dataset/outcome.md`).
 - The metadata stage runs before the channel strip, and the strip removes the whole `xmpMM` namespace of the catalog's packet afterwards: regenerate `xmpMM:DocumentID` and `xmpMM:InstanceID` after the strip (for instance as a step of the serialisation stage, once the output's hash is known), or narrow the strip to `xmpMM:History` in the same change. The Info dictionary is copied as it is until this stage rewrites it.
 
+From `build-9.md` §9:
+
+- `redact::EditPlan` holds `images()` (`redact::ImageTreatmentPlan`) beside `text()`; the image-treatment stage (`redact::ImageTreatmentApplier`) runs after the text surgery and before your metadata stage, and edits image objects, their masks and the content streams that draw removed or inline images through the object graph (items 2, 8, 9).
+- The write report gained an `images` key between `rectangles` and `self_check` (`docs/ABI.md` §4.7); `pdfkit_redact_images` is `docs/ABI.md` §4.15, after your §4.13 and §4.14 (items 7, 17).
+- `cli/verbs/redact.cpp`'s section refusal names the missing function; with rows 6 and 7 implemented it no longer fires (item 14).
+- The manifest's last expectation column is `expect_redact_images`, before `notes` (960 rows, synth-0263 to synth-0269 this phase's, their `expect_set_metadata` left `n/a` for your fill); the dataset outcome's last member is `redact_images`, after `set_metadata`; `tests/dataset/run.py`, `dataset/tools/common.py` and their tests know it. Phase 2's `expect_redact` is still unused (item 12).
+- The image-treatment specimens are rows synth-0263 to synth-0269, and `dataset/tools/synth/run.py` lets a specimen carry its own `licence` (item 13).
+- `tests/pdfium/leak.py` has `--images`; `compare.py --check redact` writes `pdfium-redact.json` (text) and `pdfium-redact-images.json` (images) (item 16).
+- The clang-sanitize preset compiles the vendored OpenJPEG with `-fno-sanitize=function` (item 15).
+
 From `build-8.md` §9:
 
 - The self-check already searches the Info dictionary's strings (`info`) and the XMP packet's text (`xmp`, entities read) for every redacted string, and refuses the output on a survivor; 85 manifest rows are `known_gap:metadata_holds_word` because the seeded job's words are also in their metadata. When `pdfkit_set_metadata` lands, either make the dataset job rewrite the fields that hold a redacted word and re-derive those rows to `clean`, or keep them as gaps (`OPEN-QUESTIONS.md` §2.11 item 5); `tests/dataset/outcome.md` describes the job (items 8, 10).

@@ -94,7 +94,7 @@ int run_redact(std::span<char* const> args) {
       return print_usage_error(
           "redact",
           "the job file has an \"" + std::string(section.key) +
-              "\" section, and this build does not apply image treatments or metadata yet",
+              "\" section, and this build lacks " + std::string(section.symbol),
           job_shape,
           "remove the section from the job or use a build that does (pdfkit --version lists "
           "what this build implements)");

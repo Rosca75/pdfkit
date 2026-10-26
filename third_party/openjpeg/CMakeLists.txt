@@ -52,6 +52,15 @@ target_include_directories(openjpeg SYSTEM PUBLIC "${OPJ_SOURCE}" "${OPJ_CONFIG_
 target_compile_definitions(openjpeg PUBLIC OPJ_STATIC)
 pdfkit_third_party_target(openjpeg openjpeg)
 pdfkit_sanitize(openjpeg)
+# OpenJPEG's codec table (openjpeg.c) calls opj_jp2_destroy, opj_j2k_end_decompress and their kin
+# through function pointers whose parameters are void * where the functions take their own codec
+# types, which clang's function-type check (-fsanitize=function, part of the undefined set)
+# reports on every JPEG 2000 image decoded. The calls are the library's design and the vendored
+# sources are never edited, so that one check is off for this C target under the address and
+# undefined set; every other check stays on, and pdfkit's own code keeps the function check.
+if(PDFKIT_SANITIZE STREQUAL "address-undefined")
+  target_compile_options(openjpeg PRIVATE -fno-sanitize=function)
+endif()
 # The objects are linked into the DLL, so they are compiled for its section
 # garbage collection too.
 target_compile_options(openjpeg PRIVATE

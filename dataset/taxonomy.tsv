@@ -81,8 +81,10 @@ smask	images	3	an image with a soft mask /SMask	autotag
 stencil	images	3	an /ImageMask stencil image	autotag
 colour_key	images	3	an image with a /Mask array (colour-key masking)	autotag
 inline_image	images	3	an inline image (BI ID EI)	autotag
-shared_image	images	3	one image XObject drawn on more than one page	synth
-image_in_form	images	3	an image drawn from inside a form XObject	synth
+shared_image	images	5	one image XObject drawn on more than one page	synth
+image_in_form	images	5	an image drawn from inside a form XObject	synth
+treat_region	images	1	a file whose images the image treatment job also boxes over a region found in the pixels, in page space over a draw	synth
+treat_caption	images	1	a file whose image treatment job draws the caption REDACTED in a box at the bitmap font's smallest height or larger	synth
 bpc_1	images	3	an image with one bit per component	autotag
 bpc_16	images	3	an image with sixteen bits per component	autotag
 ch_thumbnail	channels	3	a page /Thumb thumbnail image	autotag

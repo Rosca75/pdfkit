@@ -152,7 +152,7 @@ TEST_CASE("pdfkit_write returns the bytes and the report, or an error with out_p
   }
   CHECK(keys ==
         "page_count pages bytes sha256 objects channels pending_redactions missing_references "
-        "unpruned_resources rectangles self_check warnings ");
+        "unpruned_resources rectangles images self_check warnings ");
   CHECK(report.find("page_count")->as_int64() == 2);
   CHECK(report.find("pages")->as_array().size() == 2);
   CHECK(report.find("pages")->as_array()[0].as_int64() == 2);

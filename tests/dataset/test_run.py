@@ -96,7 +96,8 @@ class SummaryTest(unittest.TestCase):
         rows = [{"id": "x", "set": "synth", "sha256": "h", "expect_open": "opens", "expect_text": "n/a",
                  "expect_images": "n/a", "expect_redact": "n/a", "expect_metadata": "n/a",
                  "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a",
-                 "expect_redact_text": "n/a", "expect_set_metadata": "n/a"}]
+                 "expect_redact_text": "n/a", "expect_set_metadata": "n/a",
+                 "expect_redact_images": "n/a"}]
         written = {"x": {"id": "x", "result": "written", "bytes": json.dumps(body).encode(), "seconds": 0.1}}
         return rows, written
 
@@ -132,7 +133,7 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
         self.assertEqual(run.COLUMNS["expect_fonts"], "text")
         self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select",
-                                           "redact_text", "set_metadata"})
+                                           "redact_text", "set_metadata", "redact_images"})
 
 
 class TimeoutTest(unittest.TestCase):
@@ -175,6 +176,34 @@ class MetadataTest(unittest.TestCase):
         self.assertEqual(run.check("expect_set_metadata", "clean", outcome)[0], "fail")
         self.assertEqual(run.check("expect_set_metadata", "known_gap:title_in_string", outcome)[0],
                          "pass")
+
+
+class RedactImagesTest(unittest.TestCase):
+    def part(self, survivors=(), repairs=(), pages=3, treatments=1):
+        return {"status": "ok", "code": None, "pages": pages, "survivors": list(survivors),
+                "treatments": [{"identity": "img:0", "kind": "box"}] * treatments,
+                "reopen": {"status": "ok", "code": None, "pages": pages, "repairs": list(repairs)}}
+
+    def judge(self, part, expected="clean"):
+        return run.check("expect_redact_images", expected, {"open": {"status": "ok", "pages": 3},
+                                                            "redact_images": part})
+
+    def test_a_clean_treatment_passes(self):
+        self.assertEqual(self.judge(self.part())[0], "pass")
+
+    def test_a_surviving_identity_fails(self):
+        result, reason = self.judge(self.part(survivors=["img:0123"]))
+        self.assertEqual(result, "fail")
+        self.assertIn("img:0123", reason)
+
+    def test_no_treatment_and_a_bad_output_fail(self):
+        self.assertEqual(self.judge(self.part(treatments=0))[0], "fail")
+        self.assertEqual(self.judge(self.part(repairs=["x"]))[0], "fail")
+        self.assertEqual(self.judge({"status": "error", "code": "PDFKIT_E_INTERNAL"})[0], "fail")
+
+    def test_n_a_and_known_gap(self):
+        self.assertEqual(self.judge(self.part(), "n/a")[0], "skipped")
+        self.assertEqual(self.judge({"status": "error", "code": "x"}, "known_gap:y")[0], "pass")
 
 
 class RedactTextTest(unittest.TestCase):

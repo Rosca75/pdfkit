@@ -15,6 +15,7 @@
 #ifndef PDFKIT_REDACT_EDIT_PLAN_HPP
 #define PDFKIT_REDACT_EDIT_PLAN_HPP
 
+#include "redact/image_treatment_plan.hpp"
 #include "redact/text_plan.hpp"
 #include "syntax/document.hpp"
 #include "writer/metadata_writer.hpp"
@@ -48,6 +49,11 @@ class EditPlan {
   [[nodiscard]] TextPlan& text() noexcept { return text_; }
   [[nodiscard]] const TextPlan& text() const noexcept { return text_; }
 
+  // The image treatments per identity, which pdfkit_redact_images fills
+  // (redact::ImageTreatmentPlan) and the image-treatment stage applies.
+  [[nodiscard]] ImageTreatmentPlan& images() noexcept { return images_; }
+  [[nodiscard]] const ImageTreatmentPlan& images() const noexcept { return images_; }
+
   // The document fingerprint a glyph range names: the SHA-256 of the input
   // bytes in lower-case hexadecimal, computed on first use.
   [[nodiscard]] const std::string& fingerprint();
@@ -71,6 +77,7 @@ class EditPlan {
   syntax::Document* document_;
   std::optional<std::vector<std::uint32_t>> pages_;
   TextPlan text_;
+  ImageTreatmentPlan images_;
   std::string fingerprint_;
   writer::MetadataWriter::Values metadata_;
   std::vector<std::string> metadata_originals_;

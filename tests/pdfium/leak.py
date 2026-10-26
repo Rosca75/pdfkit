@@ -28,6 +28,16 @@
 # other text, which the two searches above judge.
 # A counted hit is a leak, and one stops the line. The report goes to
 # <run>/pdfium-leak.json.
+# With --images it checks an image treatment run instead: for every outcome
+# whose redact_images output was written, the encoded bytes of every treated
+# and every removed image are taken from the input by PDFium (each image
+# object's FPDFImageObj_GetImageDataRaw, aligned with the treatment by the
+# SHA-256 pdfkit_redact_images reported) and searched for in the output's raw
+# bytes and in every stream of it decoded by autotag.py's scanner. A hit is an
+# original that survived, which stops the line; an image PDFium does not
+# reach on the input's pages (one inside a pattern) is counted as not
+# searched, as is encoded data under 32 bytes, which can occur by chance. The
+# report goes to <run>/pdfium-leak-images.json.
 """Search a redaction run's outputs for the redacted strings: python tests/pdfium/leak.py --run <id>."""
 
 from __future__ import annotations
@@ -46,6 +56,7 @@ sys.path.insert(0, str(HERE.parents[1] / "dataset" / "tools"))
 
 import autotag  # noqa: E402
 import common  # noqa: E402
+import images  # noqa: E402
 import pdfium  # noqa: E402
 
 PLACEHOLDER = "[REDACTED]"
@@ -148,6 +159,78 @@ def byte_hits(path: Path, strings: list[str], codes: list[str]) -> list[dict]:
     return hits
 
 
+# Encoded data shorter than this is not searched for: a few bytes recur by
+# chance in any file.
+SHORTEST_IMAGE_DATA = 32
+
+
+def image_leaks(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
+    """The original encoded bytes of every treated or removed image found in the output."""
+    # A treatment that wrote exactly an original's bytes (a blur of an image
+    # whose blocks were already constant) hid nothing: those bytes are the
+    # treated image, not a survivor.
+    produced = {d for entry in part.get("images") or [] for d in entry.get("sha256") or []}
+    wanted = {t["encoded"]["sha256"]: t["identity"] for t in part.get("treatments") or []
+              if t.get("encoded") and t["encoded"]["sha256"] not in produced}
+    work = run_dir / "pdfium-leak-images" / row["id"]
+    answer = images_pool.ask({"path": str(common.file_path(row)), "raw": sorted(wanted), "out": str(work)})
+    entry = {"input_opens": bool(answer.get("ok")), "searched": 0, "short": 0, "not_reached": [],
+             "hits": []}
+    if not answer.get("ok"):
+        return entry
+    needles = {}
+    for digest, identity in wanted.items():
+        record = answer["images"].get(digest)
+        if record is None or not record.get("raw"):
+            entry["not_reached"].append(identity)
+            continue
+        blob = Path(record["raw"]).read_bytes()
+        if len(blob) < SHORTEST_IMAGE_DATA:
+            entry["short"] += 1
+            continue
+        needles[identity] = blob
+    if not needles:
+        return entry
+    data = (run_dir / part["output"]).read_bytes()
+    scan = autotag.Scan(data)
+    blobs = [(0, data)] + [(obj.num, scan.decoded(obj) or b"") for obj in scan.objects if obj.data is not None]
+    for identity, blob in sorted(needles.items()):
+        entry["searched"] += 1
+        where = [num for num, haystack in blobs if blob in haystack]
+        if where:
+            entry["hits"].append({"identity": identity, "bytes": len(blob), "objects": where[:5]})
+    return entry
+
+
+def images_main(args, rows: list[dict], run_dir: Path) -> int:
+    jobs = []
+    for row in rows:
+        path = run_dir / "outcomes" / f"{row['id']}.json"
+        if not path.exists():
+            continue
+        part = json.loads(path.read_text(encoding="utf-8")).get("redact_images") or {}
+        if part.get("status") == "ok" and part.get("output"):
+            jobs.append((row, part))
+    results = {}
+    with images.pool(args.workers) as images_pool, \
+            concurrent.futures.ThreadPoolExecutor(args.workers) as threads:
+        futures = {row["id"]: threads.submit(image_leaks, images_pool, row, run_dir, part) for row, part in jobs}
+        for row_id, future in futures.items():
+            results[row_id] = future.result()
+    leaking = {k: v["hits"] for k, v in results.items() if v["hits"]}
+    summary = {"files": len(results), "searched": sum(v["searched"] for v in results.values()),
+               "leaking_files": len(leaking), "hits": sum(len(v) for v in leaking.values()),
+               "short": sum(v["short"] for v in results.values()),
+               "not_reached": sum(len(v["not_reached"]) for v in results.values()),
+               "unopened": sorted(k for k, v in results.items() if not v["input_opens"])}
+    (run_dir / "pdfium-leak-images.json").write_text(
+        json.dumps({"summary": summary, "files": dict(sorted(results.items()))}, indent=1), encoding="utf-8")
+    print(json.dumps(summary | {"leaking": sorted(leaking)[:50]}, indent=1))
+    if not results:
+        print("SKIPPED image leak check: no outcome of this run carries a redact_images output", file=sys.stderr)
+    return 1 if leaking else 0
+
+
 def check_file(pool, row: dict, run_dir: Path, part: dict) -> dict:
     output = run_dir / part["output"]
     strings = [s for s in part.get("strings", []) if s]
@@ -210,6 +293,8 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--metadata", action="store_true",
                         help="also search every metadata rewrite's output for the original values")
+    parser.add_argument("--images", action="store_true",
+                        help="search the image treatment outputs for the treated and removed images' bytes")
     args = parser.parse_args()
     try:
         if not pdfium.default_dll().exists():
@@ -221,6 +306,8 @@ def main() -> int:
     rows = common.read_manifest()
     if args.id:
         rows = [r for r in rows if r["id"] in args.id]
+    if args.images:
+        return images_main(args, rows, run_dir)
     jobs = []
     for row in rows:
         path = run_dir / "outcomes" / f"{row['id']}.json"

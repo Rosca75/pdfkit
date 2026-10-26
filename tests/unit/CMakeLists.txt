@@ -51,7 +51,12 @@ add_executable(pdfkit_tests
   redact/placeholder_fitting_test.cpp
   redact/placeholder_font_test.cpp
   redact/redact_text_test.cpp
+  redact/api_redact_images_test.cpp
+  redact/image_remover_test.cpp
+  redact/image_treatment_applier_test.cpp
+  redact/jpx_treatment_test.cpp
   redact/self_check_test.cpp
+  redact/support/image_redaction.cpp
   redact/support/redaction.cpp
   redact/text_surgery_test.cpp
   support/content_builder.cpp
@@ -59,6 +64,12 @@ add_executable(pdfkit_tests
   support/pdf_builder.cpp
   support/pdf_builder_channels.cpp
   support/pdf_encryptor.cpp
+  treatments/box_painter_test.cpp
+  treatments/caption_drawer_test.cpp
+  treatments/mosaic_blur_test.cpp
+  treatments/reencoder_test.cpp
+  treatments/region_mapper_test.cpp
+  treatments/soft_mask_treatment_test.cpp
   syntax/content_lexer_test.cpp
   syntax/cross_reference_test.cpp
   syntax/document_test.cpp

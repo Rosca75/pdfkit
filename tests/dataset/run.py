@@ -39,7 +39,7 @@ PAGES_PER_TIMEOUT = 200
 COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "images",
            "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
            "expect_select": "select", "expect_fonts": "text", "expect_redact_text": "redact_text",
-           "expect_set_metadata": "set_metadata"}
+           "expect_set_metadata": "set_metadata", "expect_redact_images": "redact_images"}
 # The names --checks accepts are the outcome keys the columns read, each once.
 CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
 
@@ -124,8 +124,8 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
         return "fail", "not run because open did not succeed"
     # A text redaction the manifest names a known gap (its self-check refuses a
     # surface the job does not redact, such as metadata) passes apart.
-    if column in ("expect_redact_text", "expect_set_metadata", "expect_metadata") \
-            and expected.startswith("known_gap:"):
+    if column in ("expect_redact_text", "expect_set_metadata", "expect_metadata",
+                  "expect_redact_images") and expected.startswith("known_gap:"):
         return "pass", "known_gap"
     if status != "ok":
         return "fail", f"{status} {part.get('code')} {part.get('message', '')}"[:160]
@@ -159,6 +159,14 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
             return "fail", "fields not written as asked: " + ", ".join(part["mismatches"])
         pages = (outcome.get("open") or {}).get("pages")
         return judge_output(part, pages, pages, expected)
+    if column == "expect_redact_images":
+        # An image the output still lists under a removed or treated identity
+        # kept its original bytes: the survival the gate stops the line on.
+        if part.get("survivors"):
+            return "fail", "identities survived the treatment: " + ", ".join(part["survivors"])[:120]
+        if not part.get("treatments"):
+            return "fail", "the job found no image to treat"
+        return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
     return "pass", ""
 
 
