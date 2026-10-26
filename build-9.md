@@ -384,7 +384,13 @@ no-op form.
     --preset clang-sanitize`, and the clang-sanitize `pdfkit dataset` verb on
     every manifest file, four at a time with no time limit: no
     AddressSanitizer or UndefinedBehaviorSanitizer report, OpenJPEG's
-    function-type reports gone (item 15).
+    function-type reports gone (item 15); 960 files, 911 treatment jobs
+    written, 49 inputs refused at open. One file of that run, pdfpig-0005
+    (45 pages, JPEG 2000 and Indexed images), took about 1.6 hours under the
+    sanitizers in the debug build while other sessions loaded the laptop, and
+    finished with its outcome written: not a hang, the release build reads
+    it in 17 s (the image treatment's share 2.5 s, most of it OpenJPEG,
+    which is slowest of all under AddressSanitizer).
 
 ### Deviations of earlier phases that affect this one
 
