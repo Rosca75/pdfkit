@@ -60,6 +60,8 @@ struct Image {
   bool captioned = false;
   // The encoding as pdfkit_images writes it, a JSON string.
   std::string encoding = "null";
+  // The pages it is reached on only inside a pattern, as written.
+  std::vector<std::string> pattern_pages;
 };
 
 double number(const JsonText::Node* node) {
@@ -98,6 +100,11 @@ std::vector<Image> images_of(const std::string& listed) {
     const JsonText::Node* bits = json->member(entry, "bits_per_component");
     image.bitonal =
         (mask != nullptr && mask->text == "true") || (bits != nullptr && bits->raw == "1");
+    if (const JsonText::Node* patterns = json->member(entry, "pattern_pages")) {
+      for (const std::size_t at : patterns->items) {
+        image.pattern_pages.emplace_back(json->node(at).raw);
+      }
+    }
     if (const JsonText::Node* encoding = json->member(entry, "encoding")) {
       image.encoding = std::string(encoding->raw);
     }
@@ -130,8 +137,9 @@ std::string quoted_list(const std::vector<std::string>& values) {
   return out + "]";
 }
 
-// The identities pdfkit_images lists for pdf.
-std::set<std::string> listed_identities(const std::string& pdf) {
+// The identities pdfkit_images lists for pdf on pages (all when empty).
+std::set<std::string> listed_identities(const std::string& pdf,
+                                        const std::set<std::string>& pages) {
   std::set<std::string> out;
   pdfkit_buffer buffer{nullptr, 0, nullptr};
   pdfkit_document* document = nullptr;
@@ -141,7 +149,15 @@ std::set<std::string> listed_identities(const std::string& pdf) {
   if (opened.status != PDFKIT_OK) {
     return out;
   }
-  const Call listed = take(pdfkit_images(document, nullptr, &buffer), buffer);
+  std::string options = R"({"pages": [)";
+  bool first = true;
+  for (const std::string& page : pages) {
+    options += (first ? "" : ", ") + page;
+    first = false;
+  }
+  options += "]}";
+  const Call listed =
+      take(pdfkit_images(document, pages.empty() ? nullptr : options.c_str(), &buffer), buffer);
   pdfkit_close(document);
   for (const Image& image : images_of(listed.text)) {
     out.insert(image.identity);
@@ -393,7 +409,16 @@ std::string dataset_redact_images(pdfkit_document* document, std::string_view id
   }
   std::vector<std::string> survivors;
   std::vector<std::string> unchanged;
-  const std::set<std::string> left = listed_identities(pdf);
+  // The pages that drew an image (or reach one in a pattern): the job
+  // selects no page, so an output page is its source page.
+  std::set<std::string> drawn;
+  for (const Image& image : images) {
+    for (const auto& [page, box] : image.draws) {
+      drawn.insert(page);
+    }
+    drawn.insert(image.pattern_pages.begin(), image.pattern_pages.end());
+  }
+  const std::set<std::string> left = listed_identities(pdf, drawn);
   for (const Image& image : images) {
     if (!left.contains(image.identity)) {
       continue;

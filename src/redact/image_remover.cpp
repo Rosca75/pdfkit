@@ -311,7 +311,9 @@ ImageRemover::Result ImageRemover::apply(writer::ObjectGraph& graph,
                                          const Request& request) {
   Walker walker(graph, request);
   for (std::size_t i = 0; i < page_objects.size(); ++i) {
-    walker.page(page_objects[i], i);
+    if (!request.pages || request.pages->contains(i)) {
+      walker.page(page_objects[i], i);
+    }
   }
   walker.finish();
   return walker.result();

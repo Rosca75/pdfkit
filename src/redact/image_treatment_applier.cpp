@@ -8,10 +8,9 @@
 // graph holds it, because one picture stored twice is one identity with two
 // objects and both must change. A treated inline image is written with the
 // one filter /AHx over its samples as they are (an inline image is small,
-// and a filter array is not read by every reader: PDFium decodes no bitmap
-// from an inline [/AHx /Fl] image, measured on the dataset), so its data is
-// hexadecimal and can never hold the bytes "EI" that end it (ISO 32000-1
-// section 8.9.7, recalled). An inline image that does not decode at write time loses its
+// and one filter is the form every reader of inline images handles), so its
+// data is hexadecimal and can never hold the bytes "EI" that end it (ISO
+// 32000-1 section 8.9.7, recalled). An inline image that does not decode at write time loses its
 // draw rather than keep its original data.
 
 #include "redact/image_treatment_applier.hpp"
@@ -154,6 +153,23 @@ class Stage {
       inline_cache_.emplace(identity, replaced);
       return replaced;
     };
+    // Only the pages that draw a removed or an inline image (or reach one
+    // inside a pattern) are walked; the emptied objects below cover a draw
+    // elsewhere, and a page that draws neither has nothing to edit.
+    std::set<std::uint32_t> drawing;
+    for (const auto& [identity, treatment] : treatments) {
+      if (treatment.kind == ImageTreatmentPlan::Kind::remove || treatment.inline_image) {
+        for (const auto& [page, boxes] : treatment.rectangles) {
+          drawing.insert(page);
+        }
+      }
+    }
+    request.pages.emplace();
+    for (std::size_t i = 0; i < report_.pages.size(); ++i) {
+      if (drawing.contains(report_.pages[i])) {
+        request.pages->insert(i);
+      }
+    }
     const std::vector<std::uint32_t> pages = page_objects();
     const ImageRemover::Result walked = ImageRemover::apply(graph_, pages, request);
     for (const auto& [identity, count] : walked.removed) {

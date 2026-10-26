@@ -472,10 +472,10 @@ and each taken while this question stands; `build-9.md` §9 records them and
    - (b) Also accept component values in the image's space. About 2 hours and
      $30.
 4. **A treated inline image is written as its samples under the one filter
-   `/AHx`, a JPEG source included**, because PDFium decodes no bitmap from an
-   inline `[/AHx /Fl]` image and binary data can hold the `EI` that ends it.
-   An inline image is small (ISO 32000-1 advises under 4 KB), so the size
-   costs little.
+   `/AHx`, a JPEG source included**, because binary data can hold the `EI`
+   that ends it and one filter is the form every reader of inline images
+   handles. An inline image is small (ISO 32000-1 advises under 4 KB), so the
+   size costs little.
    - **(a) Keep it — recommended.** No cost.
    - (b) Turn a large treated inline image into an XObject. About 3 hours and
      $45.

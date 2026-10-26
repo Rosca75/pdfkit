@@ -54,6 +54,8 @@ class ImageRemover {
     // The inline identities a treatment rewrites, and how.
     std::set<std::string> inline_treated;
     InlineEdit edit;
+    // The output pages to walk, by index from 0; every page when absent.
+    std::optional<std::set<std::size_t>> pages;
   };
 
   struct Result {

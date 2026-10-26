@@ -855,8 +855,8 @@ because the samples stay in the file.
   implied is written out. A treated inline image is written back in its
   content stream with its abbreviated keys and the one filter `/AHx` over its
   samples as they are (a JPEG source included), whose hexadecimal data cannot
-  hold the `EI` that ends it; a filter array is not read by every reader
-  (PDFium decodes no bitmap from an inline `[/AHx /Fl]` image).
+  hold the `EI` that ends it, and one filter is the form every reader of
+  inline images handles.
 - A treatment that writes exactly an image's original bytes (a blur of an
   image whose blocks were already constant) hides nothing and is not a
   survivor.
