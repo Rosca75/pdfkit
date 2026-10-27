@@ -3,11 +3,14 @@
 # Copyright 2026 The pdfkit authors
 #
 # The pre-push gate. Until CI runners start for this repository, this hook is
-# the gate every push passes (CLAUDE.md section 10): the fast checks, then a
-# debug build and the unit tier. Installed by python build/install_hooks.py.
+# the gate every push passes (CLAUDE.md section 10): the fast checks (clang-tidy
+# over the sources that reach a file changed since origin/main, from the
+# mingw-debug compile database, configured first so a new source is in it),
+# then a debug build and the unit tier. Installed by python
+# build/install_hooks.py.
 set -e
 cd "$(git rev-parse --show-toplevel)"
-python build/check.py --fast
 cmake --preset mingw-debug > /dev/null
+python build/check.py --fast
 cmake --build --preset mingw-debug
 ctest --preset unit

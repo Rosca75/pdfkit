@@ -252,5 +252,35 @@ class ArtefactTest(CheckTest):
                           args=(str(folder),))
 
 
+class TidySelectionTest(unittest.TestCase):
+    """The sources a routine tidy run analyses: those reaching a changed file through #include."""
+
+    def test_a_header_change_selects_the_sources_that_reach_it(self) -> None:
+        sys.path.insert(0, str(REPO / "build"))
+        import check_format  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name, text in {
+                    "src/a/a.cpp": '#include "a/a.hpp"\n#include <vector>\n',
+                    "src/a/a.hpp": '#pragma once\n#include "b/b.hpp"\n',
+                    "src/b/b.hpp": "#pragma once\n",
+                    "src/b/b.cpp": '#include "b.hpp"\n',
+                    "src/c/c.cpp": "#include <string>\n"}.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
+            graph = check_format.IncludeGraph(root)
+            folders = graph.folders(f"g++ -I{root / 'src'} -isystem C:/elsewhere/include -c x.cpp")
+            self.assertEqual(folders, ((root / "src").resolve(),))
+            reach = {name: graph.closure(root / name, folders)
+                     for name in ("src/a/a.cpp", "src/b/b.cpp", "src/c/c.cpp")}
+            self.assertEqual(reach["src/a/a.cpp"], {"src/a/a.cpp", "src/a/a.hpp", "src/b/b.hpp"})
+            self.assertEqual(reach["src/b/b.cpp"], {"src/b/b.cpp", "src/b/b.hpp"})
+            self.assertEqual(reach["src/c/c.cpp"], {"src/c/c.cpp"})
+            changed = {"src/b/b.hpp"}
+            self.assertEqual(sorted(n for n, files in reach.items() if files & changed),
+                             ["src/a/a.cpp", "src/b/b.cpp"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
