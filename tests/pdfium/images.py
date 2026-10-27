@@ -21,8 +21,11 @@
 # treated and removed identity by the SHA-256 pdfkit_redact_images reported;
 # an output image object whose data hashes to one of them is an original left
 # in the output. The PDFium side runs in worker processes (this file run with
-# --serve), because PDFium can hang or crash on a hostile file. The report
-# goes to <run>/pdfium-images.json.
+# --serve), because PDFium can hang or crash on a hostile file; a worker judges
+# each bitmap in memory where it decodes it, in parallel with the others, and
+# writes a bitmap under <run>/pdfium-images/<id>/ only as the evidence of a
+# survival or of a format it cannot judge. The report goes to
+# <run>/pdfium-images.json.
 """Check a run's treated images with PDFium: python tests/pdfium/images.py --run <id>."""
 
 from __future__ import annotations
@@ -55,6 +58,10 @@ JPEG_BLOCK = 8
 # conversion off the grey axis (up to 21 levels measured on the dataset's
 # CMYK JPEGs, a white caption read as 239, 234, 246).
 CAPTION_JPEG_TOLERANCE = 32
+# A worker that judges every treated bitmap of a file answers within this
+# many seconds; judging the largest images of the dataset in Python takes a
+# few seconds each, so this is PDFium's own limit with that time added.
+JUDGE_TIMEOUT = 600.0
 
 # ---------------------------------------------------------------------------
 # The worker side
@@ -74,11 +81,16 @@ def bind_extra(library: pdfium.Library) -> None:
 
 def handle(library: pdfium.Library, request: dict) -> dict:
     """Every image object's digest and page; for the digests in `bitmaps` the
-    decoded bitmap, for those in `raw` the encoded bytes, written into `out`."""
+    decoded bitmap, for those in `raw` the encoded bytes, written into `out`.
+    A digest in `judge` (its identity, treatment and region) has its bitmap
+    judged here, in memory, by judge_image: the record carries the verdict, and
+    the bitmap is written into `out` only as the evidence of a survival or of
+    a format the judge cannot read."""
     lib = library.lib
     data = Path(request["path"]).read_bytes()
     bitmaps = set(request.get("bitmaps", []))
     raw_wanted = set(request.get("raw", []))
+    judge = request.get("judge") or {}
     out = Path(request["out"])
     try:
         doc = library.open(data)
@@ -129,9 +141,16 @@ def handle(library: pdfium.Library, request: dict) -> dict:
                         stride = lib.FPDFBitmap_GetStride(bitmap)
                         fmt = lib.FPDFBitmap_GetFormat(bitmap)
                         pixels = ctypes.string_at(lib.FPDFBitmap_GetBuffer(bitmap), stride * height)
-                        out.mkdir(parents=True, exist_ok=True)
+                        header = f"{width} {height} {stride} {fmt}\n".encode("ascii")
                         target = out / f"{digest[:16]}.bmp"
-                        target.write_bytes(f"{width} {height} {stride} {fmt}\n".encode("ascii") + pixels)
+                        if digest in judge:
+                            verdict = judge_image(Bitmap(header + pixels), digest, **judge[digest])
+                            record["judged"] = verdict
+                            record["bitmap"] = "judged"
+                            if not (verdict["survivals"] or verdict["unmatched"]):
+                                continue
+                        out.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(header + pixels)
                         record["bitmap"] = str(target)
                     finally:
                         lib.FPDFBitmap_Destroy(bitmap)
@@ -147,6 +166,7 @@ def serve(dll: Path) -> None:
         if not line.strip():
             continue
         try:
+            library.reset()
             response = handle(library, json.loads(line))
         except Exception as err:  # a worker answers every request, whatever fails
             response = {"ok": False, "error": "worker", "detail": repr(err)}
@@ -158,20 +178,21 @@ class ImageWorker(pdfium.Worker):
     script = Path(__file__).resolve()
 
 
-def pool(workers: int) -> pdfium.Pool:
-    return pdfium.Pool(workers, worker_class=ImageWorker, timeout=120.0)
+def pool(workers: int, timeout: float = 120.0) -> pdfium.Pool:
+    return pdfium.Pool(workers, worker_class=ImageWorker, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
-# The caller side
+# The judge, run inside the worker on the bitmap in memory
 
 
 class Bitmap:
-    """A worker's bitmap file: rows of `channels` bytes per pixel, `used` of
-    them colour (grey, or blue, green and red)."""
+    """A bitmap as a header line (width, height, stride, format) and its rows:
+    `channels` bytes per pixel, `used` of them colour (grey, or blue, green and
+    red). Built from those bytes, or read from a worker's bitmap file."""
 
-    def __init__(self, path: str):
-        blob = Path(path).read_bytes()
+    def __init__(self, source):
+        blob = source if isinstance(source, bytes) else Path(source).read_bytes()
         header, _, self.data = blob.partition(b"\n")
         self.width, self.height, self.stride, fmt = (int(v) for v in header.split())
         self.channels = {1: 1, 2: 3, 3: 4, 4: 4}.get(fmt, 0)
@@ -292,7 +313,13 @@ def check_file(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
         for digest in entry.get("sha256") or []:
             new_digests[digest] = entry["identity"]
     originals = {t["encoded"]["sha256"]: t["identity"] for t in treatments if t.get("encoded")}
-    answer = images_pool.ask({"path": str(output), "bitmaps": sorted(new_digests), "out": str(work)})
+    by_identity = {t["identity"]: t for t in treatments}
+    # The worker judges each treated image's bitmap where it decodes it, so no
+    # bitmap crosses the pipe or lands on disk unless it is a survival's evidence.
+    judge = {digest: {"identity": identity, "treatment": by_identity[identity], "region": region}
+             for digest, identity in new_digests.items() if identity in by_identity}
+    answer = images_pool.ask({"path": str(output), "bitmaps": sorted(judge), "judge": judge,
+                              "out": str(work)})
     result = {"opens": bool(answer.get("ok")), "rectangles": 0, "survivals": [], "left": [],
               "unmatched": [], "size_differs": []}
     if not answer.get("ok"):
@@ -303,51 +330,60 @@ def check_file(images_pool, row: dict, run_dir: Path, part: dict) -> dict:
         # image whose blocks were already constant) left nothing it hid.
         if digest in seen and digest not in new_digests:
             result["left"].append({"identity": identity, "pages": seen[digest]["pages"][:10]})
-    by_identity = {t["identity"]: t for t in treatments}
     for digest, identity in sorted(new_digests.items()):
-        treatment = by_identity.get(identity)
-        if treatment is None:
+        if identity not in by_identity:
             continue
         record = seen.get(digest)
         if record is None or not record.get("bitmap"):
             result["unmatched"].append({"identity": identity, "digest": digest[:16],
                                         "drawn": record is not None})
             continue
-        bitmap = Bitmap(record["bitmap"])
-        if not bitmap.channels:
-            result["unmatched"].append({"identity": identity, "digest": digest[:16], "format": "unknown"})
-            continue
-        width, height = bitmap.width, bitmap.height
-        if [width, height] != [treatment.get("width"), treatment.get("height")]:
-            result["size_differs"].append({"identity": identity, "pdfium": [width, height],
-                                           "pdfkit": [treatment.get("width"), treatment.get("height")]})
-            continue
-        jpeg = treatment.get("encoding") == "DCTDecode"
-        checks = []
-        if treatment["kind"] == "blur":
-            checks += [("blur", rect) for rect in treatment.get("pixels") or []]
-        elif treatment["kind"] == "box":
-            checks += [("caption" if treatment.get("caption") else "box", rect)
-                       for rect in treatment.get("pixels") or []]
-        if region.get("identity") == identity and region.get("status") == "ok":
-            checks += [("box", rect) for rect in region.get("pixels") or []]
-        regions = [rect for kind, rect in checks if kind == "box" and treatment["kind"] == "blur"]
-        for kind, rect in checks:
-            result["rectangles"] += 1
-            if kind == "blur":
-                odd = judge_blur(bitmap, rect, int(treatment.get("block") or 8), jpeg, regions)
-            else:
-                odd = judge_box(bitmap, rect, jpeg, kind == "caption")
-            if odd is not None:
-                result["survivals"].append({"identity": identity, "kind": kind, "rect": rect, **odd})
+        verdict = record["judged"]
+        result["rectangles"] += verdict["rectangles"]
+        for key in ("survivals", "unmatched", "size_differs"):
+            result[key] += verdict[key]
     return result
+
+
+def judge_image(bitmap: Bitmap, digest: str, identity: str, treatment: dict, region: dict) -> dict:
+    """The verdict on one treated image's bitmap: the rectangles judged, the
+    survivals among them, and the bitmap left unjudged for an unknown format or
+    a size other than pdfkit's."""
+    verdict = {"rectangles": 0, "survivals": [], "unmatched": [], "size_differs": []}
+    if not bitmap.channels:
+        verdict["unmatched"].append({"identity": identity, "digest": digest[:16], "format": "unknown"})
+        return verdict
+    width, height = bitmap.width, bitmap.height
+    if [width, height] != [treatment.get("width"), treatment.get("height")]:
+        verdict["size_differs"].append({"identity": identity, "pdfium": [width, height],
+                                        "pdfkit": [treatment.get("width"), treatment.get("height")]})
+        return verdict
+    jpeg = treatment.get("encoding") == "DCTDecode"
+    checks = []
+    if treatment["kind"] == "blur":
+        checks += [("blur", rect) for rect in treatment.get("pixels") or []]
+    elif treatment["kind"] == "box":
+        checks += [("caption" if treatment.get("caption") else "box", rect)
+                   for rect in treatment.get("pixels") or []]
+    if region.get("identity") == identity and region.get("status") == "ok":
+        checks += [("box", rect) for rect in region.get("pixels") or []]
+    regions = [rect for kind, rect in checks if kind == "box" and treatment["kind"] == "blur"]
+    for kind, rect in checks:
+        verdict["rectangles"] += 1
+        if kind == "blur":
+            odd = judge_blur(bitmap, rect, int(treatment.get("block") or 8), jpeg, regions)
+        else:
+            odd = judge_box(bitmap, rect, jpeg, kind == "caption")
+        if odd is not None:
+            verdict["survivals"].append({"identity": identity, "kind": kind, "rect": rect, **odd})
+    return verdict
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", help="the dataset run id")
     parser.add_argument("--id", action="append", help="only these ids")
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     parser.add_argument("--serve", action="store_true", help="run as a worker on stdin/stdout")
     parser.add_argument("--dll", help="the pdfium.dll to load (default: the pinned cache)")
     args = parser.parse_args()
@@ -375,7 +411,8 @@ def main() -> int:
         if part.get("status") == "ok" and part.get("output"):
             jobs.append((row, part))
     results = {}
-    with pool(args.workers) as images_pool, concurrent.futures.ThreadPoolExecutor(args.workers) as threads:
+    with pool(args.workers, JUDGE_TIMEOUT) as images_pool, \
+            concurrent.futures.ThreadPoolExecutor(args.workers) as threads:
         futures = {row["id"]: threads.submit(check_file, images_pool, row, run_dir, part) for row, part in jobs}
         for row_id, future in futures.items():
             results[row_id] = future.result()

@@ -39,6 +39,12 @@ DEFAULT_TIMEOUT = 30.0
 META_TAGS = ("Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate")
 
 
+def default_workers() -> int:
+    """Half the logical processors, at least one: the comparisons leave the other half of the
+    machine to its owner. Every tool's --workers takes another count."""
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
 def default_dll() -> Path:
     # The sibling fetch tool knows the pinned location; it is loaded by path under
     # its own name because dataset/tools has a fetch module too.
@@ -105,6 +111,16 @@ class Library:
 
     def close(self) -> None:
         self.lib.FPDF_DestroyLibrary()
+
+    def reset(self) -> None:
+        """Destroys and initialises the library again, with no document open, so the next
+        answer depends on its own file only. PDFium keeps font state across documents: measured
+        on the dataset, pdfminer-0006's page (a CIDFont+F1 it does not embed) renders other
+        pixels after office-0001 (which embeds a font of that name) was rendered in the same
+        process, and the same pixels again after a reset. A reset takes well under a
+        millisecond."""
+        self.lib.FPDF_DestroyLibrary()
+        self.lib.FPDF_InitLibrary()
 
     def open(self, data: bytes, password: bytes | None = None) -> "Document":
         buf = ctypes.create_string_buffer(data, len(data))
@@ -290,6 +306,7 @@ def serve(dll: Path) -> None:
             continue
         try:
             request = json.loads(line)
+            library.reset()
             response = handle_request(library, request)
         except Exception as err:  # a worker answers every request, whatever fails
             response = {"ok": False, "error": "worker", "detail": repr(err)}

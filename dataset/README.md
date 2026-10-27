@@ -31,7 +31,12 @@ checkout, which is the parent of `git rev-parse --git-common-dir`. Under it:
 | `reports/<run-id>/` | the reports of each run; a run id is `YYYYMMDD-HHMMSS-<git short hash>` |
 
 PDFium, the independent reader, lands in `build/cache/pdfium/<tag>/` of the same
-main checkout. All of these folders are ignored by git.
+main checkout, and what it says of each input file (its text, Info fields, page
+count, the SHA-256 of each rendered page, its image objects and their encoded
+bytes, the image comparisons) is kept in `build/cache/pdfium-results/<release>/`,
+keyed by the file's SHA-256, so a gate run asks PDFium only about the outputs it
+wrote; deleting that folder costs one slower run. All of these folders are
+ignored by git.
 
 ## 3. The manifest
 
@@ -252,6 +257,7 @@ python dataset/tools/mutate.py --restore          # absent mutated files rewritt
 python tests/pdfium/fetch.py                      # PDFium into build/cache/pdfium/
 python tests/pdfium/compare.py --self-test        # the PDFium tier proves itself
 python tests/dataset/run.py                       # the dataset tier over the manifest (--checks, --runs 1|2)
+python tests/dataset/run.py --sanitizer --runs 1 --timeout-scale 5 --run-id <id>-asan   # the ASan build over every file
 python tests/pdfium/compare.py --run <run-id> --check write,select,text   # the writer against PDFium
 python tests/dataset/gates/phase7.py --run <run-id>   # the writer gate: markers, pixels, selection
 python tests/pdfium/compare.py --run <run-id>     # text agreement of a run with PDFium

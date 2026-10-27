@@ -571,3 +571,70 @@ want:
   `gen_word_pdfa` and `gen_edge` still need §2.2 answered.
 - (c) No release until every gate holds as written. No cost now; phase 5's
   gate cannot hold while 27 PDFium-caused files count against it.
+
+### 2.16 The compile cache is ccache, not sccache (raised by the build-speed chore)
+
+The owner preferred sccache (Apache-2.0) for the shared compile cache, with
+ccache (GPL-3) as the fallback if sccache could not work with this toolchain.
+Measured on the laptop with sccache v0.18.0 (pinned by SHA-256 from its GitHub
+release) and the ccache 4.13.6 that ships inside the pinned WinLibs toolchain:
+
+- sccache compiles and caches GCC and clang objects (one TU of
+  `src/syntax/`: a hit in 0.58 s, a miss 3.8 s slower than the compiler).
+- But every sccache setting (the cache folder, the base directories that let
+  two worktrees share an object) is read only by its server process, from the
+  environment the server was started with; the compile client ignores its own
+  (`SCCACHE_BASEDIRS` on the client: 0 hits across two trees; on the server:
+  1 hit). Ninja passes no per-rule environment, so a cache in the main
+  checkout shared by every worktree needs either a wrapper process per
+  compile (one more process launch, about 0.25 s idle and 1 s under load,
+  on every TU) or a server restarted with every worktree's path listed,
+  which breaks the builds of the worktrees already using it.
+- ccache takes its settings as `KEY=VALUE` arguments on its own command line,
+  so CMake's compiler launcher carries them with no wrapper and no server; a
+  hit costs one process (0.55 s), a cross-tree hit too (sccache's cross-tree
+  hit re-ran the preprocessor: 1.97 s), and it needs no download.
+
+So the build uses ccache (`build/compiler-cache.cmake`), as a developer tool
+that is never linked into or shipped with pdfkit, like GCC itself (GPL-3 with
+the runtime exception). `CLAUDE.md` §6's licence rule governs what the
+library and its artefacts carry; it says nothing of build tools. Do you want:
+
+- **(a) Keep ccache — recommended.** No cost; it is already part of the pinned
+  toolchain, and a build without it (`-DPDFKIT_COMPILER_CACHE=OFF`, or ccache
+  absent) compiles the same objects: the release DLL is byte-identical with
+  and without it.
+- (b) Switch to sccache with a per-compile environment wrapper: about 1 hour
+  and $15 to $25, a fetch tool pinned by hash, and roughly 7 to 50 s more per
+  clean build (one more process per TU), for a cache that sccache's own
+  documentation does not promise to share between server processes.
+- (c) No compile cache: no cost; every worktree rebuilds every preset from
+  scratch (the release preset alone 7 to 9 minutes).
+
+### 2.17 PDFium answers each request in a library just reset (raised by the build-speed chore)
+
+Caching PDFium's answers about the input files needs each answer to depend on
+its own file only. It did not: PDFium keeps font state from one document to
+the next in a process. Measured: pdfminer-0006 (a page drawn with a
+`CIDFont+F1` it does not embed) renders other pixels after office-0001, which
+embeds a font of that name, was rendered in the same process, and the
+original pixels again after `FPDF_DestroyLibrary` and `FPDF_InitLibrary`
+(well under a millisecond). The old tooling's long-lived workers therefore
+gave numbers that depended on the order the files reached each worker: the
+same build's identity-write check read 8,061 of 8,066 pages identical in
+`p10-final` and 8,060 in a second run of the same tooling (`bs-old`), the
+difference being pdfminer-0009.
+
+The tooling now resets the library before every request and renders every
+page alone (`tests/pdfium/pdfium.py`, `render.py`), so a gate number no longer
+depends on order. On run `bs-old`, old tooling against new, every table is
+equal except the two rows that read those order-dependent pages: phase 7's
+identity-write pages 8,060 → 8,062 of 8,066 (pdfminer-0006 and pdfminer-0009
+identical when rendered alone) and phase 8's stable pages 8,024 → 8,025 of
+8,061 (pdfminer-0006). Do you want:
+
+- **(a) Keep the reset — recommended.** No cost; the numbers are reproducible,
+  and the two moved rows moved because the old ones measured worker history.
+- (b) Return to long-lived worker state and no input render cache: about 1
+  hour and $15 to $25; the gate's pixel rows go back to varying by a page or
+  two between runs of one build.

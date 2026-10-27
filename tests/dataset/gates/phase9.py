@@ -48,10 +48,12 @@ def population(rows: list[dict]) -> list[dict]:
 def text_agreement(run_dir: Path, jobs: list[tuple[dict, dict]], workers: int) -> dict:
     """Per file, PDFium's word-bag F1 of the output's text against the input's."""
     import pdfium
+    import results_cache
     import words
 
     def one(pool, row, part):
-        before = pool.probe(common.file_path(row), ["text"])
+        # The input's text comes from the results cache; the output's is new each run.
+        before = results_cache.cached_probe(pool, common.file_path(row), ["text"])
         after = pool.probe(run_dir / part["output"], ["text"])
         if not before.get("ok"):
             return None

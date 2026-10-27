@@ -3,7 +3,7 @@
 This file owns the versions every build, check and release of pdfkit is made
 with, as the commands printed them on the owner's laptop (Windows 11 Enterprise
 10.0.26100, x64, no administrator rights) on 2026-10-24. A version moves only by
-a change to this file and a full run of `python build/check.py`, because a
+a change to this file and a full run of `python build/check.py --full`, because a
 compiler or formatter that changes under the code changes its warnings, its
 formatting and its output.
 
@@ -20,6 +20,7 @@ formatting and its output.
 | clang-format | `clang-format --version` | `clang-format version 23.1.3` |
 | clang-tidy | `clang-tidy --version` | `LLVM version 23.1.3` |
 | git | `git --version` | `git version 2.53.0.windows.1` |
+| ccache (in the WinLibs package) | `ccache --version` | `ccache version 4.13.6` |
 | curl (Git for Windows) | `curl --version` | `curl 8.18.0 (x86_64-w64-mingw32) libcurl/8.18.0 Schannel` |
 | NASM | `nasm -v` | not installed: libjpeg-turbo is built with its SIMD extensions off (`third_party/libjpeg-turbo/CMakeLists.txt` leaves `WITH_SIMD` unset), so DCT decoding runs its portable C code |
 
@@ -123,7 +124,9 @@ python -I -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.ar
 ```
 
 GCC stays the pinned compiler of every artefact; llvm-mingw builds the
-sanitizer run of the unit tier only.
+sanitizer run of the unit tier and the sanitizer dataset pass (§6.5), and its
+`ld.lld` links the debug presets (§6.3). Its release is named in
+`build/llvm-mingw-release.cmake`.
 
 ## 5. The proxy
 
@@ -144,3 +147,179 @@ each tool's behaviour, measured on 2026-10-24:
 So: Python's `urllib` and `pip`, and `git` over HTTPS and SSH, work as they are;
 `curl` needs `--ssl-no-revoke`. A tool that downloads uses Python's `urllib` or
 `git`, never `curl` without that flag.
+
+## 6. Build speed
+
+The laptop's endpoint agents (application control and Defender) make each
+process cost about 0.25 s to start and the first read of a file just written
+about 10 ms; ninja starts its jobs from one thread, one every 0.4 s under
+load. So a build is fast when it starts few processes and compiles each source
+once, whichever worktree it is in. Every setting below was measured on the
+laptop (wall time, eight logical processors, the machine otherwise idle unless
+stated); a setting that did not pay is listed with the number that rejected
+it, so it is not tried again blind.
+
+### 6.1 The compile cache
+
+| Field | Value |
+|---|---|
+| Tool | ccache 4.13.6, shipped in the pinned WinLibs `mingw64\bin` (`ccache --version`) |
+| Licence | GPL-3.0-or-later; a developer tool, never linked or shipped (`OPEN-QUESTIONS.md` §2.16) |
+| Wiring | `build/compiler-cache.cmake`: `CMAKE_<LANG>_COMPILER_LAUNCHER` is `ccache` with its settings as `KEY=VALUE` arguments, for every preset, GCC and clang alike |
+| Cache | `build/cache/ccache/` of the main checkout, 20 GB at most |
+| Switch | `-DPDFKIT_COMPILER_CACHE=OFF` (or ccache absent from `PATH`) builds without it; `ON` fails when it is absent; `AUTO`, the presets' value, uses it when found |
+| Statistics | `ccache -d <main checkout>/build/cache/ccache -s` |
+
+The settings and why: `base_dir` is the source tree, so a worktree's absolute
+paths are rewritten relative to the build folder and two worktrees hash the
+same command; `hash_dir=false` shares debug objects across worktrees too (their
+debug information names the build folder that compiled them first; file and
+line stay right); `depend_mode` reads the compiler's `-MD` output instead of
+running the preprocessor a second time. The release DLL and EXE are
+byte-identical with the cache on and off (`d7da763c...` for the DLL of
+`main`). `python build/package.py --verify` sets `CCACHE_DISABLE=1` for its
+rebuild, so the reproducibility it proves is the compiler's, not the cache's.
+
+sccache (Apache-2.0, v0.18.0) was tried first. It caches GCC and clang objects
+(a hit 0.58 s), but reads its settings, the cache folder and the base
+directories alike, only in its server process, from that process's
+environment: a client's `SCCACHE_BASEDIRS` gave 0 hits across two trees, the
+server's 1. Ninja passes no per-rule environment, so a cache shared by every
+worktree would need a wrapper process per compile or a server restarted under
+the builds already using it. A cross-tree hit cost 1.97 s under sccache (it
+preprocessed again) and 0.55 s under ccache.
+
+| Release preset, library, CLI and unit tests (414 steps) | Wall |
+|---|---|
+| no cache | 429 s (457 s at the session's start, other load) |
+| cold cache (every compile a miss) | 537 s: a miss costs about 2.2 s more than the compiler alone, hashing every header it read |
+| a second worktree, cache warm (405 of 405 compiles hits) | 215 s: one process per step, so ninja's start rate bounds it |
+
+### 6.2 The PDFium comparisons
+
+An input file never changes under its SHA-256 and PDFium never changes under
+its pinned release, so what PDFium says of an input is computed once and kept
+in `build/cache/pdfium-results/<release>/` of the main checkout
+(`tests/pdfium/results_cache.py`; about 210 MB for the 960 files): its text,
+Info fields and page count, the size and SHA-256 of each page rendered at
+100 dpi, its image objects and their encoded bytes, and the census's
+comparison of each image (keyed by PDFium's object and pdfkit's PNG). Only the
+outputs a run writes are asked of PDFium each time; an output page whose
+pixels hash equal to its cached input page is identical without rendering the
+input again. Every PDFium request runs in a library just reset
+(`pdfium.Library.reset`), because PDFium carries font state from one document
+to the next (`OPEN-QUESTIONS.md` §2.17); a cached answer is the file's own.
+The treated images are judged inside the PDFium workers, in memory, so no
+bitmap is written unless it is a survival's evidence (the old tooling wrote
+2.3 GB per run), and the leak check decodes outputs in processes. Every tool's
+`--workers` defaults to half the logical processors. Delete the folder to start
+again; the next run is the cold one.
+
+Run `bs-old` (960 files, release build of `main`), four workers, seconds:
+
+| Step | Old tooling | New, cold cache | New, warm cache |
+|---|---|---|---|
+| `text_agreement.py --hidden` | 26 (its own text cache warm) | 46 | 26 |
+| `image_agreement.py` (census) | 449 | 506 | 263 |
+| `image_agreement.py --listing` | 235 | 200 | 195 |
+| `compare.py --check write,select,text,redact` | 266 | 284 | 209 |
+| `images.py` | 90 | 48 | 27 |
+| `leak.py --metadata` | 56 | 37 | 30 |
+| `leak.py --images` | 70 | 46 | 26 |
+| `metadata.py` | 202 | 164 | 156 |
+| gates 7 to 10 | 23 | 16 | 11 |
+| total | 1,417 | 1,347 | 943 |
+
+What is left is pdfkit's own side: the census tool, `pdfkit images` and
+`pdfkit metadata` run once per file, a process each, and every output page is
+rendered. A whole gate run of a new build (`bs-final`: `tests/dataset/run.py`
+twice over the 960 files, 528 s, then the steps above, 870 s with the cache
+warm) takes 1,398 s; the same run with the old tooling took 2,089 s (`bs-old`:
+672 s and 1,417 s). The tables of the cold and the two warm runs are identical; against
+the old tooling every table is identical but the two rows that read
+order-dependent pages (§2.17).
+
+### 6.3 Compile and link settings
+
+Measured with the compile cache off, clean builds of 414 steps unless stated:
+
+| Setting | Where | Measured | Kept |
+|---|---|---|---|
+| line tables only (`-g1`, `CMAKE_<LANG>_FLAGS_DEBUG`) | mingw-debug | clean 405 s → 376 to 381 s; `libpdfkit_core.a` 273 → 164 MB, `pdfkit_tests.exe` 255 → 86 MB, `pdfkit.dll` 155 → 54 MB; gdb gives file and line on every frame, not the arguments and locals | yes |
+| lld (`PDFKIT_LINKER=lld`, `build/linker.cmake`) | mingw-debug, mingw-sanitize | clean 376 → 361 s; a one-file rebuild 13.1 → 9.2 s (three runs each); the import tables unchanged, the unit tier passes | yes |
+| `-O1` (`CMAKE_<LANG>_FLAGS_DEBUG=-g -O1`) | clang-sanitize | clean 284 → 306 s; the unit tier 16.0 → 3.7 s; the dataset pass of §6.5 | yes |
+| a precompiled header of standard-library headers | pdfkit_core, pdfkit_tests | release 399 → 396 s, debug 405 → 402 s: within the noise | no |
+| unity builds, batches of 8 and 16 | release | 44 sources clash on file-local names (`shape`, `refuse`, `max_depth`, `key`...), the set grew each time an opt-out moved the batches, and -O3 inlining across files raised new `-Wnull-dereference` errors in `document.cpp`, `parser.cpp`, `self_check.cpp` and `redact_images.cpp`: the shipped DLL would be other code | no |
+| lld for the release DLL | mingw-release | not adopted: the shipped DLL keeps GNU ld, whose bytes `package.py --verify` reproduces | no |
+| splitting `src/redact/text_redactor.cpp` (the slowest source, 27 to 48 s) | — | its 650 lines of file-local helpers serve the two methods of one class; there is no second class to give a file | no |
+
+Each source compiles alone in every preset, so a source names every header it
+uses and its file-local names stay its own; nothing needs an opt-out. To debug
+with locals, configure mingw-debug with `-DCMAKE_CXX_FLAGS_DEBUG=-g`
+`-DCMAKE_C_FLAGS_DEBUG=-g`; to link it with GNU ld, `-DPDFKIT_LINKER=default`.
+lld is found in the cached llvm-mingw (§4); without it the debug presets link
+with GNU ld and say so. GCC finds `ld.lld` through `-B<llvm-mingw>/bin/`, which
+also puts that folder on the library search path; it holds DLLs and no import
+library of a name the link asks for, which the import tables confirm.
+
+Ninja starts one job every 0.4 s from one thread under load, so a build of
+mostly cache hits is bounded by its step count, not by the compiler: a warm
+worktree's release build (414 steps) takes 215 s whatever `-j` says (`-j8`:
+218 s).
+
+When adding a file: nothing changes; it is cached like the others. When adding
+a target: it inherits the launcher and, in the debug presets, the linker.
+
+### 6.4 The checks
+
+`python build/check.py --full` is the merge gate (CLAUDE.md §8.1 and §10);
+`python build/check.py` the routine run; `--fast` the pre-push hook's.
+clang-tidy keeps each source's findings in `build/cache/clang-tidy/` of the
+main checkout, under the SHA-256 of the tool's version, `.clang-tidy`, the
+arguments, the compile command (the tree's paths written as `<root>`) and the
+content of every project file the source reaches through `#include`
+(`build/check_format.py`, `IncludeGraph`: every include line counts, whatever
+conditional surrounds it, so the set is a superset of what the compiler
+reads). A routine or fast run analyses only the sources that reach a file
+changed since `--base` (default the remote main branch); a change to
+`.clang-tidy`, the check scripts, the pinned versions or any CMake file selects
+every source. Measured (formatting alone takes 15 s of each):
+
+| clang-format and clang-tidy | Wall |
+|---|---|
+| every source, cache set aside (`--full`) | 271 s |
+| every source, all from the cache | 20 s |
+| one source edited | 23 s |
+| `src/platform/error.hpp` edited (84 sources reach it) | 105 s |
+| nothing changed | 19 s |
+
+Whole runs on this branch (whose CMake changes select every source):
+`--full` 1,034 s (mingw-debug built with the compile cache cold 489 s,
+clang-tidy of everything 276 s, mingw-release from a warm cache 202 s); the
+routine run straight after it 38 s and `--fast` 32 s, every source's findings
+from the cache. Before, `python build/check.py` was the full run with neither
+cache: about 1,100 to 1,200 s from its measured parts (mingw-debug 405 s, clang-tidy
+271 s, mingw-release 399 to 457 s).
+
+### 6.5 The sanitizer dataset pass
+
+At a phase's end the `clang-sanitize` build reads every manifest file:
+
+```
+cmake --preset clang-sanitize && cmake --build --preset clang-sanitize
+python tests/dataset/run.py --sanitizer --runs 1 --timeout-scale 5 --run-id <run-id>-asan
+```
+
+`--sanitizer` runs `out/clang-sanitize/pdfkit.exe` with the sanitizer
+runtime's folders (from the build's CMake cache) on `PATH`, searches every
+run's standard error for an AddressSanitizer or UndefinedBehaviorSanitizer
+report (UBSan prints and goes on, so the exit code alone does not tell) and
+fails the run on one. The preset compiles at `-O1` with
+`-fno-omit-frame-pointer`, AddressSanitizer's recommendation; at `-O0` the
+pass took 2,263 s and 157 of the 960 files ran out of time (`p10-asan`). At
+`-O1`, four workers: 766 s, 935 files within the release limits, the other 25
+finishing at up to 3.3 times theirs (`dccc-0129`, 198 s for 394 pages), no
+sanitizer report and no crash; `--timeout-scale 5` lets every file finish with
+room for a loaded machine. Run as documented (`bs-final-asan`): all 960 files
+in 1,039 s, every expectation held, no sanitizer report, the slowest at 3.6
+times its release limit.

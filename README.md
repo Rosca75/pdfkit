@@ -148,9 +148,18 @@ cmake --preset mingw-debug && cmake --build --preset mingw-debug
 ctest --preset unit
 cmake --preset mingw-release && cmake --build --preset mingw-release
 python tests/abi/run.py
-python build/check.py
+python build/check.py            # routine: debug build, clang-tidy of what changed
+python build/check.py --full     # the merge gate: both builds, clang-tidy of everything
 python build/package.py
 ```
+
+Every preset compiles through the ccache that ships with the pinned toolchain,
+with one cache in the main checkout's `build/cache/ccache/`, so a second
+worktree, or a rebuild after switching branches, takes its objects from the
+cache (`-DPDFKIT_COMPILER_CACHE=OFF` builds without it, to the same bytes).
+`mingw-debug` keeps line tables only and links with lld from the cached
+llvm-mingw; `mingw-release` links with GNU ld. `build/toolchain.md` section 6
+holds what each setting buys, measured, and the settings rejected.
 
 `python build/package.py` writes `dist/pdfkit-0.1.0-windows-x64.zip`: the DLL,
 its import library, the header, the CLI, `LICENSE`, `NOTICE` and
@@ -158,8 +167,10 @@ its import library, the header, the CLI, `LICENSE`, `NOTICE` and
 `--verify` it packs twice around a clean rebuild and fails unless the two zips
 are byte-identical. The DLL imports only operating-system libraries
 (`python build/check_artefact.py`). The sanitizer builds are `mingw-sanitize`
-(UBSan) and `clang-sanitize` (llvm-mingw, ASan and UBSan), run by `ctest
---preset sanitize` and `ctest --preset clang-sanitize`.
+(UBSan) and `clang-sanitize` (llvm-mingw, ASan and UBSan, at -O1), run by
+`ctest --preset sanitize` and `ctest --preset clang-sanitize`; at a phase's end
+the `clang-sanitize` build also reads every dataset file:
+`python tests/dataset/run.py --sanitizer --runs 1 --timeout-scale 5`.
 
 ## How it is tested
 

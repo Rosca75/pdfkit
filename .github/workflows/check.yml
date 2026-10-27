@@ -47,7 +47,7 @@ jobs:
         run: python -m pip install --user --require-hashes -r build/requirements-dev.txt
 
       - name: Checks tier
-        run: python build/check.py
+        run: python build/check.py --full
 
       - name: Unit tier
         run: ctest --preset unit

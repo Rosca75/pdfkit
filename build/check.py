@@ -2,13 +2,22 @@
 # Copyright 2026 The pdfkit authors
 #
 # The checks tier (CLAUDE.md section 8.1): runs every check of the repository
-# in order and prints a summary of all of them. The fast mode, which the
-# pre-push hook uses, runs the checks that read files only, clang-format
-# included; the full mode also builds mingw-debug with warnings as errors,
-# runs clang-tidy over its compile database, builds mingw-release and reads
-# the artefacts' import and export tables. The exit code is non-zero when any
-# group fails.
-"""Run every check: python build/check.py [--fast]."""
+# in order and prints a summary of all of them. Three modes, from the cheapest:
+#   --fast   (the pre-push hook) the checks that read files, clang-format, and
+#            clang-tidy over the sources that reach a file changed since
+#            origin/main, from the mingw-debug compile database (configured
+#            when absent);
+#   routine  (no flag) the same, after building mingw-debug with warnings as
+#            errors;
+#   --full   (the merge gate of a branch and every phase gate) a build of
+#            mingw-debug, clang-tidy over every source with its cache set
+#            aside, a build of mingw-release and the artefacts' import and
+#            export tables.
+# clang-tidy keeps each source's findings in a cache keyed by everything that
+# decides them (build/check_format.py), so a routine run analyses only what
+# changed; a source left out of a routine run was analysed by the full run that
+# let its last change into main. The exit code is non-zero when any group fails.
+"""Run every check: python build/check.py [--fast | --full] [--base <ref>]."""
 
 from __future__ import annotations
 
@@ -48,22 +57,38 @@ def python(script: str, *args: str) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fast", action="store_true",
-                        help="skip the builds, clang-tidy and the artefact check")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--fast", action="store_true",
+                      help="no build: the file checks, formatting and tidy of the changed sources")
+    mode.add_argument("--full", action="store_true",
+                      help="the merge gate: both builds, tidy of every source, the artefact check")
+    parser.add_argument("--base", default="origin/main",
+                        help="the git reference a routine or fast run compares with (default origin/main)")
     args = parser.parse_args()
     results: list[tuple[str, bool, float]] = []
     for name, script in FILE_CHECKS:
         run(name, python(*script), results)
+    database = ROOT / "out" / "mingw-debug" / "compile_commands.json"
     if args.fast:
-        run("formatting", python("check_format.py", "--no-tidy"), results)
+        configured = database.is_file() or run("configure mingw-debug",
+                                               ["cmake", "--preset", "mingw-debug"], results)
+        if configured:
+            run("formatting and tidy of the changed sources",
+                python("check_format.py", "--changed-since", args.base), results)
+        else:
+            run("formatting", python("check_format.py", "--no-tidy"), results)
     else:
         built = run("configure mingw-debug", ["cmake", "--preset", "mingw-debug"], results)
         built = built and run("warnings (build mingw-debug)",
                               ["cmake", "--build", "--preset", "mingw-debug"], results)
-        if built:
-            run("formatting and tidy", python("check_format.py"), results)
+        if built and args.full:
+            run("formatting and tidy of every source", python("check_format.py", "--no-cache"), results)
+        elif built:
+            run("formatting and tidy of the changed sources",
+                python("check_format.py", "--changed-since", args.base), results)
         else:
             run("formatting", python("check_format.py", "--no-tidy"), results)
+    if args.full:
         released = run("configure mingw-release", ["cmake", "--preset", "mingw-release"], results)
         released = released and run("build mingw-release",
                                     ["cmake", "--build", "--preset", "mingw-release"], results)

@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import collections
 import concurrent.futures
-import hashlib
 import json
 import statistics
 import subprocess
@@ -37,6 +36,7 @@ sys.path.insert(0, str(REPO / "tests" / "dataset"))
 
 import common  # noqa: E402
 import pdfium  # noqa: E402
+import results_cache  # noqa: E402
 import words  # noqa: E402
 
 AGREE = 0.90
@@ -61,25 +61,11 @@ def read_causes() -> dict[str, tuple[str, str]]:
     return causes
 
 
-def pdfium_text(pool, path: Path, cache: Path) -> dict:
-    """PDFium's probe of a file, cached by the file's SHA-256."""
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    cached = cache / f"{digest}.json"
-    if cached.exists():
-        return json.loads(cached.read_text(encoding="utf-8"))
-    probe = pool.probe(path, ["text"])
-    if probe.get("error") not in ("timeout", "crash"):
-        cached.write_text(json.dumps(probe), encoding="utf-8")
-    return probe
-
-
 def score_run(run_dir: Path, rows: list[dict], workers: int) -> list[dict]:
     outcomes = run_dir / "outcomes"
     if not outcomes.exists():
         raise common.ToolError(f"{outcomes} does not exist", "a dataset run's outcomes",
                                "run `python tests/dataset/run.py` first and pass its run id")
-    cache = common.cache_dir() / "pdfium-text"
-    cache.mkdir(parents=True, exist_ok=True)
     results = []
     with pdfium.Pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
         jobs = {}
@@ -88,7 +74,8 @@ def score_run(run_dir: Path, rows: list[dict], workers: int) -> list[dict]:
             if not path.exists():
                 continue
             outcome = json.loads(path.read_text(encoding="utf-8"))
-            jobs[row["id"]] = (row, outcome, threads.submit(pdfium_text, pool, common.file_path(row), cache))
+            jobs[row["id"]] = (row, outcome, threads.submit(results_cache.cached_probe, pool,
+                                                            common.file_path(row), ["text"]))
         for row_id, (row, outcome, job) in jobs.items():
             text = outcome.get("text") or {}
             probe = job.result()
@@ -261,7 +248,7 @@ def main() -> int:
     parser.add_argument("--pdfkit", help="the pdfkit executable for --hidden")
     parser.add_argument("--write-manifest", action="store_true", help="fill expect_text and expect_fonts")
     parser.add_argument("--set", action="append", help="only these sets")
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     args = parser.parse_args()
     if not pdfium.default_dll().exists():
         print("SKIPPED reading gate: PDFium is absent; run `python tests/pdfium/fetch.py`")
