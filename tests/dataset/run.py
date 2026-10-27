@@ -19,6 +19,7 @@ import collections
 import concurrent.futures
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -42,6 +43,10 @@ COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "image
            "expect_set_metadata": "set_metadata", "expect_redact_images": "redact_images"}
 # The names --checks accepts are the outcome keys the columns read, each once.
 CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
+# The first line of a report by AddressSanitizer or UndefinedBehaviorSanitizer
+# (the clang-sanitize build): ASan stops the process, UBSan prints and goes on,
+# so a run is searched for a report whatever its exit code.
+SANITIZER_REPORT = re.compile(rb"ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error: ")
 
 
 def find_pdfkit(explicit: str | None) -> list[str] | None:
@@ -67,23 +72,51 @@ def find_pdfkit(explicit: str | None) -> list[str] | None:
     return None
 
 
-def timeout_for(row: dict) -> float:
-    """TIMEOUT for each started block of PAGES_PER_TIMEOUT pages (one at least)."""
+def timeout_for(row: dict, scale: float = 1.0) -> float:
+    """TIMEOUT for each started block of PAGES_PER_TIMEOUT pages (one at least), times `scale`."""
     pages = int(row["pages"]) if str(row.get("pages", "")).isdigit() else 0
-    return TIMEOUT * max(1, -(-pages // PAGES_PER_TIMEOUT))
+    return TIMEOUT * max(1, -(-pages // PAGES_PER_TIMEOUT)) * scale
 
 
-def run_one(command: list[str], row: dict, out_dir: Path) -> dict:
-    """Runs the verb on one file; returns the outcome bytes or the failure."""
+def sanitizer_build(explicit: str | None) -> tuple[list[str], dict] | None:
+    """The clang-sanitize build's pdfkit and the environment it runs in: its sanitizer runtime
+    DLLs on PATH (the folder the build's CMake cache names) and UBSan printing a stack trace."""
+    exe = Path(explicit) if explicit else REPO / "out" / "clang-sanitize" / "pdfkit.exe"
+    folder = exe.parent
+    cache = folder / "CMakeCache.txt"
+    if not exe.is_file() or not cache.is_file():
+        return None
+    runtime = next((line.split("=", 1)[1].strip() for line in cache.read_text(encoding="utf-8").splitlines()
+                    if line.startswith("PDFKIT_SANITIZER_RUNTIME_DIR:")), "")
+    env = dict(os.environ)
+    # llvm-mingw keeps its C++ runtime DLLs beside the target's libraries.
+    folders = [runtime, str(Path(runtime).parent / "x86_64-w64-mingw32" / "bin")]
+    env["PATH"] = os.pathsep.join(folders + [env.get("PATH", "")])
+    env["UBSAN_OPTIONS"] = "print_stacktrace=1"
+    return [str(exe)], env
+
+
+def run_one(command: list[str], row: dict, out_dir: Path, scale: float = 1.0, env: dict | None = None) -> dict:
+    """Runs the verb on one file; returns the outcome bytes or the failure, and the first lines
+    of any sanitizer report the run printed."""
     path = common.file_path(row)
     args = command + ["dataset", "--file", str(path), "--id", row["id"], "--out", str(out_dir)]
     started = time.monotonic()
-    limit = timeout_for(row)
+    limit = timeout_for(row, scale)
     try:
-        proc = subprocess.run(args, capture_output=True, timeout=limit)
+        proc = subprocess.run(args, capture_output=True, timeout=limit, env=env)
     except subprocess.TimeoutExpired:
         return {"id": row["id"], "result": "hang", "seconds": limit}
     seconds = round(time.monotonic() - started, 3)
+    result = judge_run(proc, row, out_dir, seconds)
+    report = SANITIZER_REPORT.search(proc.stderr)
+    if report:
+        result["sanitizer"] = proc.stderr[report.start():report.start() + 600].decode("utf-8", "replace")
+    return result
+
+
+def judge_run(proc: subprocess.CompletedProcess, row: dict, out_dir: Path, seconds: float) -> dict:
+    """The record of one finished run: the outcome it wrote, or how it failed."""
     target = out_dir / "outcomes" / f"{row['id']}.json"
     if proc.returncode == 0 and target.exists():
         return {"id": row["id"], "result": "written", "bytes": target.read_bytes(), "seconds": seconds}
@@ -195,8 +228,11 @@ def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, second
     columns = {c: collections.Counter() for c in judged}
     per_set: dict = collections.defaultdict(lambda: collections.Counter())
     failures, crashes, hangs, nondeterministic, verb_skipped = [], [], [], [], []
+    sanitizer = []
     for row in rows:
         a, b = first[row["id"]], second.get(row["id"])
+        if a.get("sanitizer") or (b and b.get("sanitizer")):
+            sanitizer.append({"id": row["id"], "report": (a.get("sanitizer") or b.get("sanitizer"))[:300]})
         if a["result"] == "hang" or (b and b["result"] == "hang"):
             hangs.append(row["id"])
         if a["result"] in ("crash", "error") or (b and b["result"] in ("crash", "error")):
@@ -231,13 +267,20 @@ def summarise(rows: list[dict], first: dict, second: dict, run_dir: Path, second
         "per_set": {s: dict(v) for s, v in sorted(per_set.items())},
         "failures": failures, "crashes": crashes, "hangs": hangs,
         "nondeterministic": nondeterministic, "verb_not_implemented": len(verb_skipped),
+        "sanitizer_reports": sanitizer,
+        # The files that took the largest share of their time limit, which a
+        # slower build (the sanitizer pass's) needs to know to scale it.
+        "slowest": sorted(({"id": r["id"], "seconds": first[r["id"]].get("seconds"),
+                            "share_of_limit": round(first[r["id"]].get("seconds", 0) / timeout_for(r), 3)}
+                           for r in rows), key=lambda e: -e["share_of_limit"])[:10],
     }
 
 
 def write_markdown(summary: dict, path: Path) -> None:
     lines = [f"# Dataset run {summary['run']}", "",
              f"{summary['files']} files in {summary['seconds']} s; {len(summary['hangs'])} hangs, "
-             f"{len(summary['crashes'])} crashes or errors, {len(summary['nondeterministic'])} non-deterministic.",
+             f"{len(summary['crashes'])} crashes or errors, {len(summary['nondeterministic'])} non-deterministic, "
+             f"{len(summary['sanitizer_reports'])} sanitizer reports.",
              "", "| Column | pass | fail | skipped |", "|---|---|---|---|"]
     for column, counts in summary["columns"].items():
         lines.append(f"| {column} | {counts.get('pass', 0)} | {counts.get('fail', 0)} | {counts.get('skipped', 0)} |")
@@ -250,6 +293,9 @@ def write_markdown(summary: dict, path: Path) -> None:
     for key in ("hangs", "nondeterministic"):
         if summary[key]:
             lines += ["", f"## {key.capitalize()}", "", ", ".join(summary[key])]
+    if summary["sanitizer_reports"]:
+        lines += ["", "## Sanitizer reports", ""]
+        lines += [f"- {r['id']}: {' '.join(r['report'].split())[:200]}" for r in summary["sanitizer_reports"]]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -258,7 +304,8 @@ def main() -> int:
     parser.add_argument("--pdfkit", help="the pdfkit executable (default: $PDFKIT_EXE, out/, PATH)")
     parser.add_argument("--set", action="append", help="only these sets")
     parser.add_argument("--id", action="append", help="only these ids")
-    parser.add_argument("--workers", type=int, default=os.cpu_count() or 4)
+    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 2),
+                        help="files run at once (default: half the logical processors)")
     parser.add_argument("--checks", default=",".join(CHECKS),
                         help="comma-separated expectation columns to judge, from " + ", ".join(CHECKS)
                         + " (default: all)")
@@ -266,6 +313,11 @@ def main() -> int:
                         help="2 (default) adds the second, determinism run; 1 runs once")
     parser.add_argument("--once", action="store_true", help="an alias of --runs 1")
     parser.add_argument("--run-id", help="the report folder name (default: a fresh run id)")
+    parser.add_argument("--sanitizer", action="store_true",
+                        help="run the clang-sanitize build (out/clang-sanitize, or --pdfkit) with its "
+                        "sanitizer runtime on PATH; any ASan or UBSan report fails the run")
+    parser.add_argument("--timeout-scale", type=float, default=1.0,
+                        help="multiply every file's time limit (the sanitizer pass's documented command uses it)")
     args = parser.parse_args()
 
     checks = tuple(c.strip() for c in args.checks.split(",") if c.strip())
@@ -274,7 +326,16 @@ def main() -> int:
         raise common.ToolError(f"--checks names {unknown or 'nothing'}", "a subset of " + ", ".join(CHECKS),
                                "pass --checks open,write,select or leave it out")
     runs = 1 if args.once else args.runs
-    command = find_pdfkit(args.pdfkit)
+    env = None
+    if args.sanitizer:
+        found = sanitizer_build(args.pdfkit)
+        if found is None:
+            print("SKIPPED sanitizer pass: no clang-sanitize build found. Build it with "
+                  "`cmake --preset clang-sanitize && cmake --build --preset clang-sanitize`.")
+            return 0
+        command, env = found
+    else:
+        command = find_pdfkit(args.pdfkit)
     if command is None:
         print("SKIPPED dataset tier: no pdfkit executable found. Build it with "
               "`cmake --preset mingw-release && cmake --build --preset mingw-release`, "
@@ -299,11 +360,12 @@ def main() -> int:
     started = time.monotonic()
     first, second = {}, {}
     with concurrent.futures.ThreadPoolExecutor(args.workers) as pool:
-        jobs = {pool.submit(run_one, command, r, first_dir): r["id"] for r in rows}
+        jobs = {pool.submit(run_one, command, r, first_dir, args.timeout_scale, env): r["id"] for r in rows}
         for job in concurrent.futures.as_completed(jobs):
             first[jobs[job]] = job.result()
         if runs == 2:
-            jobs = {pool.submit(run_one, command, r, second_dir): r["id"] for r in rows}
+            jobs = {pool.submit(run_one, command, r, second_dir, args.timeout_scale, env): r["id"]
+                    for r in rows}
             for job in concurrent.futures.as_completed(jobs):
                 second[jobs[job]] = job.result()
     seconds = time.monotonic() - started
@@ -316,8 +378,10 @@ def main() -> int:
     print(json.dumps({k: summary[k] for k in ("run", "files", "seconds", "columns", "verb_not_implemented")}
                      | {"hangs": len(summary["hangs"]), "crashes": len(summary["crashes"]),
                         "nondeterministic": len(summary["nondeterministic"]),
-                        "failures": len(summary["failures"])}, indent=1))
-    bad = summary["hangs"] or summary["crashes"] or summary["nondeterministic"] or summary["failures"]
+                        "failures": len(summary["failures"]),
+                        "sanitizer_reports": len(summary["sanitizer_reports"])}, indent=1))
+    bad = (summary["hangs"] or summary["crashes"] or summary["nondeterministic"] or summary["failures"]
+           or summary["sanitizer_reports"])
     return 1 if bad else 0
 
 

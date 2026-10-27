@@ -144,6 +144,24 @@ class TimeoutTest(unittest.TestCase):
         self.assertEqual(run.timeout_for({"pages": "201"}), 2 * run.TIMEOUT)
         self.assertEqual(run.timeout_for({"pages": "910"}), 5 * run.TIMEOUT)
 
+    def test_the_scale_multiplies_the_limit(self):
+        self.assertEqual(run.timeout_for({"pages": "201"}, 3.0), 6 * run.TIMEOUT)
+
+
+class SanitizerTest(unittest.TestCase):
+    def test_a_report_on_a_finished_run_is_named_and_fails_the_run(self):
+        rows, written = SummaryTest.rows_and_runs(None, outcome(write=write_part()))
+        reported = {"x": dict(written["x"], sanitizer="runtime error: signed integer overflow")}
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = run.summarise(rows, reported, {}, Path(tmp) / "run", 1.0, ("write",))
+        self.assertEqual([r["id"] for r in summary["sanitizer_reports"]], ["x"])
+        self.assertEqual(summary["columns"]["expect_write"], {"pass": 1})
+
+    def test_the_report_pattern_finds_asan_and_ubsan_and_nothing_else(self):
+        self.assertTrue(run.SANITIZER_REPORT.search(b"==1==ERROR: AddressSanitizer: heap-buffer-overflow"))
+        self.assertTrue(run.SANITIZER_REPORT.search(b"x.cpp:3:5: runtime error: shift exponent 40"))
+        self.assertIsNone(run.SANITIZER_REPORT.search(b'{"code": "PDFKIT_E_REFUSED", "failed": "runtime"}'))
+
 
 class MetadataTest(unittest.TestCase):
     outcome = {"open": {"status": "ok", "pages": 2}}
