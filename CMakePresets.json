@@ -5,7 +5,11 @@
     "Copyright 2026 The pdfkit authors",
     "The configure, build and test presets of CLAUDE.md section 10. The mingw presets use the pinned",
     "WinLibs MinGW-w64 GCC found on PATH; clang-sanitize uses llvm-mingw for AddressSanitizer only",
-    "(build/toolchain.md). Every binary folder is out/<preset>/."
+    "(build/toolchain.md). Every binary folder is out/<preset>/. Every preset compiles through the",
+    "shared compile cache when ccache is found (build/compiler-cache.cmake). mingw-debug keeps line",
+    "tables only (-g1, file and line in every backtrace) and, with mingw-sanitize, links with lld",
+    "(build/linker.cmake); mingw-release, which ships, links with GNU ld. clang-sanitize compiles at",
+    "-O1, AddressSanitizer's recommended level. build/toolchain.md section 6 holds the measurements."
   ],
   "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
   "configurePresets": [
@@ -32,7 +36,12 @@
       "name": "mingw-debug",
       "displayName": "MinGW GCC, debug",
       "inherits": "mingw-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-g1",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g1",
+        "PDFKIT_LINKER": "lld"
+      }
     },
     {
       "name": "mingw-release",
@@ -46,16 +55,19 @@
       "inherits": "mingw-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "PDFKIT_SANITIZE": "undefined-trap"
+        "PDFKIT_SANITIZE": "undefined-trap",
+        "PDFKIT_LINKER": "lld"
       }
     },
     {
       "name": "clang-sanitize",
-      "displayName": "llvm-mingw clang, debug, ASan and UBSan",
+      "displayName": "llvm-mingw clang, debug at -O1, ASan and UBSan",
       "inherits": "base",
       "toolchainFile": "${sourceDir}/build/llvm-mingw.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-g -O1",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g -O1",
         "PDFKIT_SANITIZE": "address-undefined"
       }
     }

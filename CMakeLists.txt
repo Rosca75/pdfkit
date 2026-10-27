@@ -32,6 +32,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 include("${PROJECT_SOURCE_DIR}/build/warnings.cmake")
 include("${PROJECT_SOURCE_DIR}/build/runtime.cmake")
 include("${PROJECT_SOURCE_DIR}/build/compiler-cache.cmake")
+include("${PROJECT_SOURCE_DIR}/build/linker.cmake")
 
 enable_testing()
 
