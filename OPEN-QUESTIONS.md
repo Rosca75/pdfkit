@@ -610,3 +610,31 @@ library and its artefacts carry; it says nothing of build tools. Do you want:
   documentation does not promise to share between server processes.
 - (c) No compile cache: no cost; every worktree rebuilds every preset from
   scratch (the release preset alone 7 to 9 minutes).
+
+### 2.17 PDFium answers each request in a library just reset (raised by the build-speed chore)
+
+Caching PDFium's answers about the input files needs each answer to depend on
+its own file only. It did not: PDFium keeps font state from one document to
+the next in a process. Measured: pdfminer-0006 (a page drawn with a
+`CIDFont+F1` it does not embed) renders other pixels after office-0001, which
+embeds a font of that name, was rendered in the same process, and the
+original pixels again after `FPDF_DestroyLibrary` and `FPDF_InitLibrary`
+(well under a millisecond). The old tooling's long-lived workers therefore
+gave numbers that depended on the order the files reached each worker: the
+same build's identity-write check read 8,061 of 8,066 pages identical in
+`p10-final` and 8,060 in a second run of the same tooling (`bs-old`), the
+difference being pdfminer-0009.
+
+The tooling now resets the library before every request and renders every
+page alone (`tests/pdfium/pdfium.py`, `render.py`), so a gate number no longer
+depends on order. On run `bs-old`, old tooling against new, every table is
+equal except the two rows that read those order-dependent pages: phase 7's
+identity-write pages 8,060 → 8,062 of 8,066 (pdfminer-0006 and pdfminer-0009
+identical when rendered alone) and phase 8's stable pages 8,024 → 8,025 of
+8,061 (pdfminer-0006). Do you want:
+
+- **(a) Keep the reset — recommended.** No cost; the numbers are reproducible,
+  and the two moved rows moved because the old ones measured worker history.
+- (b) Return to long-lived worker state and no input render cache: about 1
+  hour and $15 to $25; the gate's pixel rows go back to varying by a page or
+  two between runs of one build.

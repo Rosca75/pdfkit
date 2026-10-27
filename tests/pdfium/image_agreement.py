@@ -28,7 +28,11 @@
 # decoded occurrences per encoding, checks that every undecodable image
 # carries its warning, and compares each page's occurrence count with the
 # image objects PDFium's page holds (forms descended); it writes listing.tsv
-# and listing.md.
+# and listing.md. PDFium's side of both is kept in the results cache
+# (results_cache.py): a comparison under PDFium's bitmap (the input, the
+# object and the release), pdfkit's pixels (their PNG's SHA-256) and the
+# comparison's source, the listing's image objects under the input, so only
+# what changed on pdfkit's side dumps pixels and asks PDFium again.
 """Run the image agreement: python tests/pdfium/image_agreement.py --out <folder> [--repeat] [--write-manifest | --check]."""
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ import argparse
 import collections
 import concurrent.futures
 import ctypes
+import functools
 import hashlib
 import json
 import os
@@ -53,6 +58,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO / "dataset" / "tools"))
 
 import pdfium  # noqa: E402
+import results_cache  # noqa: E402
 
 # The census decodes every image three times (base, mask, extraction) and
 # writes its pixels, so a file gets four times the dataset tier's 30 s.
@@ -155,6 +161,7 @@ def serve(dll: Path) -> None:
         if not line.strip():
             continue
         try:
+            library.reset()
             response = handle_images(library, json.loads(line))
         except Exception as err:  # a worker answers every request, whatever fails
             response = {"ok": False, "error": "worker", "detail": repr(err)}
@@ -222,32 +229,76 @@ def stable(first: dict, second: dict) -> bool:
     return first.get("status") == second.get("status") and key(first) == key(second)
 
 
+def compare_with_pdfium(census: Path, pool, path: Path, decoded: list[dict], folder: Path,
+                        dumped: bool) -> dict:
+    """identity -> the census tool's comparison of pdfkit's pixels with PDFium's bitmap.
+
+    A comparison depends only on PDFium's bitmap of the image object (the input file, the
+    object's encoded-data digest and the PDFium release), on pdfkit's pixels and on the
+    comparison code (the SHA-256 of image_census.cpp), so the results cache keeps it under
+    those keys. pdfkit's pixels are named by the SHA-256 of the PNG the census writes of
+    them, which holds every sample losslessly, so equal PNGs are equal pixels; only when a
+    comparison is missing does the census run again to dump the pixels (unless `dumped`)
+    and PDFium give its bitmaps."""
+    file_digest = results_cache.file_digest(path)
+    keyed, compared, missing = {}, {}, []
+    for image in decoded:
+        mine = str(folder / "pdfkit" / f"{image['identity'][4:]}.pix")
+        pixels = image.get("png_sha256")
+        record = results_cache.record_path(file_digest, "census-compare", {
+            "object": image["raw_sha256"], "png": pixels, "compare": census_source_digest()})
+        # Without the PNG's digest there is nothing to key the comparison by, so it is not kept.
+        keyed[image["identity"]] = (mine, record if pixels else None)
+        cached = results_cache.read_json(record) if pixels else None
+        if isinstance(cached, dict):
+            if cached.get("status") is not None:
+                compared[image["identity"]] = {**cached, "mine": mine}
+        else:
+            missing.append(image)
+    if not missing:
+        return compared
+    if not dumped:
+        run_census(census, path, folder / "pdfkit")
+    want = sorted({i["raw_sha256"] for i in missing})
+    answer = pool.ask({"path": str(path), "want": want, "out": str(folder / "pdfium")})
+    pairs = []
+    if answer.get("ok"):
+        by_digest = answer["images"]
+        for image in missing:
+            theirs = by_digest.get(image["raw_sha256"], {}).get("bitmap")
+            if theirs:
+                pairs.append((keyed[image["identity"]][0], theirs))
+    results = compare_pairs(census, pairs, folder)
+    for image in missing:
+        mine, record = keyed[image["identity"]]
+        if mine in results:
+            compared[image["identity"]] = results[mine]
+            if record is not None:
+                results_cache.write_json(record, results[mine])
+        elif answer.get("ok") and record is not None:
+            # PDFium reached no bitmap of this object: nothing to compare, now or later.
+            results_cache.write_json(record, {"status": None})
+    return compared
+
+
+@functools.lru_cache(maxsize=1)
+def census_source_digest() -> str:
+    """The SHA-256 of the census tool's source, which holds the comparison it answers."""
+    return hashlib.sha256((REPO / "tests" / "dataset" / "image_census.cpp").read_bytes()).hexdigest()
+
+
 def one_file(census: Path, pool, row: dict, work: Path, repeat: bool, keep: bool) -> dict:
     import common
     path = common.file_path(row)
     folder = work / row["id"]
-    result = run_census(census, path, folder / "pdfkit")
+    # The pixels are dumped only to be compared, or kept: a cached comparison needs none.
+    result = run_census(census, path, folder / "pdfkit" if keep else None)
     images = result.get("images", [])
     record = {"row": row, "census": result, "pdfium": None, "compared": {}, "stable": None}
     try:
         decoded = [i for i in images if i.get("decoded")]
         if decoded:
-            want = sorted({i["raw_sha256"] for i in decoded})
-            answer = pool.ask({"path": str(path), "want": want, "out": str(folder / "pdfium")})
-            record["pdfium"] = answer
-            pairs = []
-            if answer.get("ok"):
-                by_digest = answer["images"]
-                for image in decoded:
-                    theirs = by_digest.get(image["raw_sha256"], {}).get("bitmap")
-                    if theirs:
-                        mine = folder / "pdfkit" / f"{image['identity'][4:]}.pix"
-                        pairs.append((str(mine), theirs))
-            compared = compare_pairs(census, pairs, folder)
-            for image in decoded:
-                mine = str(folder / "pdfkit" / f"{image['identity'][4:]}.pix")
-                if mine in compared:
-                    record["compared"][image["identity"]] = compared[mine]
+            record["compared"] = compare_with_pdfium(census, pool, path, decoded, folder, keep)
         if repeat:
             record["stable"] = stable(result, run_census(census, path, None))
     finally:
@@ -307,9 +358,22 @@ def listing_file(cli: Path, pool, row: dict, work: Path) -> dict:
         return {"status": "crash", "exit": proc.returncode, "seconds": seconds}
     if proc.returncode != 0:
         return {"status": "refused", "code": listing.get("code"), "seconds": seconds}
-    answer = pool.ask({"path": str(path), "want": [], "out": str(work / row["id"])})
-    shutil.rmtree(work / row["id"], ignore_errors=True)
-    return {"status": "ok", "listing": listing, "pdfium": answer, "seconds": seconds}
+    return {"status": "ok", "listing": listing, "pdfium": image_objects_of(pool, path, work / row["id"]),
+            "seconds": seconds}
+
+
+def image_objects_of(pool, path: Path, work: Path) -> dict:
+    """PDFium's image objects of an input file and their count per page, which the results
+    cache keeps, since neither the input nor PDFium changes between runs."""
+    record = results_cache.record_path(results_cache.file_digest(path), "census-objects", {})
+    answer = results_cache.read_json(record)
+    if isinstance(answer, dict):
+        return answer
+    answer = pool.ask({"path": str(path), "want": [], "out": str(work)})
+    shutil.rmtree(work, ignore_errors=True)
+    if results_cache.keepable(answer):
+        results_cache.write_json(record, answer)
+    return answer
 
 
 def run_listing(args, rows: list[dict], out_dir: Path) -> int:
@@ -402,7 +466,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, help="the report folder")
     parser.add_argument("--census", help="the pdfkit_image_census executable (default: out/)")
-    parser.add_argument("--workers", type=int, default=os.cpu_count() or 4)
+    parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     parser.add_argument("--set", action="append", help="only these sets")
     parser.add_argument("--id", action="append", help="only these ids")
     parser.add_argument("--repeat", action="store_true", help="run the census twice per file")

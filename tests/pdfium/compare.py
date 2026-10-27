@@ -38,6 +38,7 @@ sys.path.insert(0, str(HERE.parents[1] / "dataset" / "tools"))
 import common  # noqa: E402
 import pdfium  # noqa: E402
 import render  # noqa: E402
+import results_cache  # noqa: E402
 import words  # noqa: E402
 
 AGREE = 0.90
@@ -294,7 +295,8 @@ def pixel_entry(pool, before: Path, after: Path, pairs_for) -> dict:
     not identical, where `page` is the output page, `cause` names a mechanical
     failure (a timeout, a crash, a page-count or size difference, a file that does
     not open) and is null for a plain pixel difference, which the analyst classifies."""
-    before_pages, after_pages = render.page_counts(pool, before), render.page_counts(pool, after)
+    before_pages = render.page_counts(pool, before, cache=True)
+    after_pages = render.page_counts(pool, after)
     entry = {"input_opens": before_pages is not None, "output_opens": after_pages is not None,
              "pages": 0, "output_pages": after_pages, "identical": 0, "differing": []}
     if before_pages is None:
@@ -412,7 +414,7 @@ def redact_entry(pool, before: Path, after: Path, part: dict) -> dict:
             box = rendered_box(box, *geometry[page])
         boxes.setdefault(page, []).append(box)
     drawn = {int(page): int(count) for page, count in part.get("placeholders") or []}
-    before_pages = render.page_counts(pool, before)
+    before_pages = render.page_counts(pool, before, cache=True)
     entry = {"input_opens": before_pages is not None, "pages": 0, "stable": 0, "unstable": [],
              "placeholders_drawn": sum(drawn.values()), "placeholders_found": 0, "placeholder_pages": []}
     if before_pages is None:
@@ -489,7 +491,9 @@ def write_text_check(run_id: str, rows: list[dict], workers: int) -> int:
     with pdfium.Pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
         futures = {}
         for row, outcome in jobs:
-            futures[row["id"]] = (threads.submit(pool.probe, common.file_path(row), ["text"]),
+            # The input's text comes from the results cache; the output's is new each run.
+            futures[row["id"]] = (threads.submit(results_cache.cached_probe, pool, common.file_path(row),
+                                                 ["text"]),
                                   threads.submit(pool.probe, run_dir / outcome["write"]["output"], ["text"]))
         for row_id, (before, after) in futures.items():
             a, b = before.result(), after.result()
@@ -524,7 +528,7 @@ def main() -> int:
     parser.add_argument("--render", action="store_true", help="pixel stability of the run's redactions")
     parser.add_argument("--leak", action="store_true", help="search the run's redaction outputs for the strings")
     parser.add_argument("--set", action="append", help="only these sets")
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     args = parser.parse_args()
     try:
         pdfium.default_dll()

@@ -32,6 +32,7 @@ sys.path.insert(0, str(REPO / "dataset" / "tools"))
 
 import common  # noqa: E402
 import pdfium  # noqa: E402
+import results_cache  # noqa: E402
 
 
 def find_pdfkit(explicit: str | None) -> Path:
@@ -59,7 +60,7 @@ def pdfkit_info(exe: Path, path: Path) -> dict | None:
 def compare(pool, exe: Path, row: dict) -> dict:
     path = common.file_path(row)
     ours = pdfkit_info(exe, path)
-    probe = pool.probe(path, ["meta"])
+    probe = results_cache.cached_probe(pool, path, ["meta"])
     if ours is None or not probe.get("ok"):
         return {"compared": False, "pdfkit": ours is not None, "pdfium": bool(probe.get("ok"))}
     theirs = probe.get("meta") or {}
@@ -79,7 +80,7 @@ def main() -> int:
     parser.add_argument("--run", required=True, help="the dataset run id")
     parser.add_argument("--pdfkit", help="the pdfkit executable (default: out/mingw-release)")
     parser.add_argument("--id", action="append", help="only these ids")
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     args = parser.parse_args()
     if not pdfium.default_dll().exists():
         print("SKIPPED metadata comparison: PDFium is absent; run `python tests/pdfium/fetch.py`")
