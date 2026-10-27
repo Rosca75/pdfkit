@@ -417,11 +417,21 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
 | Tier | What it proves | Command |
 |---|---|---|
 | unit | each component against fixtures written in code by `tests/unit/support/` (no committed PDF) | `ctest --preset unit` |
-| sanitizer | the unit tier under the sanitizers the pinned toolchain supports (`build/toolchain.md` lists them): UBSan in trap mode under GCC, ASan and UBSan under llvm-mingw | `ctest --preset sanitize`, `ctest --preset clang-sanitize` |
+| sanitizer | the unit tier under the sanitizers the pinned toolchain supports (`build/toolchain.md` lists them): UBSan in trap mode under GCC, ASan and UBSan under llvm-mingw; at a phase's end, the `clang-sanitize` build's dataset verb over every manifest file, with no sanitizer report | `ctest --preset sanitize`, `ctest --preset clang-sanitize`, `python tests/dataset/run.py --sanitizer --runs 1 --timeout-scale 5 --run-id <run-id>-asan` |
 | dataset | the catalogue's expectations over every manifest file, twice for determinism, with a timeout of 30 s per started block of 200 pages and the refusal invariant; each phase's gate script judges a run | `python tests/dataset/run.py`, `python tests/dataset/gates/phase<n>.py --run <run-id>` |
-| pdfium | text, image and metadata agreement, pixel stability and the second leak check against PDFium | `tests/pdfium/text_agreement.py`, `image_agreement.py`, `metadata.py`, `compare.py --check write,select,text,redact`, `images.py`, `leak.py --metadata --images`, each with `--run <run-id>` |
+| pdfium | text, image and metadata agreement, pixel stability and the second leak check against PDFium; what PDFium says of an input file is kept in `build/cache/pdfium-results/` of the main checkout, keyed by the file's SHA-256, the PDFium release and the request, because neither changes between runs, and every answer is computed in a library just reset, because PDFium carries font state from one document to the next | `tests/pdfium/text_agreement.py`, `image_agreement.py`, `metadata.py`, `compare.py --check write,select,text,redact`, `images.py`, `leak.py --metadata --images`, each with `--run <run-id>` |
 | abi | the C ABI loaded from .NET and from Python | `python tests/abi/run.py` |
-| checks | layout, headers, comments, catalogue, third party, no-network, repository, paths, generated files, warnings, formatting and tidy, the artefact's imports | `python build/check.py` |
+| checks | layout, headers, comments, catalogue, third party, no-network, repository, paths, generated files, warnings, formatting and tidy, the artefact's imports | `python build/check.py --full` (the merge gate), `python build/check.py` (routine), `--fast` (the pre-push hook) |
+
+The checks tier has three modes, because clang-tidy over every source and a
+second build are most of its time and most changes touch few files. A routine
+run builds mingw-debug and runs clang-tidy only over the sources that reach a
+file changed since the remote main branch, each source's findings cached under
+a hash of everything that decides them; `--fast` does the same without the
+build; `--full` builds mingw-debug and mingw-release, runs clang-tidy over
+every source with its cache set aside and reads the artefacts' tables. `--full`
+is the merge gate of every branch and phase, so a source a routine run leaves
+out was analysed in full when its last change entered main.
 
 ### 8.2 Rules
 
@@ -518,11 +528,25 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
   packaging step fails past it; the zip's entries are sorted, dated 1980-01-01
   and the import library's member dates zeroed, so `python build/package.py
   --verify`, which packs twice around a clean rebuild, finds one set of bytes.
-- **CI runs the same checks**: `.github/workflows/` call `build/check.py`, the
-  unit tier and the abi tier; the hosted runners do not start for this
+- **CI runs the same checks**: `.github/workflows/` call `build/check.py --full`,
+  the unit tier and the abi tier; the hosted runners do not start for this
   repository, so the pre-push hook
   (`build/hooks/pre-push`, installed by `python build/install_hooks.py`) is the
-  gate, and it runs `build/check.py --fast` and the unit tier.
+  gate, and it runs `build/check.py --fast`, a mingw-debug build and the unit
+  tier. The merge gate of a branch is `python build/check.py --full` with the
+  unit, sanitizer and abi tiers on the merged tip (§8.1).
+- **Builds are cached and measured for speed** (`build/toolchain.md`, "Build
+  speed", holds what each setting does, its measured gain and what to check
+  when adding a file): every compile of every preset goes through the ccache
+  of the pinned toolchain with one cache in the main checkout's
+  `build/cache/ccache/`, so a worktree builds from the objects another
+  compiled, because every worktree otherwise rebuilds every preset from
+  scratch. A setting that changes the compile is kept only when it measurably
+  pays and never changes what the shipped DLL does, because a faster build of
+  other bytes is a different release. Each source compiles alone, with no
+  unity build and no precompiled header, so a source names every header it
+  uses and its file-local names stay its own; the settings tried and rejected
+  are listed there with the numbers that rejected them.
 
 ## 11. Repository workflow
 
@@ -537,8 +561,13 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
   the owner's question, and the branch carries `Build-Phase: <n> incomplete`
   with the reason when the session stops early.
 - **Shared caches live in the main checkout**, resolved through
-  `git rev-parse --git-common-dir`: the dataset files under `dataset/files/` and
-  the PDFium binary under `build/cache/`, so every worktree reads one copy.
+  `git rev-parse --git-common-dir`: the dataset files under `dataset/files/`,
+  and under `build/cache/` the PDFium binary, the llvm-mingw toolchain, the
+  compile cache (`build/cache/ccache/`), clang-tidy's findings
+  (`build/cache/clang-tidy/`) and PDFium's answers about the input files
+  (`build/cache/pdfium-results/`), so every worktree reads one copy and none
+  repeats work another did. Each is keyed by everything that decides its
+  content, so deleting one costs time and never changes a result.
 - **A question for the owner** goes into `OPEN-QUESTIONS.md` with the
   recommended answer first and the price of each option in hours and model
   spend; work that does not depend on the answer continues.
