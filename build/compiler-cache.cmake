@@ -18,9 +18,6 @@
 #                first, while file and line stay right
 #   depend_mode  true: a miss runs the compiler once and reads its -MD output
 #                instead of running the preprocessor a second time
-#   sloppiness   pch_defines,time_macros: the standard-library precompiled
-#                header is hashed by its content, which ccache needs to cache
-#                a compile that includes it
 # PDFKIT_COMPILER_CACHE is AUTO (use ccache when found), ON (fail when it is
 # not) or OFF. PDFKIT_COMPILER_CACHE_DIR moves the cache.
 
@@ -64,7 +61,6 @@ if(NOT PDFKIT_COMPILER_CACHE STREQUAL "OFF")
       "base_dir=${PROJECT_SOURCE_DIR}"
       "hash_dir=false"
       "depend_mode=true"
-      "sloppiness=pch_defines,time_macros"
       "max_size=20G")
     set(CMAKE_C_COMPILER_LAUNCHER ${launcher})
     set(CMAKE_CXX_COMPILER_LAUNCHER ${launcher})

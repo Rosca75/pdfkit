@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -88,7 +89,10 @@ def main() -> int:
         return 1
     if not args.verify:
         return 0
-    subprocess.run(["cmake", "--build", "--preset", PRESET, "--clean-first"], cwd=ROOT, check=True)
+    # The rebuild compiles every source again: with the compile cache on, it would take the first
+    # build's objects and prove only that linking is reproducible (build/compiler-cache.cmake).
+    subprocess.run(["cmake", "--build", "--preset", PRESET, "--clean-first"], cwd=ROOT, check=True,
+                   env=dict(os.environ, CCACHE_DISABLE="1"))
     second = package()
     if second is None:
         return 1
