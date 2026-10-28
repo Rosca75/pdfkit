@@ -35,7 +35,7 @@ performs no OCR.
 | `third_party/inventory.tsv` | every vendored component: path, version, upstream, licence, SHA-256 |
 | `THIRD-PARTY-NOTICES.md` | the licence notices shipped with every artefact |
 | `build/toolchain.md` | the pinned compiler, CMake, Ninja, clang-format and clang-tidy versions and the proxy behaviour |
-| `build-5.md`, `build-6.md`, `build-10.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 |
+| `build-5.md`, `build-6.md`, `build-10.md`, `build-11.md`, `build-12.md`, `build-13.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase; 11 to 13 are the located check, find and hidden-layer removal, whose §0 is the contract doc-anonymiser is built against): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 |
 
 Every other markdown file is a working document. `OPEN-QUESTIONS.md` holds the
 questions waiting for the owner. A file added to or removed from this set moves
@@ -562,7 +562,10 @@ out was analysed in full when its last change entered main.
   (`build/hooks/pre-push`, installed by `python build/install_hooks.py`) is the
   gate, and it runs `build/check.py --fast`, a mingw-debug build and the unit
   tier. The merge gate of a branch is `python build/check.py --full` with the
-  unit, sanitizer and abi tiers on the merged tip (§8.1).
+  unit, sanitizer and abi tiers on the merged tip (§8.1); a branch that changes
+  only markdown outside `include/`, `src/`, `cli/`, `tests/`, `build/` and
+  `dataset/` merges on `python build/check.py --fast`, because its merged tip
+  builds the bytes `main` already proved.
 - **Builds are cached and measured for speed** (`build/toolchain.md`, "Build
   speed", holds what each setting does, its measured gain and what to check
   when adding a file): every compile of every preset goes through the ccache
