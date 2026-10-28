@@ -228,8 +228,8 @@ std::string PdfBuilderChannels::off_layers(std::string_view kind) {
   const auto shown = [](const std::string& text, int y) {
     return "BT /F1 12 Tf 72 " + std::to_string(y) + " Td (" + text + ") Tj ET";
   };
-  std::string configuration = "/D << /OFF [" + ref(off) + "] /Order [" + ref(on) + " " +
-                              ref(off) + "] >>";
+  std::string configuration =
+      "/D << /OFF [" + ref(off) + "] /Order [" + ref(on) + " " + ref(off) + "] >>";
   std::string properties = "/on " + ref(on) + " /off " + ref(off);
   std::string drawn;
   if (kind == "bdc") {
@@ -238,14 +238,14 @@ std::string PdfBuilderChannels::off_layers(std::string_view kind) {
             "BT /F1 12 Tf 72 660 Td /OC /off BDC (" + marker(25, 2) + ") Tj [(" + marker(25, 3) +
             ") -250 (x)] TJ EMC (" + marker(90, 2) + ") Tj ET";
   } else if (kind == "form" || kind == "image") {
-    const std::uint32_t off_form = b.add_stream(
-        "/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(off) +
-            " /Resources << /Font << /F1 " + ref(s.font) + " >> >>",
-        shown(marker(25, 1), 680), StreamOptions{true});
-    const std::uint32_t on_form = b.add_stream(
-        "/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(on) +
-            " /Resources << /Font << /F1 " + ref(s.font) + " >> >>",
-        shown(marker(90, 1), 700), StreamOptions{true});
+    const std::uint32_t off_form =
+        b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(off) +
+                         " /Resources << /Font << /F1 " + ref(s.font) + " >> >>",
+                     shown(marker(25, 1), 680), StreamOptions{true});
+    const std::uint32_t on_form =
+        b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(on) +
+                         " /Resources << /Font << /F1 " + ref(s.font) + " >> >>",
+                     shown(marker(90, 1), 700), StreamOptions{true});
     const std::string samples = marker(25, 2);
     const std::uint32_t off_image =
         b.add_stream("/Type /XObject /Subtype /Image /Width " + std::to_string(samples.size()) +
@@ -271,8 +271,9 @@ std::string PdfBuilderChannels::off_layers(std::string_view kind) {
         b.add("<< /Type /OCMD /OCGs [" + ref(on) + " " + ref(off) + "] /P /AllOn >>");
     properties += " /md " + ref(all_on);
     drawn = "/OC /md BDC " + shown(marker(25, 1), 680) + " EMC /OC << /Type /OCMD /OCGs [" +
-            ref(on) + "] >> BDC " + shown(marker(90, 1), 700) + " EMC /OC << /Type /OCMD /VE [/Not " +
-            ref(on) + "] >> BDC " + shown(marker(25, 2), 660) + " EMC";
+            ref(on) + "] >> BDC " + shown(marker(90, 1), 700) +
+            " EMC /OC << /Type /OCMD /VE [/Not " + ref(on) + "] >> BDC " +
+            shown(marker(25, 2), 660) + " EMC";
   } else {
     throw std::logic_error("PdfBuilderChannels: no off-layer kind " + std::string(kind));
   }
@@ -301,10 +302,10 @@ std::string PdfBuilderChannels::leak_fixture(std::uint32_t pages) {
     // The group only page n uses is the /OC of the form only it draws, so the
     // page's content stream stays as it was written.
     groups.push_back(b.add("<< /Type /OCG /Name " + literal(marker(14, i)) + " >>"));
-    const std::uint32_t form = b.add_stream(
-        "/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(groups.back()) +
-            " /Resources << /Font << /F1 " + ref(font) + " >> >>",
-        "BT /F1 10 Tf 72 650 Td (" + marker(91, i) + ") Tj ET", StreamOptions{true});
+    const std::uint32_t form =
+        b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(groups.back()) +
+                         " /Resources << /Font << /F1 " + ref(font) + " >> >>",
+                     "BT /F1 10 Tf 72 650 Td (" + marker(91, i) + ") Tj ET", StreamOptions{true});
     const std::string image_data = marker(92, i);
     const std::uint32_t image =
         b.add_stream("/Type /XObject /Subtype /Image /Width " + std::to_string(image_data.size()) +

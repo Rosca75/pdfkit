@@ -45,8 +45,7 @@ std::string marker(int row, int n) {
 // Whether text names /OC (a key or a marked-content tag), but not a longer
 // name such as /OCProperties.
 bool names_oc(const std::string& text) {
-  for (std::size_t at = text.find("/OC"); at != std::string::npos;
-       at = text.find("/OC", at + 1)) {
+  for (std::size_t at = text.find("/OC"); at != std::string::npos; at = text.find("/OC", at + 1)) {
     const std::size_t next = at + 3;
     if (next >= text.size()) {
       return true;
@@ -157,12 +156,13 @@ TEST_CASE("content in a group turned off leaves every output, content in a group
     }
     for (const std::string& text : shown) {
       CHECK(pdfkit::test::contains_marker(output, text));
-      const auto before = origin_of(file, text);
-      const auto after = origin_of(output, text);
-      REQUIRE(before.has_value());
-      REQUIRE(after.has_value());
-      CHECK(std::abs(before->first - after->first) < 0.01);
-      CHECK(std::abs(before->second - after->second) < 0.01);
+      // A run the page does not show reads as a point no glyph has.
+      constexpr std::pair<double, double> nowhere{-1.0e9, -1.0e9};
+      const auto before = origin_of(file, text).value_or(nowhere);
+      const auto after = origin_of(output, text).value_or(nowhere);
+      CHECK(before.first > nowhere.first);
+      CHECK(std::abs(before.first - after.first) < 0.01);
+      CHECK(std::abs(before.second - after.second) < 0.01);
     }
     CHECK(origin_of(output, std::string(PdfBuilderChannels::drawn_text)).has_value());
     // The groups' names go with /OCProperties, and no /OC remains.
@@ -204,8 +204,8 @@ TEST_CASE("without /OCProperties every group is on: the content stays and the ma
   pdfkit::test::PdfBuilder builder;
   builder.begin_document();
   const std::uint32_t font = builder.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  const std::uint32_t group = builder.add("<< /Type /OCG /Name " + std::string("(") +
-                                          marker(14, 1) + ") >>");
+  const std::uint32_t group =
+      builder.add("<< /Type /OCG /Name " + std::string("(") + marker(14, 1) + ") >>");
   (void)builder.add_page("/OC /g BDC BT /F1 12 Tf 72 700 Td (" + marker(90, 1) + ") Tj ET EMC",
                          "/Resources << /Font << /F1 " + std::to_string(font) +
                              " 0 R >> /Properties << /g " + std::to_string(group) + " 0 R >> >>");
