@@ -10,7 +10,12 @@
 # page-selection output (raw bytes and every stream the scanner decodes). A marker
 # of a stripped channel (rows 01 to 24) must occur in no output; a marker of drawn
 # content (rows 90 to 93, NN the page) must occur in the identity write and, in a
-# selection, exactly for the kept pages. The result is a markdown table of every
+# selection, exactly for the kept pages. A marker of content in an optional-content
+# group the default configuration turns off (row 25) must occur in no output: the
+# off-layer specimens of dataset/tools/synth/channels/off_layers.py are read from the
+# manifest when registered and are also written here through the pdfkit command line
+# (select-pages of their one page, which is the identity write), and every output of a
+# file holding optional content must hold no /OCProperties and no /OC name. The result is a markdown table of every
 # measure (measure, value, threshold, pass or fail), written into the run folder
 # as a markdown and a JSON file named after this script, with every differing
 # page listed by file, page and cause.
@@ -22,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,9 +37,17 @@ sys.path.insert(0, str(REPO / "dataset" / "tools"))
 import autotag  # noqa: E402
 import common  # noqa: E402
 
+sys.path.insert(0, str(REPO / "tests" / "dataset"))
+
+import run as dataset_run  # noqa: E402
+from synth.channels import off_layers  # noqa: E402
+
 MARK_RE = re.compile(rb"PDFKITMARK(\d\d)X(\d\d)")
 STRIPPED_ROWS = range(1, 25)
+OFF_ROWS = (25,)
 DRAWN_ROWS = range(90, 94)
+# A name /OC or /OCProperties: the name ends at white space, a delimiter or the end.
+OC_NAME_RE = re.compile(rb"/OC(?:Properties)?(?=[\s()<>\[\]{}/%]|$)")
 
 # The thresholds of the gate; a share is a fraction of its population.
 WRITE_REOPEN = 1.0
@@ -58,11 +72,13 @@ def parse_marker(marker: str) -> tuple[int, int]:
 
 
 def classify(markers) -> dict:
-    """The markers split by what they plant: stripped channels, drawn content, anything else."""
-    out = {"stripped": [], "drawn": [], "other": []}
+    """The markers split by what they plant: stripped channels, content in a group turned off,
+    drawn content, anything else."""
+    out = {"stripped": [], "off": [], "drawn": [], "other": []}
     for marker in sorted(markers):
         row, _ = parse_marker(marker)
-        key = "stripped" if row in STRIPPED_ROWS else "drawn" if row in DRAWN_ROWS else "other"
+        key = ("stripped" if row in STRIPPED_ROWS else "off" if row in OFF_ROWS
+               else "drawn" if row in DRAWN_ROWS else "other")
         out[key].append(marker)
     return out
 
@@ -75,17 +91,27 @@ def markers_in(blobs) -> set[str]:
     return found
 
 
-def file_markers(path: Path) -> set[str]:
-    """Every marker in a file's raw bytes or in any stream the scanner decodes."""
+def blobs_of(path: Path) -> list[bytes]:
+    """A file's raw bytes and every stream the scanner decodes."""
     data = path.read_bytes()
-    found = markers_in([data])
+    blobs = [data]
     scan = autotag.Scan(data)
     for obj in scan.objects:
         if obj.data is not None:
             decoded = scan.decoded(obj)
             if decoded:
-                found |= markers_in([decoded])
-    return found
+                blobs.append(decoded)
+    return blobs
+
+
+def file_markers(path: Path) -> set[str]:
+    """Every marker in a file's raw bytes or in any stream the scanner decodes."""
+    return markers_in(blobs_of(path))
+
+
+def names_optional_content(path: Path) -> bool:
+    """Whether a file names /OCProperties or /OC, raw or in a decoded stream."""
+    return any(OC_NAME_RE.search(blob) for blob in blobs_of(path))
 
 
 def surviving(output_markers) -> list[str]:
@@ -190,8 +216,9 @@ def differing_pages(entries: dict | None, ids: set, causes: dict) -> list[dict]:
     return out
 
 
-def judge(run_dir: Path, rows: list[dict]) -> dict:
-    """The whole gate over one run folder and the population of manifest rows."""
+def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
+    """The whole gate over one run folder and the population of manifest rows; family is what
+    off_layer_family found, none when the specimens were not written."""
     summary = read_json(run_dir / "summary.json") or {}
     outcomes = {}
     for row in rows:
@@ -230,11 +257,27 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
                    {"under_one": sorted({r["id"] for r in opened} - set(perfect))[:50]})
 
     planted = scan_planted(run_dir, rows, outcomes)
+    family = family or {"files": 0, "failed": [], "off_surviving": [], "missing_drawn": [], "oc_named": []}
+    planted["off_surviving"] += family["off_surviving"]
+    planted["missing_drawn"] += family["missing_drawn"]
+    planted["failed"] = family["failed"]
     measures.zero("planted markers of stripped channels found in an identity write",
                   len(planted["surviving"]),
                   {"files": planted["files"], "unchecked": planted["unchecked"], "surviving": planted["surviving"][:50]})
+    off_files = f"{planted['off_files']} manifest files and {family['files']} off-layer specimens written here"
+    off_leaks = len(planted["off_surviving"])
+    measures.add("planted markers in optional-content layers turned off found in an identity write",
+                 off_leaks, f"{off_leaks} ({off_files})" if not family["failed"] else
+                 f"not measured: {family['failed'][0]}", "0", off_leaks == 0 and not family["failed"],
+                 {"surviving": planted["off_surviving"][:50], "failed": family["failed"]})
     measures.zero("planted markers of drawn content missing from an identity write",
                   len(planted["missing_drawn"]), {"missing": planted["missing_drawn"][:50]})
+    named = optional_content_outputs(run_dir, population, outcomes)
+    planted["oc_named"] = named["oc_named"] + family["oc_named"]
+    measures.add("identity writes still naming /OCProperties or /OC, of the files holding optional content",
+                 len(planted["oc_named"]),
+                 f"{len(planted['oc_named'])} of {named['files'] + family['files']}", "0",
+                 not planted["oc_named"] and not family["failed"], {"files": planted["oc_named"][:50]})
 
     multi = [r for r in opened if pdfkit_pages(outcomes.get(r["id"])) >= 2]
     counted = [r["id"] for r in multi if select_count_right(r, outcomes.get(r["id"]), pixel_select)]
@@ -283,7 +326,8 @@ def select_count_right(row: dict, outcome: dict | None, pixel_select: dict) -> b
 
 def scan_planted(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
     """Reads every synthesised input holding markers with its write and select outputs."""
-    result = {"files": 0, "leak_files": 0, "unchecked": [], "surviving": [], "missing_drawn": [], "leaks": []}
+    result = {"files": 0, "leak_files": 0, "off_files": 0, "unchecked": [], "surviving": [], "off_surviving": [],
+              "missing_drawn": [], "leaks": []}
     for row in rows:
         if row["set"] != "synth" or row["expect_open"] not in ("opens", "repaired"):
             continue
@@ -295,6 +339,7 @@ def scan_planted(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
             continue
         outcome = outcomes.get(row["id"]) or {}
         result["files"] += 1
+        result["off_files"] += 1 if classify(found)["off"] else 0
         write = outcome.get("write") or {}
         output = run_dir / write["output"] if write.get("status") == "ok" and write.get("output") else None
         if output is None or not output.exists():
@@ -302,6 +347,7 @@ def scan_planted(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
         else:
             written = file_markers(output)
             result["surviving"] += [f"{row['id']}:{m}" for m in surviving(written)]
+            result["off_surviving"] += [f"{row['id']}:{m}" for m in classify(written)["off"]]
             result["missing_drawn"] += [f"{row['id']}:{m}" for m in missing_drawn(found, written)]
         if not classify(found)["drawn"]:
             continue
@@ -314,6 +360,54 @@ def scan_planted(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
         violations = selection_violations(found, file_markers(chosen), select.get("pages") or [])
         result["leaks"] += [f"{row['id']}:{m} leaked" for m in violations["leaked"]]
         result["leaks"] += [f"{row['id']}:{m} lost" for m in violations["lost"]]
+    return result
+
+
+def off_layer_family(run_dir: Path, pdfkit: list[str] | None) -> dict:
+    """Writes every off-layer specimen into <run>/off-layers/ and its identity write beside it
+    through the command line, and scans the output: off markers that survive, shown markers lost,
+    and whether it still names optional content."""
+    result = {"files": 0, "failed": [], "off_surviving": [], "missing_drawn": [], "oc_named": []}
+    if pdfkit is None:
+        result["failed"].append("no pdfkit executable: build one or pass --pdfkit")
+        return result
+    folder = run_dir / "off-layers"
+    folder.mkdir(parents=True, exist_ok=True)
+    for index, specimen in enumerate(off_layers.PATTERNS["mark_off_layers"]()):
+        name = f"mark_off_layers-{index + 1:02d}"
+        source = folder / f"{name}.pdf"
+        output = folder / f"{name}.out.pdf"
+        source.write_bytes(specimen.data)
+        output.unlink(missing_ok=True)
+        done = subprocess.run([*pdfkit, "select-pages", str(source), "--pages", "1", "--out", str(output)],
+                              capture_output=True, timeout=120, check=False)
+        if done.returncode != 0 or not output.exists():
+            result["failed"].append(f"{name}: pdfkit exited {done.returncode}")
+            continue
+        result["files"] += 1
+        found = file_markers(source)
+        written = file_markers(output)
+        result["off_surviving"] += [f"{name}:{m}" for m in classify(written)["off"]]
+        result["missing_drawn"] += [f"{name}:{m}" for m in missing_drawn(found, written)]
+        if names_optional_content(output):
+            result["oc_named"].append(name)
+    return result
+
+
+def optional_content_outputs(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
+    """The identity writes of the files tagged ch_optional_content that still name /OCProperties
+    or /OC."""
+    result = {"files": 0, "oc_named": []}
+    for row in rows:
+        if "ch_optional_content" not in row.get("tags", "").split(","):
+            continue
+        write = (outcomes.get(row["id"]) or {}).get("write") or {}
+        output = run_dir / write["output"] if write.get("status") == "ok" and write.get("output") else None
+        if output is None or not output.exists():
+            continue
+        result["files"] += 1
+        if names_optional_content(output):
+            result["oc_named"].append(row["id"])
     return result
 
 
@@ -334,6 +428,8 @@ def markdown(report: dict) -> str:
                       for d in diffs]
     planted = report["planted"]
     for key, title in (("surviving", "Markers of stripped channels found in an output"),
+                       ("off_surviving", "Markers of optional-content layers turned off found in an output"),
+                       ("oc_named", "Outputs still naming /OCProperties or /OC"),
                        ("missing_drawn", "Markers of drawn content missing from an identity write"),
                        ("leaks", "Page selection violations"), ("unchecked", "Planted files without a write output")):
         if planted[key]:
@@ -346,6 +442,8 @@ def main() -> int:
     parser.add_argument("--run", required=True, help="the run id of the report folder")
     parser.add_argument("--set", action="append", help="only the manifest rows of these sets")
     parser.add_argument("--id", action="append", help="only these manifest ids")
+    parser.add_argument("--pdfkit", help="the pdfkit executable that writes the off-layer specimens "
+                        "(default: as tests/dataset/run.py finds it)")
     args = parser.parse_args()
     run_dir = common.reports_dir() / args.run
     if not (run_dir / "summary.json").exists():
@@ -356,7 +454,7 @@ def main() -> int:
         rows = [r for r in rows if r["set"] in args.set]
     if args.id:
         rows = [r for r in rows if r["id"] in args.id]
-    report = judge(run_dir, rows)
+    report = judge(run_dir, rows, off_layer_family(run_dir, dataset_run.find_pdfkit(args.pdfkit)))
     text = markdown(report)
     (run_dir / "phase7.md").write_text(text, encoding="utf-8")
     (run_dir / "phase7.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
