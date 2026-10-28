@@ -82,7 +82,7 @@ Call take(pdfkit_status status, pdfkit_buffer& out) {
 
 // The words of a pdfkit_text answer: page, text, glyph range, box, and
 // whether the word is visible (in a visible block, no hidden class, not
-// hyphenated).
+// hyphenated); a duplicate copy is not a word of its own.
 struct Word {
   std::string page;
   std::string text;
@@ -113,6 +113,12 @@ std::vector<Word> words_of(const JsonText& answer) {
             const JsonText::Node* hyphenated = answer.member(item, "hyphenated");
             if (number == nullptr || text == nullptr || glyphs == nullptr ||
                 glyphs->items.size() != 2 || box == nullptr) {
+              continue;
+            }
+            // A word whose only hidden class is duplicate is a copy of a word
+            // already read, as the page's text reads it, and goes with it.
+            if (hidden != nullptr && hidden->items.size() == 1 &&
+                answer.node(hidden->items.front()).text == "duplicate") {
               continue;
             }
             Word word;

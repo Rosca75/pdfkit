@@ -169,5 +169,23 @@ the merge. Between steps run only the unit cases touched (`CLAUDE.md` §8.2).
    laptop, and `open,text` alone took 54 s on opf-0005, against 8 s for every
    check of it in the run `bs-final`; the 19 files that met the timeout in
    `p11-gate` were run again apart (see the merge commit).
-8. **Tests first**: the code of steps 2 and 3 was written before the unit
+8. **The gate is not met: a located match in a shared form removes every
+   draw of it.** The text surgery rewrites a form XObject in place, so a
+   glyph range inside a form drawn on several pages (a running header or
+   footer: dccc-0024 "Peters" 3 to 0, pdfjs-0022, synth-0253, pdfminer-0013
+   in PDFium's reading) removes the word from every draw. Nothing leaks
+   (the location check and both leak measures read 0); the output removes
+   more than was asked. The fix is a copy of the form for the draws the
+   match covers, with the resource names re-pointed along the form path,
+   which the time box did not leave room for. Owner's question: copy a
+   shared form per located match (recommended; about 3 h, $60), or refuse a
+   glyph range inside a form drawn more than once with `invalid_argument`
+   naming the form (1 h, $20)? Also counted against the measure:
+   dccc-0040, where a second text layer over the word holds it and the
+   self-check refuses the write at its location, as §0.1 asks, and
+   pdfdiff-0017, where PDFium's count of "font" does not move though PDFium
+   reads no word at the location. The job counted a word's `duplicate`
+   copies as occurrences of their own until a correction made during the
+   gate (`p11-located`).
+9. **Tests first**: the code of steps 2 and 3 was written before the unit
    tests of §3, which passed on their first run; they were not seen red.

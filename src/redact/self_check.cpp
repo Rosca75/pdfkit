@@ -794,9 +794,9 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
       changed.insert(static_cast<std::uint32_t>(i + 1));
     }
   }
-  const Result result = run(platform::as_bytes(pdf), plan.document().limits(),
-                            Needles{text.needles, located, metadata, written}, placeholders,
-                            &changed);
+  const Result result =
+      run(platform::as_bytes(pdf), plan.document().limits(),
+          Needles{text.needles, located, metadata, written}, placeholders, &changed);
   report.self_check_strings = result.strings;
   report.self_check_located = result.located;
   report.self_check_metadata_values = result.metadata_values;
