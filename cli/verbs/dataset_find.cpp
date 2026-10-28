@@ -106,7 +106,10 @@ std::optional<std::uint64_t> count_on(const std::string& pdf, const std::string&
   std::size_t offset = 0;
   const std::optional<JsonText> json =
       found.status == PDFKIT_OK ? JsonText::parse(found.text, offset) : std::nullopt;
-  const JsonText::Node* values = json ? json->member(json->root(), "values") : nullptr;
+  if (!json) {
+    return std::nullopt;
+  }
+  const JsonText::Node* values = json->member(json->root(), "values");
   if (values == nullptr || values->items.empty()) {
     return std::nullopt;
   }
@@ -145,9 +148,12 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
 
   // The ranges find names, per value, and the occurrences to feed back.
   const std::optional<JsonText> answer = JsonText::parse(found.text, offset);
-  const JsonText::Node* fingerprint =
-      answer ? answer->member(answer->root(), "fingerprint") : nullptr;
-  const JsonText::Node* values = answer ? answer->member(answer->root(), "values") : nullptr;
+  if (!answer) {
+    return "{" +
+           dataset_failure(PDFKIT_E_INTERNAL, "pdfkit_find returned JSON that does not read") + "}";
+  }
+  const JsonText::Node* fingerprint = answer->member(answer->root(), "fingerprint");
+  const JsonText::Node* values = answer->member(answer->root(), "values");
   std::vector<std::vector<Range>> find_ranges(words.size());
   std::vector<std::uint64_t> counts(words.size(), 0);
   std::vector<std::vector<std::uint64_t>> pages_of(words.size());
@@ -168,8 +174,8 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
       }
       if (glyphs != nullptr && picked.size() < feedback_limit &&
           (picked.empty() || picked.back().value != v)) {
-        picked.push_back({v, number_of(answer->member(occurrence, "page")),
-                          std::string(glyphs->raw)});
+        picked.push_back(
+            {v, number_of(answer->member(occurrence, "page")), std::string(glyphs->raw)});
       }
     }
     std::ranges::sort(find_ranges[v]);
@@ -191,7 +197,13 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
     return "{" + dataset_failure(redacted.status, redacted.text) + "}";
   }
   const std::optional<JsonText> removed = JsonText::parse(redacted.text, offset);
-  const JsonText::Node* listed = removed ? removed->member(removed->root(), "matches") : nullptr;
+  if (!removed) {
+    return "{" +
+           dataset_failure(PDFKIT_E_INTERNAL,
+                           "pdfkit_redact_text returned JSON that does not read") +
+           "}";
+  }
+  const JsonText::Node* listed = removed->member(removed->root(), "matches");
   std::string disagreements = "[";
   std::size_t disagreeing = 0;
   for (std::size_t v = 0; v < words.size(); ++v) {
@@ -218,7 +230,7 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
       ++disagreeing;
     }
   }
-  disagreements += "]";
+  disagreements += ']';
 
   // Each picked occurrence sent back as a located match, alone on a fresh
   // edit, written, and its page searched again.
@@ -233,11 +245,11 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
     first_failure = false;
   };
   for (const Picked& item : picked) {
-    const std::string located = R"({"matches": [{"glyphs": )" + item.glyphs +
-                                R"(, "fingerprint": )" +
-                                json_quote(fingerprint != nullptr ? fingerprint->text : "") +
-                                R"(, "placeholder": ""}]})";
-    const auto before = static_cast<std::uint64_t>(std::ranges::count(pages_of[item.value], item.page));
+    const std::string located =
+        R"({"matches": [{"glyphs": )" + item.glyphs + R"(, "fingerprint": )" +
+        json_quote(fingerprint != nullptr ? fingerprint->text : "") + R"(, "placeholder": ""}]})";
+    const auto before =
+        static_cast<std::uint64_t>(std::ranges::count(pages_of[item.value], item.page));
     edit = nullptr;
     Call call = take(pdfkit_edit_new(document, &edit, &out), out);
     if (call.status == PDFKIT_OK) {
@@ -267,12 +279,11 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
     if (after && *after + 1 == before) {
       ++exact;
     } else {
-      fail(item, "the page held " + std::to_string(before) +
-                     " occurrences before and " +
+      fail(item, "the page held " + std::to_string(before) + " occurrences before and " +
                      (after ? std::to_string(*after) : std::string("?")) + " after");
     }
   }
-  failures += "]";
+  failures += ']';
 
   std::string count_list;
   std::uint64_t total = 0;
@@ -284,15 +295,15 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
   for (std::size_t v = 0; v < words.size(); ++v) {
     word_list += (v == 0 ? "" : ", ") + json_quote(words[v]);
   }
-  word_list += "]";
+  word_list += ']';
   const bool unsupported = feedback_status == "unsupported";
   return R"({"status": "ok", "code": null, "values": )" + word_list + R"(, "counts": [)" +
          count_list + "], \"occurrences\": " + std::to_string(total) +
          ", \"agree\": " + (disagreeing == 0 ? "true" : "false") +
          ", \"disagreements\": " + disagreements + R"(, "feedback": {"status": )" +
-         json_quote(feedback_status) + ", \"tried\": " +
-         std::to_string(unsupported ? 0 : picked.size()) + ", \"exact\": " + std::to_string(exact) +
-         ", \"failures\": " + failures + "}}";
+         json_quote(feedback_status) +
+         ", \"tried\": " + std::to_string(unsupported ? 0 : picked.size()) +
+         ", \"exact\": " + std::to_string(exact) + ", \"failures\": " + failures + "}}";
 }
 
 }  // namespace pdfkit::cli::verbs

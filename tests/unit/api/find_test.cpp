@@ -79,8 +79,9 @@ std::vector<Range> find_ranges(const JsonValue& answer, std::size_t v) {
   for (const JsonValue& occurrence :
        answer.find("values")->as_array()[v].find("occurrences")->as_array()) {
     for (const JsonValue& range : occurrence.find("glyphs")->as_array()) {
-      out.emplace_back(*range.find("page")->as_int64(), *range.find("first")->as_int64(),
-                       *range.find("last")->as_int64());
+      out.emplace_back(range.find("page")->as_int64().value_or(-1),
+                       range.find("first")->as_int64().value_or(-1),
+                       range.find("last")->as_int64().value_or(-1));
     }
   }
   std::ranges::sort(out);
@@ -93,8 +94,8 @@ std::vector<Range> redact_ranges(const JsonValue& answer, std::size_t m) {
   for (const JsonValue& occurrence :
        answer.find("matches")->as_array()[m].find("occurrences")->as_array()) {
     const auto& glyphs = occurrence.find("glyphs")->as_array();
-    out.emplace_back(*occurrence.find("page")->as_int64(), *glyphs[0].as_int64(),
-                     *glyphs[1].as_int64());
+    out.emplace_back(occurrence.find("page")->as_int64().value_or(-1),
+                     glyphs[0].as_int64().value_or(-1), glyphs[1].as_int64().value_or(-1));
   }
   std::ranges::sort(out);
   return out;
@@ -115,8 +116,8 @@ std::string two_pages() {
 
 TEST_CASE("pdfkit_find answers every value with its occurrences in the contract's shape") {
   const std::string file = two_pages();
-  const Answer answer = find(
-      file, R"({"values": [{"text": "EU"}, {"text": "Bravo Charlie"}, {"text": "absent"}]})");
+  const Answer answer =
+      find(file, R"({"values": [{"text": "EU"}, {"text": "Bravo Charlie"}, {"text": "absent"}]})");
   REQUIRE(answer.status == PDFKIT_OK);
   INFO(answer.json);
   // The keys in the contract's order.
@@ -124,45 +125,44 @@ TEST_CASE("pdfkit_find answers every value with its occurrences in the contract'
   CHECK(answer.json.find(R"({"value":0,"text":"EU","count":)") != std::string::npos);
   CHECK(answer.json.find(R"({"occurrence":0,"page":1,"glyphs":[{"page":1,"first":)") !=
         std::string::npos);
-  CHECK(answer.json.find(R"("text":"EU","order":"reading","rectangles":[[)") !=
-        std::string::npos);
-  CHECK(answer.json.find(
-            R"("hidden":[],"before":"the member states of the","after":"agreed on the following"})") !=
-        std::string::npos);
+  CHECK(answer.json.find(R"("text":"EU","order":"reading","rectangles":[[)") != std::string::npos);
+  CHECK(
+      answer.json.find(
+          R"("hidden":[],"before":"the member states of the","after":"agreed on the following"})") !=
+      std::string::npos);
   const JsonValue json = JsonReader::parse(answer.json);
   CHECK(json.find("fingerprint")->as_string() == text_fingerprint(file));
   const auto& values = json.find("values")->as_array();
   REQUIRE(values.size() == 3);
   // "EU" on page 1, on page 2, and inside the hidden "EUROPE".
-  CHECK(*values[0].find("count")->as_int64() == 3);
+  CHECK(values[0].find("count")->as_int64().value_or(-1) == 3);
   const auto& eu = values[0].find("occurrences")->as_array();
-  CHECK(*eu[0].find("page")->as_int64() == 1);
-  CHECK(*eu[2].find("occurrence")->as_int64() == 2);
+  CHECK(eu[0].find("page")->as_int64().value_or(-1) == 1);
+  CHECK(eu[2].find("occurrence")->as_int64().value_or(-1) == 2);
   CHECK(eu[2].find("hidden")->as_array()[0].as_string() == "render_invisible");
   const auto& bravo = values[1].find("occurrences")->as_array();
   REQUIRE(bravo.size() == 1);
   CHECK(bravo[0].find("order")->as_string() == "drawing");
   CHECK(bravo[0].find("glyphs")->as_array().size() == 2);
-  CHECK(*values[2].find("count")->as_int64() == 0);
+  CHECK(values[2].find("count")->as_int64().value_or(-1) == 0);
   CHECK(values[2].find("occurrences")->as_array().empty());
 }
 
 TEST_CASE("pdfkit_find reads only the pages asked and as many words of context as asked") {
   const std::string file = two_pages();
-  const Answer answer =
-      find(file, R"({"values": [{"text": "EU"}], "pages": [2], "context": 1})");
+  const Answer answer = find(file, R"({"values": [{"text": "EU"}], "pages": [2], "context": 1})");
   REQUIRE(answer.status == PDFKIT_OK);
   INFO(answer.json);
   const JsonValue json = JsonReader::parse(answer.json);
   const auto& occurrences = json.find("values")->as_array()[0].find("occurrences")->as_array();
   REQUIRE(occurrences.size() == 2);
   for (const JsonValue& occurrence : occurrences) {
-    CHECK(*occurrence.find("page")->as_int64() == 2);
+    CHECK(occurrence.find("page")->as_int64().value_or(-1) == 2);
   }
   CHECK(occurrences[0].find("before")->as_string().find(' ') == std::string::npos);
   CHECK(occurrences[0].find("after")->as_string().find(' ') == std::string::npos);
-  const Answer folded = find(
-      file, R"({"values": [{"text": "eu", "folding": {"case": false}}], "pages": [1]})");
+  const Answer folded =
+      find(file, R"({"values": [{"text": "eu", "folding": {"case": false}}], "pages": [1]})");
   REQUIRE(folded.status == PDFKIT_OK);
   CHECK(folded.json.find(R"("count":0)") != std::string::npos);
 }
@@ -200,8 +200,9 @@ TEST_CASE("pdfkit_find's occurrences are the ones pdfkit_redact_text removes, ra
   fixture.page(
       "BT /F1 10 Tf 72 700 Td (Quarterly Annual) Tj 0 -12 Td (more text here) Tj ET BT /F1 10 "
       "Tf 320 700 Td (Report follows) Tj 0 -12 Td (second column) Tj ET");
-  fixture.page("BT /F1 10 Tf 72 700 Td (T) Tj 4.44 -2.2 Td (E) Tj 4.9 2.2 Td (X) Tj 12 0 Td "
-               "(logo and texts) Tj ET");
+  fixture.page(
+      "BT /F1 10 Tf 72 700 Td (T) Tj 4.44 -2.2 Td (E) Tj 4.9 2.2 Td (X) Tj 12 0 Td "
+      "(logo and texts) Tj ET");
   const std::string file = fixture.bytes();
   const std::string file2 = two_pages();
   for (const std::string* source : {&file, &file2}) {

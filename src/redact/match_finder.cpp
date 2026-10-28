@@ -758,8 +758,8 @@ std::vector<MatchFinder::Occurrence> MatchFinder::merge(std::vector<Occurrence> 
   return merged;
 }
 
-void MatchFinder::flatten(const Located& located, std::size_t index,
-                          const std::string& placeholder, std::vector<Occurrence>& out) {
+void MatchFinder::flatten(const Located& located, std::size_t index, const std::string& placeholder,
+                          std::vector<Occurrence>& out) {
   for (std::size_t i = 0; i < located.ranges.size(); ++i) {
     out.push_back({index, located.page, located.ranges[i].first, located.ranges[i].second,
                    i == 0 && located.lead ? placeholder : std::string()});

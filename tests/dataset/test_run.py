@@ -97,7 +97,7 @@ class SummaryTest(unittest.TestCase):
                  "expect_images": "n/a", "expect_redact": "n/a", "expect_metadata": "n/a",
                  "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a",
                  "expect_redact_text": "n/a", "expect_set_metadata": "n/a",
-                 "expect_redact_images": "n/a"}]
+                 "expect_redact_images": "n/a", "expect_find": "n/a"}]
         written = {"x": {"id": "x", "result": "written", "bytes": json.dumps(body).encode(), "seconds": 0.1}}
         return rows, written
 
@@ -133,7 +133,7 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
         self.assertEqual(run.COLUMNS["expect_fonts"], "text")
         self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select",
-                                           "redact_text", "set_metadata", "redact_images"})
+                                           "redact_text", "set_metadata", "redact_images", "find"})
 
 
 class TimeoutTest(unittest.TestCase):

@@ -24,7 +24,7 @@ MANIFEST_COLUMNS = (
     "tags", "expect_open", "expect_text", "expect_images", "expect_redact",
     "expect_metadata", "expect_fonts", "expect_write", "expect_select", "expect_redact_text",
     "expect_set_metadata",
-    "expect_redact_images", "notes",
+    "expect_redact_images", "expect_find", "notes",
 )
 TAXONOMY_COLUMNS = ("tag", "group", "minimum", "description", "detector")
 SOURCES_COLUMNS = (
@@ -53,6 +53,10 @@ EXPECTATIONS = {
     "expect_set_metadata": ("set_metadata", ("clean", "known_gap:", "n/a")),
     # The seeded image treatment of every file with an image (tests/dataset/outcome.md).
     "expect_redact_images": ("redact_images", ("clean", "known_gap:", "n/a")),
+    # The seeded words found by pdfkit_find, the occurrences the redaction
+    # search removes for them, and each fed back as a located match
+    # (tests/dataset/outcome.md).
+    "expect_find": ("find", ("agree", "known_gap:", "n/a")),
 }
 
 # The refusal codes of docs/DESIGN.md chapter 19 an `expect_open` may name.
@@ -275,6 +279,11 @@ def default_expect_redact_images(expect_open: str, expect_images: str) -> str:
     """`clean` for a readable file with an image, else `n/a`."""
     readable = expect_open in ("opens", "repaired")
     return "clean" if readable and expect_images != "n/a" else "n/a"
+
+
+def default_expect_find(expect_open: str) -> str:
+    """`agree` for a file the open expectation lets pdfkit read, else `n/a`."""
+    return "agree" if expect_open in ("opens", "repaired") else "n/a"
 
 
 def check_expectation(column: str, value: str) -> bool:

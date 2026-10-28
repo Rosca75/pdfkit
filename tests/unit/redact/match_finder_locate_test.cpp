@@ -115,8 +115,8 @@ TEST_CASE("what a redaction removes is what locate finds, stretch for stretch") 
       "Tf 320 700 Td (Report follows) Tj 0 -12 Td (second column) Tj ET",
       "BT /F1 10 Tf 72 700 Td (T) Tj 4.44 -2.2 Td (E) Tj 4.9 2.2 Td (X) Tj 12 0 Td (logo) Tj ET",
   };
-  const std::vector<std::string> values{"zebulon", "Bravo Charlie", "Annual Report", "TeX",
-                                        "o",       "e"};
+  const std::vector<std::string> values{"zebulon", "Bravo Charlie", "Annual Report", "TeX", "o",
+                                        "e"};
   for (const std::string& content : contents) {
     TextDocument document;
     const PageText page = page_of(document, content);

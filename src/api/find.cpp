@@ -52,8 +52,8 @@ constexpr std::int64_t default_context = 5;
 constexpr std::int64_t most_context = 50;
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
-  throw Error(ErrorCode::invalid_argument, "pdfkit_find values_json " + failed,
-              std::string(shape), fix);
+  throw Error(ErrorCode::invalid_argument, "pdfkit_find values_json " + failed, std::string(shape),
+              fix);
 }
 
 std::string where(std::size_t index) {
@@ -79,9 +79,9 @@ MatchFinder::Match read_value(const JsonValue& item, std::size_t index) {
   for (const auto& [name, value] : item.as_object()) {
     if (name == "text") {
       if (value.kind() != JsonValue::Kind::string) {
-        refuse(where(index) + " gives \"text\" as " +
-                   std::string(JsonValue::kind_name(value.kind())),
-               "write \"text\" as a string");
+        refuse(
+            where(index) + " gives \"text\" as " + std::string(JsonValue::kind_name(value.kind())),
+            "write \"text\" as a string");
       }
       text = true;
       match.search = value.as_string();
@@ -106,8 +106,7 @@ MatchFinder::Match read_value(const JsonValue& item, std::size_t index) {
         }
       }
     } else {
-      refuse(where(index) + " names the unknown key \"" + name + "\"",
-             "use text and folding only");
+      refuse(where(index) + " names the unknown key \"" + name + "\"", "use text and folding only");
     }
   }
   if (!text || match.search.empty()) {
@@ -134,13 +133,13 @@ std::vector<std::uint32_t> read_pages(const JsonValue* pages, std::size_t page_c
     const std::optional<std::int64_t> number =
         item.kind() == JsonValue::Kind::number ? item.as_int64() : std::nullopt;
     if (!number || *number < 1 || std::cmp_greater(*number, page_count)) {
-      throw Error(ErrorCode::invalid_argument,
-                  "pdfkit_find values_json asks for page " +
-                      (number ? std::to_string(*number)
-                              : std::string("that is not a whole number")) +
-                      " of a document of " + std::to_string(page_count) + " pages",
-                  "page numbers from 1 to " + std::to_string(page_count),
-                  "ask only for pages the document has; pdfkit_inspect gives the page count");
+      throw Error(
+          ErrorCode::invalid_argument,
+          "pdfkit_find values_json asks for page " +
+              (number ? std::to_string(*number) : std::string("that is not a whole number")) +
+              " of a document of " + std::to_string(page_count) + " pages",
+          "page numbers from 1 to " + std::to_string(page_count),
+          "ask only for pages the document has; pdfkit_inspect gives the page count");
     }
     if (!seen.insert(*number).second) {
       throw Error(ErrorCode::invalid_argument,
@@ -161,8 +160,8 @@ std::size_t read_context(const JsonValue* context) {
   const std::optional<std::int64_t> number =
       context->kind() == JsonValue::Kind::number ? context->as_int64() : std::nullopt;
   if (!number || *number < 0 || *number > most_context) {
-    refuse("gives \"context\" as " +
-               (number ? std::to_string(*number) : std::string(JsonValue::kind_name(context->kind()))),
+    refuse("gives \"context\" as " + (number ? std::to_string(*number)
+                                             : std::string(JsonValue::kind_name(context->kind()))),
            "give the words of context on each side as a whole number from 0 to 50");
   }
   return static_cast<std::size_t>(*number);
@@ -251,7 +250,8 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
       values.push_back(read_value(list->as_array()[i], i));
     }
     pdfkit::syntax::Document& document = *handle.document;
-    const std::vector<std::uint32_t> pages = read_pages(input.find("pages"), document.pages().size());
+    const std::vector<std::uint32_t> pages =
+        read_pages(input.find("pages"), document.pages().size());
     const std::size_t context = read_context(input.find("context"));
 
     // Per value, its occurrences page by page, each page's in the order of

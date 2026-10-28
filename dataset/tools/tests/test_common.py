@@ -69,9 +69,9 @@ class ManifestTest(unittest.TestCase):
 class WriterExpectationTest(unittest.TestCase):
     def test_columns_sit_before_notes(self):
         columns = list(common.MANIFEST_COLUMNS)
-        self.assertEqual(columns[-6:], ["expect_write", "expect_select", "expect_redact_text",
+        self.assertEqual(columns[-7:], ["expect_write", "expect_select", "expect_redact_text",
                                         "expect_set_metadata", "expect_redact_images",
-                                        "notes"])
+                                        "expect_find", "notes"])
 
     def test_accepted_values(self):
         for value in ("identical", "known_gap:optional_content", "n/a"):

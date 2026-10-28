@@ -40,7 +40,8 @@ PAGES_PER_TIMEOUT = 200
 COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "images",
            "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
            "expect_select": "select", "expect_fonts": "text", "expect_redact_text": "redact_text",
-           "expect_set_metadata": "set_metadata", "expect_redact_images": "redact_images"}
+           "expect_set_metadata": "set_metadata", "expect_redact_images": "redact_images",
+           "expect_find": "find"}
 # The names --checks accepts are the outcome keys the columns read, each once.
 CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
 # The first line of a report by AddressSanitizer or UndefinedBehaviorSanitizer
