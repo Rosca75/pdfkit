@@ -226,6 +226,16 @@ fails until all of them agree.
 These are the reasons behind the rules of this charter and of `docs/DESIGN.md`.
 A session that wants to change a rule reads its reason here first.
 
+- **pdfkit is a literal tool; its caller owns the business rules.** pdfkit is
+  driven by doc-anonymiser-for-.NET, which decides the values and spelling
+  variants to send, word boundaries and which short words may go. A value (a
+  search string) is removed wherever it occurs, inside longer words too, and
+  verified everywhere; an expression at a location (a glyph range) is removed
+  there alone and verified there alone, because a caller redacting one "EU"
+  must not lose every "eu"; a rewritten metadata field is verified in the
+  metadata. Two copies of a business rule drift, and a redaction library that
+  second-guesses its caller leaks what the caller asked to remove or removes
+  what it asked to keep.
 - **A regenerated document is not the user's document.** A same-format export
   rebuilt from extracted text loses what the user sees. pdfkit edits the
   original's content streams and copies every untouched object byte for byte.
@@ -313,6 +323,14 @@ A session that wants to change a rule reads its reason here first.
   packaging MIT) is fetched by `tests/pdfium/fetch.py`, pinned by hash, into the
   shared cache (§8.4), and is never linked into the library or shipped, because
   an independent reader that the library depends on is not independent.
+- **Reference readers judge as a panel, test-only.** A reading choice or a
+  gate is judged by the majority of PDFium, Poppler's `pdftotext`, MuPDF's
+  `mutool`, pdf_oxide and pdf-extract (QPDF and lopdf for structure), because
+  one reader's quirks counted as truth make pdfkit's misses and its
+  reference's indistinguishable. Each is fetched by hash into the shared cache
+  and run as a separate process by `tests/`; none is linked, vendored or
+  shipped, so GPL and AGPL readers are allowed there and only there, as the
+  compiler and ccache are.
 - **Every source file carries the licence header**: the first lines are
   `// SPDX-License-Identifier: Apache-2.0` and
   `// Copyright 2026 The pdfkit authors` (with `#` in Python, CMake and
@@ -446,6 +464,16 @@ out was analysed in full when its last change entered main.
   behaviour is written and seen red before the code.
 - **The dataset is the gate, the unit tier is the floor.** A green unit tier
   with a regressed dataset number is a regression.
+- **Tests run at planned points, not after every edit.** While coding, the
+  unit tests of the component touched (`pdfkit_tests -tc=...` or a
+  test-case filter); per batch of commits, the routine check and the unit
+  tier; the dataset as a smoke set of about 60 files covering the phase's
+  tags once mid-phase, the full gate once at the phase end and again only
+  after a fix to one of its failures; the sanitizer tiers and
+  `python build/check.py --full` at the merge. A full tier is never re-run
+  "to be sure", because the full check and the gate run take 17 and 23
+  minutes, and a long session spent waiting on repeats is a session not
+  building.
 - **A missing optional input skips by name.** A dataset set, PDFium or a
   generator that is absent makes its test skip with the command that supplies
   it, never pass in silence.
