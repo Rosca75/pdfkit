@@ -6,8 +6,9 @@
 # incremental update writer for a cross-reference stream, the XMP packet and
 # the check that every marker a specimen plants can be found by a byte scan of
 # the raw file or of a decompressed stream. A marker is `PDFKITMARK<RR>X<NN>`:
-# RR is the row of the channel table (01 to 23) or of the drawn content (90 to
-# 93), NN a counter, or the page number for a page-owned marker. Markers are
+# RR is the row of the channel table (01 to 24), 25 for content in an
+# optional-content group turned off (synth/channels/off_layers.py), or the drawn
+# content (90 to 93), NN a counter, or the page number for a page-owned marker. Markers are
 # always literal strings or stream data and never hex strings or names, so one
 # byte scan finds them wherever a reader leaves them.
 

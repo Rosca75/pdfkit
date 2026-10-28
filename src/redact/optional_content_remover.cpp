@@ -53,8 +53,8 @@ constexpr int max_depth = 32;
 // every page.
 constexpr std::size_t own_resources = std::numeric_limits<std::size_t>::max();
 
-// ISO 32000-1 tables 59 and 60 (read): path construction, clipping and
-// painting.
+// ISO 32000-1 Annex A, table A.1 (read): the path construction and painting
+// operators, sh with them because it paints.
 constexpr std::array<std::string_view, 7> construction{"m", "l", "c", "v", "y", "h", "re"};
 constexpr std::array<std::string_view, 11> painting{"S", "s",  "f", "F", "f*", "B",
                                                     "B*", "b", "b*", "n", "sh"};

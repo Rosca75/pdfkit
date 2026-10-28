@@ -79,6 +79,7 @@ to find it.
 | Text strings: UTF-16BE after FE FF, PDFDocEncoding otherwise; UTF-8 after EF BB BF | ISO 32000-1 §7.9.2.2; ISO 32000-2 §7.9.2.2 | read (32000-1), recalled (32000-2) |
 | A UTF-16LE byte-order mark read as little-endian | pdf.js `stringToPDFString`, https://github.com/mozilla/pdf.js/blob/master/src/shared/util.js | recalled |
 | Optional content: `/OCProperties /D` with `/BaseState`, `/ON`, `/OFF`; membership dictionaries with `/OCGs`, `/P` and `/VE` | ISO 32000-1 §8.11.2 and §8.11.4.3 | read |
+| Content in an optional-content group that is off is not drawn but the graphics-state operators inside it still apply; a catalog without `/OCProperties` shows every group (`src/redact/optional_content_remover.cpp`) | ISO 32000-1 §8.11 | recalled; the off-layer fixture of `tests/unit/redact/optional_content_remover_test.cpp` checks the text after an off sequence keeps its place |
 | The structure tree's marked-content references: `/K` as an MCID, an `/MCR` with `/Pg` and `/Stm`, an `/OBJR` | ISO 32000-1 §14.7.2 to §14.7.4 | read |
 | PdfPig's `UseActualText` option | https://github.com/UglyToad/PdfPig/blob/master/src/UglyToad.PdfPig/ParsingOptions.cs | read |
 | Microsoft Print to PDF ligatures that trip extractors | https://github.com/py-pdf/pypdf/issues/2491 | read |

@@ -8,7 +8,7 @@
 // /OC is off is removed, because a viewer hides that content and an extractor
 // reads it, and the channel table then drops /OCProperties and every /OC key,
 // which would show it. Inside an off sequence the operators that change the
-// graphics state stay (ISO 32000-1 section 8.11.3.2, recalled: hidden content
+// graphics state stay (ISO 32000-1 section 8.11, recalled: hidden content
 // is not drawn but the state it sets is), so what follows the sequence draws as
 // it did: q and Q, cm, colours, the text state and the text positioning are
 // kept; a path that paints is removed with its construction, or keeps its
