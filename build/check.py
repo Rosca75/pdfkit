@@ -8,11 +8,12 @@
 #            origin/main, from the mingw-debug compile database (configured
 #            when absent);
 #   routine  (no flag) the same, after building mingw-debug with warnings as
-#            errors;
+#            errors, and the dataset harness's own tests (tests/dataset/test_*.py);
 #   --full   (the merge gate of a branch and every phase gate) a build of
 #            mingw-debug, clang-tidy over every source with its cache set
-#            aside, a build of mingw-release and the artefacts' import and
-#            export tables.
+#            aside, the dataset harness's tests, the check scripts' own tests
+#            (build/tests/test_checks.py, which plant a violation per check), a
+#            build of mingw-release and the artefacts' import and export tables.
 # clang-tidy keeps each source's findings in a cache keyed by everything that
 # decides them (build/check_format.py), so a routine run analyses only what
 # changed; a source left out of a routine run was analysed by the full run that
@@ -88,7 +89,11 @@ def main() -> int:
                 python("check_format.py", "--changed-since", args.base), results)
         else:
             run("formatting", python("check_format.py", "--no-tidy"), results)
+    if not args.fast:
+        run("dataset harness tests", [sys.executable, "-m", "unittest", "discover", "-s",
+                                      str(ROOT / "tests" / "dataset"), "-p", "test_*.py"], results)
     if args.full:
+        run("check script tests", [sys.executable, str(BUILD / "tests" / "test_checks.py")], results)
         released = run("configure mingw-release", ["cmake", "--preset", "mingw-release"], results)
         released = released and run("build mingw-release",
                                     ["cmake", "--build", "--preset", "mingw-release"], results)

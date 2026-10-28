@@ -278,12 +278,3 @@ def helvetica(name: str = "Helvetica") -> dict:
 def show(text: str) -> bytes:
     """A literal string of WinAnsi text for Tj."""
     return literal(text.encode("cp1252"))
-
-
-def text_block(lines: list[str], x: float = 72, y: float = 720, size: float = 12,
-               leading: float = 16, font: str = "F1") -> bytes:
-    out = [f"BT /{font} {size} Tf {leading} TL {x} {y} Td".encode("ascii")]
-    for i, line in enumerate(lines):
-        out.append((b"" if i == 0 else b"T* ") + show(line) + b" Tj")
-    out.append(b"ET")
-    return ops(*out)

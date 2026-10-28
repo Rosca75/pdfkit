@@ -301,6 +301,16 @@ from the cache. Before, `python build/check.py` was the full run with neither
 cache: about 1,100 to 1,200 s from its measured parts (mingw-debug 405 s, clang-tidy
 271 s, mingw-release 399 to 457 s).
 
+The routine and full runs also run the dataset harness's own tests
+(`tests/dataset/test_*.py`, 2 s); `--full` runs the check scripts' tests
+(`build/tests/test_checks.py`), which copy the repository once per run (the
+files git tracks or would track) and put the copy back before each test with
+one `git status`. Copying the whole tree and indexing it for each of the 30
+tests took 288 s in a worktree and 523 s in the main checkout, whose ignored
+dataset files were copied too; one copy takes 130 to 154 s with other sessions
+building, of which the check scripts themselves are about 100 s
+(clang-format of every source 20 s, the nine checks of the clean tree 22 s).
+
 ### 6.5 The sanitizer dataset pass
 
 At a phase's end the `clang-sanitize` build reads every manifest file:

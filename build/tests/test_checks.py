@@ -4,12 +4,17 @@
 # Tests of the check scripts: each runs over a temporary copy of the
 # repository, first clean (it must pass) and then with one planted violation
 # (it must fail and name the file). A check that passes a planted violation
-# guards nothing, so every check has at least one planted case here.
+# guards nothing, so every check has at least one planted case here. The copy
+# (the files git tracks or would track, in a git index of its own) is made once
+# per run and put back before each test, because copying and indexing the tree
+# for every test took most of the suite's time.
 """Test the checks: python build/tests/test_checks.py (or python -m pytest build/tests)."""
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -17,18 +22,75 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-IGNORED = shutil.ignore_patterns(".git", ".claude", "out", "dist", "cache", "__pycache__", "bin",
-                                 "obj", ".vs", ".vscode", ".idea")
+
+
+def git(tree: Path, *args: str, stdin: bytes | None = None) -> bytes:
+    return subprocess.run(["git", "-c", "core.autocrlf=false", *args], cwd=tree, input=stdin,
+                          check=True, capture_output=True).stdout
 
 
 def make_tree() -> Path:
+    """A copy of the files the checkout tracks or would track, in a git index of its
+    own; build outputs, caches and the dataset's files stay behind."""
     folder = Path(tempfile.mkdtemp(prefix="pdfkit-checks-"))
     tree = folder / "repo"
-    shutil.copytree(REPO, tree, ignore=IGNORED)
-    subprocess.run(["git", "init", "-q"], cwd=tree, check=True)
-    subprocess.run(["git", "-c", "core.autocrlf=false", "add", "-A"], cwd=tree, check=True,
-                   capture_output=True)
+    listed = git(REPO, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    for name in sorted({n for n in listed.decode("utf-8").split("\0") if n}):
+        source = REPO / name
+        if source.is_file():
+            (tree / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, tree / name)
+    git(tree, "init", "-q")
+    git(tree, "add", "-A")
+    shutil.copy2(tree / ".git" / "index", folder / "index")
     return tree
+
+
+def reset_tree(tree: Path) -> None:
+    """Puts the copy back as make_tree left it: its index, every tracked file a test
+    changed or removed, and no file a test added."""
+    shutil.copy2(tree.parent / "index", tree / ".git" / "index")
+    status = git(tree, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all",
+                 "--ignored=matching")
+    changed = []
+    for entry in (e for e in status.decode("utf-8").split("\0") if e):
+        code, name = entry[:2], entry[3:]
+        if code in ("??", "!!"):
+            path = tree / name
+            if path.is_dir():
+                remove_folder(path)
+            else:
+                path.unlink()
+        else:
+            changed.append(name)
+    if changed:
+        git(tree, "checkout-index", "-f", "-z", "--stdin", stdin="\0".join(changed).encode("utf-8"))
+
+
+def remove_folder(folder: Path) -> None:
+    """Deletes a folder; git writes its objects read-only, which Windows refuses to delete."""
+    def writable(function, path, _error) -> None:
+        os.chmod(path, stat.S_IWRITE)
+        function(path)
+
+    shutil.rmtree(folder, onexc=writable)
+
+
+TREES: list[Path] = []
+
+
+def shared_tree() -> Path:
+    """The run's one copy, made on first use and put back on every later one."""
+    if TREES:
+        reset_tree(TREES[0])
+    else:
+        TREES.append(make_tree())
+    return TREES[0]
+
+
+def tearDownModule() -> None:  # noqa: N802 (the name unittest calls)
+    while TREES:
+        remove_folder(TREES.pop().parent)
 
 
 def run_check(tree: Path, script: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -52,10 +114,7 @@ class CheckTest(unittest.TestCase):
     tree: Path
 
     def setUp(self) -> None:
-        self.tree = make_tree()
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.tree.parent, ignore_errors=True)
+        self.tree = shared_tree()
 
     def assert_fails(self, script: str, *needles: str, args: tuple[str, ...] = ()) -> None:
         result = run_check(self.tree, script, *args)

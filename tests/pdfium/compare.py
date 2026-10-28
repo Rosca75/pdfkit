@@ -3,10 +3,8 @@
 #
 # The PDFium tier: measures pdfkit against the independent reader. `--run`
 # scores each file's text of a dataset run against PDFium's with the word-bag
-# F1 of words.py and writes pdfium-text.tsv with the medians per set; `--render`
-# renders the pages of a redaction's input and output and proves them pixel-
-# stable outside the reported rectangles; `--leak` searches PDFium's text and the
-# output's decoded bytes for every redacted string. `--self-test` proves the
+# F1 of words.py and writes pdfium-text.tsv with the medians per set (the
+# redacted strings are searched for by leak.py). `--self-test` proves the
 # tier itself before pdfkit reads anything: PDFium against PDFium must score 1.0
 # on every file it opens, a copy with one word in ten dropped must score
 # 0.947 +- 0.01, and PDFium must open 95 % of the rows that carry no damage,
@@ -176,96 +174,6 @@ def text_run(run_id: str, rows: list[dict], workers: int) -> int:
     (run_dir / "pdfium-text.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(json.dumps(summary | {"under_0_90": len(summary["under_0_90"])}, indent=1))
     return 0
-
-
-def render_pair(before: Path, after: Path, rectangles: list, out_dir: Path, pool) -> dict:
-    """Pages of `before` and `after` must match outside the rectangles (page, x0, y0, x1, y1 in points)."""
-    a = pool.probe(before, ["render"], render={"out": str(out_dir / "before"), "dpi": 72})
-    b = pool.probe(after, ["render"], render={"out": str(out_dir / "after"), "dpi": 72})
-    if not a.get("ok") or not b.get("ok"):
-        return {"stable": False, "reason": f"render failed: {a.get('error')} {b.get('error')}"}
-    if len(a["rendered"]) != len(b["rendered"]):
-        return {"stable": False, "reason": "page counts differ"}
-    changed = []
-    for index, (pa, pb) in enumerate(zip(a["rendered"], b["rendered"])):
-        ha, da = Path(pa).read_bytes().split(b"\n", 1)
-        hb, db = Path(pb).read_bytes().split(b"\n", 1)
-        if ha != hb:
-            changed.append({"page": index + 1, "reason": "page size differs"})
-            continue
-        width, height, stride = map(int, ha.split())
-        boxes = [r[1:] for r in rectangles if r[0] == index + 1]
-        outside = 0
-        for y in range(height):
-            row_a, row_b = da[y * stride:(y + 1) * stride], db[y * stride:(y + 1) * stride]
-            if row_a == row_b:
-                continue
-            for x in range(width):
-                if row_a[4 * x:4 * x + 4] == row_b[4 * x:4 * x + 4]:
-                    continue
-                px, py = x + 0.5, height - y - 0.5
-                # One pixel of anti-aliasing is tolerated around each rectangle.
-                if any(x0 - 1 <= px <= x1 + 1 and y0 - 1 <= py <= y1 + 1 for x0, y0, x1, y1 in boxes):
-                    continue
-                outside += 1
-        if outside:
-            changed.append({"page": index + 1, "pixels_outside": outside})
-    return {"stable": not changed, "changed": changed}
-
-
-def leak_scan(path: Path, strings: list[str], pool) -> list[dict]:
-    """Every redacted string still found in PDFium's text or in the file's decoded bytes."""
-    import autotag
-
-    hits = []
-    probe = pool.probe(path, ["text"])
-    folded = [s.casefold() for s in strings]
-    for page, text in enumerate(page_texts(probe), start=1):
-        lowered = text.casefold()
-        for original, needle in zip(strings, folded):
-            if needle and needle in lowered:
-                hits.append({"string": original, "surface": "pdfium_text", "page": page})
-    data = path.read_bytes()
-    scan = autotag.Scan(data)
-    blobs = [data] + [scan.decoded(o) or b"" for o in scan.objects if o.data is not None]
-    for original in strings:
-        for encoding in ("utf-8", "utf-16-be", "latin-1"):
-            try:
-                needle = original.encode(encoding)
-            except UnicodeEncodeError:
-                continue
-            if any(needle in blob for blob in blobs):
-                hits.append({"string": original, "surface": f"bytes:{encoding}"})
-                break
-    return hits
-
-
-def redaction_run(run_id: str, rows: list[dict], workers: int, render: bool, leak: bool) -> int:
-    """Reads redact.input, redact.output, redact.rectangles and redact.strings from each outcome."""
-    run_dir = common.reports_dir() / run_id
-    results = {}
-    with pdfium.Pool(workers) as pool:
-        for row in rows:
-            path = run_dir / "outcomes" / f"{row['id']}.json"
-            if not path.exists():
-                continue
-            redact = json.loads(path.read_text(encoding="utf-8")).get("redact") or {}
-            if redact.get("status") != "ok" or not redact.get("output"):
-                continue
-            entry = {}
-            if render:
-                entry["render"] = render_pair(common.file_path(row), Path(redact["output"]),
-                                              redact.get("rectangles", []), run_dir / "render" / row["id"], pool)
-            if leak:
-                entry["leaks"] = leak_scan(Path(redact["output"]), redact.get("strings", []), pool)
-            results[row["id"]] = entry
-    (run_dir / "pdfium-redaction.json").write_text(json.dumps(results, indent=1), encoding="utf-8")
-    unstable = [k for k, v in results.items() if v.get("render", {}).get("stable") is False]
-    leaking = [k for k, v in results.items() if v.get("leaks")]
-    print(json.dumps({"files": len(results), "unstable": len(unstable), "leaking": len(leaking)}, indent=1))
-    if not results:
-        print("SKIPPED redaction checks: no outcome of this run carries a redaction output", file=sys.stderr)
-    return 1 if unstable or leaking else 0
 
 
 CHECKS = ("write", "select", "text", "redact")
@@ -525,8 +433,6 @@ def main() -> int:
                         + ", ".join(CHECKS))
     parser.add_argument("--run", help="the dataset run id to compare")
     parser.add_argument("--self-test", action="store_true", help="prove the tier with PDFium alone")
-    parser.add_argument("--render", action="store_true", help="pixel stability of the run's redactions")
-    parser.add_argument("--leak", action="store_true", help="search the run's redaction outputs for the strings")
     parser.add_argument("--set", action="append", help="only these sets")
     parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     args = parser.parse_args()
@@ -559,8 +465,6 @@ def main() -> int:
             else:
                 pixel_check(args.run, rows, args.workers, check)
         return 0
-    if args.render or args.leak:
-        return redaction_run(args.run, rows, args.workers, args.render, args.leak)
     return text_run(args.run, rows, args.workers)
 
 
