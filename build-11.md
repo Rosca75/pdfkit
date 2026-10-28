@@ -160,5 +160,14 @@ the merge. Between steps run only the unit cases touched (`CLAUDE.md` §8.2).
    caller did not rewrite (`/Subject`), because the metadata writer drops a
    key outside the field list that repeats an original, so a custom key
    never survives to be refused.
-6. **Tests first**: the code of steps 2 and 3 was written before the unit
+6. **The caller's written values are cut** out of the metadata surfaces
+   before the originals are searched, as the placeholders are: the gate run
+   refused pdfbox-0006, whose original Keywords "5" stood in the job's own
+   written value "[_5_]". A written value holding an original is the
+   caller's own (`docs/DESIGN.md` §18).
+7. **The dataset gate ran under load**: three other sessions shared the
+   laptop, and `open,text` alone took 54 s on opf-0005, against 8 s for every
+   check of it in the run `bs-final`; the 19 files that met the timeout in
+   `p11-gate` were run again apart (see the merge commit).
+8. **Tests first**: the code of steps 2 and 3 was written before the unit
    tests of §3, which passed on their first run; they were not seen red.
