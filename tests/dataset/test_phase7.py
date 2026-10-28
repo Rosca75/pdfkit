@@ -33,6 +33,12 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(out["drawn"], [mk(90, 2), mk(93, 4)])
         self.assertEqual(out["other"], [mk(50)])
 
+    def test_off_layer_markers_are_their_own_class(self):
+        out = phase7.classify({mk(24), mk(25, 1), mk(90, 1)})
+        self.assertEqual(out["stripped"], [mk(24)])
+        self.assertEqual(out["off"], [mk(25, 1)])
+        self.assertEqual(out["drawn"], [mk(90, 1)])
+
     def test_parse(self):
         self.assertEqual(phase7.parse_marker(mk(91, 3)), (91, 3))
         with self.assertRaises(ValueError):
@@ -133,7 +139,7 @@ class JudgeTest(unittest.TestCase):
             rows = [row("a-0001", set_name="qpdf"), row("a-0002", pages="2", set_name="qpdf")]
             report = self.judge(self.folder(tmp, ["a-0001", "a-0002"], multi=("a-0002",)), rows)
         self.assertTrue(report["passed"], [m for m in report["rows"] if not m["pass"]])
-        self.assertEqual(len(report["rows"]), 11)
+        self.assertEqual(len(report["rows"]), 13)
 
     def test_refused_files_are_not_in_the_population(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -187,7 +193,34 @@ class JudgeTest(unittest.TestCase):
             report = self.judge(self.folder(tmp, ["a-0001"]), [row("a-0001", set_name="qpdf")])
         text = phase7.markdown(report)
         self.assertIn("| Measure | Value | Threshold | Result |", text)
-        self.assertEqual(text.count("| pass |") + text.count("| FAIL |"), 11)
+        self.assertEqual(text.count("| pass |") + text.count("| FAIL |"), 13)
+
+
+class OptionalContentTest(unittest.TestCase):
+    def test_the_names_oc_and_ocproperties_are_found_and_longer_names_are_not(self):
+        for text in (b"/OC /oc1 BDC", b"<</OC 5 0 R>>", b"/OCProperties<<", b"end /OC"):
+            self.assertIsNotNone(phase7.OC_NAME_RE.search(text), text)
+        for text in (b"/OCGs [", b"/OCMD", b"/OCX 1"):
+            self.assertIsNone(phase7.OC_NAME_RE.search(text), text)
+
+    def test_a_writer_that_keeps_off_layers_is_caught(self):
+        # A "pdfkit" that copies its input: every off marker survives and /OC stays.
+        copier = [sys.executable, "-c", "import shutil, sys; shutil.copy(sys.argv[2], sys.argv[6])"]
+        with tempfile.TemporaryDirectory() as tmp:
+            family = phase7.off_layer_family(Path(tmp), copier)
+        self.assertEqual(family["failed"], [])
+        self.assertEqual(family["files"], 5)
+        self.assertTrue(family["off_surviving"])
+        self.assertEqual(family["missing_drawn"], [])
+        self.assertEqual(len(family["oc_named"]), 5)
+
+    def test_no_pdfkit_is_reported_as_not_measured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            family = phase7.off_layer_family(Path(tmp), None)
+            report = phase7.judge(JudgeTest().folder(tmp, ["a-0001"]), [row("a-0001", set_name="qpdf")], family)
+        measure = next(m for m in report["rows"] if m["measure"].startswith("planted markers in optional"))
+        self.assertFalse(measure["pass"])
+        self.assertIn("not measured", measure["shown"])
 
 
 if __name__ == "__main__":

@@ -62,7 +62,6 @@ class ChannelTable {
     std::set<std::string, std::less<>> catalog;
     std::set<std::string, std::less<>> page;
     bool object_metadata = false;
-    bool optional_content = false;
     bool xmp_history = false;
     // The keys of form and image XObjects outside their allow-lists go.
     bool xobject_private = false;
@@ -91,6 +90,10 @@ class ChannelTable {
     std::vector<Count> counts;
     // /Redact annotations never applied, per page.
     std::size_t pending_redactions = 0;
+    // The optional-content groups of /OCGs the default configuration turns
+    // off (ISO 32000-1 section 8.11, read: /BaseState, then /ON and
+    // /OFF), whose content every write removes.
+    std::size_t off_groups = 0;
     std::vector<Warning> warnings;
   };
 

@@ -10,6 +10,7 @@
 #include "platform/byte_span.hpp"
 #include "platform/crypto/sha2.hpp"
 #include "redact/image_treatment_applier.hpp"
+#include "redact/optional_content_remover.hpp"
 #include "redact/self_check.hpp"
 #include "redact/text_redactor.hpp"
 #include "writer/channel_table.hpp"
@@ -40,6 +41,10 @@ WritePipeline::Output WritePipeline::run(EditPlan& plan) {
   text_surgery(plan, graph, output.report);
   image_treatments(plan, graph, output.report);
   metadata(plan, graph, output.report);
+  // The content the default optional-content configuration turns off goes
+  // before the channel strip drops /OCProperties and every /OC key, which
+  // would show it (docs/DESIGN.md section 15).
+  OptionalContentRemover::apply(graph);
   strip_channels(graph, output.report);
   output.pdf = serialise(graph, output.report);
   self_check(plan, output.pdf, output.report);

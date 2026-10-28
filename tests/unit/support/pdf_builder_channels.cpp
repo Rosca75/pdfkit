@@ -220,6 +220,70 @@ std::string PdfBuilderChannels::planted(std::string_view id, const std::string& 
   return plant(id, marker);
 }
 
+std::string PdfBuilderChannels::off_layers(std::string_view kind) {
+  Skeleton s;
+  PdfBuilder& b = s.builder;
+  const std::uint32_t on = b.add("<< /Type /OCG /Name " + literal(marker(14, 1)) + " >>");
+  const std::uint32_t off = b.add("<< /Type /OCG /Name " + literal(marker(14, 2)) + " >>");
+  const auto shown = [](const std::string& text, int y) {
+    return "BT /F1 12 Tf 72 " + std::to_string(y) + " Td (" + text + ") Tj ET";
+  };
+  std::string configuration =
+      "/D << /OFF [" + ref(off) + "] /Order [" + ref(on) + " " + ref(off) + "] >>";
+  std::string properties = "/on " + ref(on) + " /off " + ref(off);
+  std::string drawn;
+  if (kind == "bdc") {
+    drawn = "/OC /on BDC " + shown(marker(90, 1), 700) + " EMC /OC /off BDC q 1 0 0 RG " +
+            shown(marker(25, 1), 680) + " 0 0 m 100 100 l S 10 10 50 50 re f Q EMC " +
+            "BT /F1 12 Tf 72 660 Td /OC /off BDC (" + marker(25, 2) + ") Tj [(" + marker(25, 3) +
+            ") -250 (x)] TJ EMC (" + marker(90, 2) + ") Tj ET";
+  } else if (kind == "form" || kind == "image") {
+    const std::uint32_t off_form =
+        b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(off) +
+                         " /Resources << /Font << /F1 " + ref(s.font) + " >> >>",
+                     shown(marker(25, 1), 680), StreamOptions{true});
+    const std::uint32_t on_form =
+        b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(on) +
+                         " /Resources << /Font << /F1 " + ref(s.font) + " >> >>",
+                     shown(marker(90, 1), 700), StreamOptions{true});
+    const std::string samples = marker(25, 2);
+    const std::uint32_t off_image =
+        b.add_stream("/Type /XObject /Subtype /Image /Width " + std::to_string(samples.size()) +
+                         " /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /OC " + ref(off),
+                     samples, StreamOptions{false});
+    s.resources_extra = "/XObject << /Fo " + ref(off_form) + " /Fn " + ref(on_form) + " /Io " +
+                        ref(off_image) + " >> ";
+    drawn = "q /Fo Do Q q /Fn Do Q q 100 0 0 10 72 600 cm /Io Do Q";
+    if (kind == "image") {
+      drawn += " /OC /off BDC q 100 0 0 10 72 580 cm BI /W 15 /H 1 /CS /G /BPC 8 ID " +
+               marker(25, 3) + " EI Q EMC";
+    }
+  } else if (kind == "nested") {
+    drawn = "/OC /off BDC /OC /on BDC " + shown(marker(25, 1), 680) + " EMC EMC " +
+            "/OC /on BDC /Span << /MCID 0 >> BDC /OC /off BDC " + shown(marker(25, 2), 660) +
+            " EMC " + shown(marker(90, 1), 700) + " EMC EMC";
+  } else if (kind == "base_off") {
+    configuration = "/D << /BaseState /OFF /ON [" + ref(on) + "] >>";
+    drawn = "/OC /on BDC " + shown(marker(90, 1), 700) + " EMC /OC /off BDC " +
+            shown(marker(25, 1), 680) + " EMC";
+  } else if (kind == "membership") {
+    const std::uint32_t all_on =
+        b.add("<< /Type /OCMD /OCGs [" + ref(on) + " " + ref(off) + "] /P /AllOn >>");
+    properties += " /md " + ref(all_on);
+    drawn = "/OC /md BDC " + shown(marker(25, 1), 680) + " EMC /OC << /Type /OCMD /OCGs [" +
+            ref(on) + "] >> BDC " + shown(marker(90, 1), 700) +
+            " EMC /OC << /Type /OCMD /VE [/Not " + ref(on) + "] >> BDC " +
+            shown(marker(25, 2), 660) + " EMC";
+  } else {
+    throw std::logic_error("PdfBuilderChannels: no off-layer kind " + std::string(kind));
+  }
+  s.resources_extra += "/Properties << " + properties + " >>";
+  s.content = drawn + " " + page_content();
+  s.catalog_extra = "/OCProperties << /OCGs [" + ref(on) + " " + ref(off) + "] " + configuration +
+                    " >> /PageMode /UseOC";
+  return s.build();
+}
+
 std::string PdfBuilderChannels::leak_fixture(std::uint32_t pages) {
   PdfBuilder b;
   b.begin_document();
@@ -230,16 +294,18 @@ std::string PdfBuilderChannels::leak_fixture(std::uint32_t pages) {
   std::vector<std::uint32_t> groups;
   std::vector<std::uint32_t> elements;
   std::string xobjects;
-  std::string properties;
   std::string labels;
   for (std::uint32_t n = 1; n <= pages; ++n) {
     const int i = static_cast<int>(n);
     page_numbers.push_back(b.reserve());
     contents.push_back(b.reserve());
-    const std::uint32_t form = b.add_stream(
-        "/Type /XObject /Subtype /Form /BBox [0 0 612 792] /Resources << /Font << /F1 " +
-            ref(font) + " >> >>",
-        "BT /F1 10 Tf 72 650 Td (" + marker(91, i) + ") Tj ET", StreamOptions{true});
+    // The group only page n uses is the /OC of the form only it draws, so the
+    // page's content stream stays as it was written.
+    groups.push_back(b.add("<< /Type /OCG /Name " + literal(marker(14, i)) + " >>"));
+    const std::uint32_t form =
+        b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792] /OC " + ref(groups.back()) +
+                         " /Resources << /Font << /F1 " + ref(font) + " >> >>",
+                     "BT /F1 10 Tf 72 650 Td (" + marker(91, i) + ") Tj ET", StreamOptions{true});
     const std::string image_data = marker(92, i);
     const std::uint32_t image =
         b.add_stream("/Type /XObject /Subtype /Image /Width " + std::to_string(image_data.size()) +
@@ -249,10 +315,8 @@ std::string PdfBuilderChannels::leak_fixture(std::uint32_t pages) {
     const std::uint32_t shared =
         b.add_stream("/Type /XObject /Subtype /Form /BBox [0 0 612 792]",
                      "BT /F1 10 Tf 72 630 Td (" + marker(93, i) + ") Tj ET", StreamOptions{true});
-    groups.push_back(b.add("<< /Type /OCG /Name " + literal(marker(14, i)) + " >>"));
     xobjects += "/Fm" + std::to_string(n) + " " + ref(form) + " /Im" + std::to_string(n) + " " +
                 ref(image) + " /Xs" + std::to_string(n) + " " + ref(shared) + " ";
-    properties += "/oc" + std::to_string(n) + " " + ref(groups.back()) + " ";
     labels += std::to_string(n - 1) + " << /S /D /P " + literal(marker(15, i)) + " >> ";
     elements.push_back(b.add("<< /Type /StructElem /S /P /P " + ref(struct_root) + " /Pg " +
                              ref(page_numbers.back()) + " /ActualText " + literal(marker(13, i)) +
@@ -287,7 +351,7 @@ std::string PdfBuilderChannels::leak_fixture(std::uint32_t pages) {
   }
   b.set(b.page_tree(), "<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pages) +
                            " /Resources << /Font << /F1 " + ref(font) + " >> /XObject << " +
-                           xobjects + ">> /Properties << " + properties + ">> >> >>");
+                           xobjects + ">> >> >>");
   b.set(struct_root, "<< /Type /StructTreeRoot /K [" + all_elements + "] >>");
   b.set(b.catalog(), "<< /Type /Catalog /Pages " + ref(b.page_tree()) + " /StructTreeRoot " +
                          ref(struct_root) + " /MarkInfo << /Marked true >> /PageLabels << /Nums [" +
@@ -296,9 +360,9 @@ std::string PdfBuilderChannels::leak_fixture(std::uint32_t pages) {
   b.new_revision();
   for (std::uint32_t n = 1; n <= pages; ++n) {
     const std::string s = std::to_string(n);
-    std::string content = "/OC /oc" + s + " BDC BT /F1 12 Tf 72 720 Td (";
+    std::string content = "BT /F1 12 Tf 72 720 Td (";
     content += marker(90, static_cast<int>(n));
-    content += ") Tj ET EMC q /Fm";
+    content += ") Tj ET q /Fm";
     content += s;
     content += " Do Q q 100 0 0 10 72 600 cm /Im";
     content += s;

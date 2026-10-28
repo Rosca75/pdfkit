@@ -45,6 +45,20 @@ class PdfBuilderChannels {
   // uses, 15 a page label).
   [[nodiscard]] static std::string leak_fixture(std::uint32_t pages);
 
+  // The off-layer fixture of docs/DESIGN.md section 15: one page with two
+  // groups, "on" and "off" (named by marker(14, 1) and marker(14, 2)), whose
+  // default configuration turns "off" off. marker(25, n) is planted only in
+  // content no viewer shows, and marker(90, n) only in content it shows,
+  // after which the page draws drawn_text. The kinds: "bdc" (marked-content
+  // sequences, one inside a text object whose shown text follows it), "form"
+  // and "image" (XObjects whose /OC is off or on, and an inline image in an
+  // off sequence), "nested" (on inside off, off inside on), "base_off"
+  // (/BaseState /OFF with "on" listed in /ON) and "membership" (membership
+  // dictionaries by name and inline).
+  [[nodiscard]] static std::string off_layers(std::string_view kind);
+  static constexpr std::array<std::string_view, 6> off_layer_kinds{
+      "bdc", "form", "image", "nested", "base_off", "membership"};
+
   // The rows the leak fixture plants, drawn and stripped.
   static constexpr std::array<int, 4> drawn_rows{90, 91, 92, 93};
   static constexpr std::array<int, 7> stripped_rows{1, 2, 3, 9, 13, 14, 15};

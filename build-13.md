@@ -97,4 +97,44 @@ the documentation sweep of the owned sections. 6. The merge checks once.
 
 ## 9. Deviations recorded by this phase
 
-1. *(none yet)*
+1. **Files outside the Owns row**, each because the contract needs it and no
+   other session owns it: `src/redact/CMakeLists.txt` and
+   `tests/unit/CMakeLists.txt` (one line each for the new source and test);
+   `src/api/channels.cpp` (writes `off_groups`); `tests/unit/support/
+   pdf_builder_channels.cpp` (the fixture the owned header declares);
+   `tests/unit/writer/optional_content_test.cpp` deleted (it tested
+   `minimise_optional_content`, which goes; its cases live on in
+   `tests/unit/redact/optional_content_remover_test.cpp`);
+   `tests/dataset/test_phase7.py` (the tests of the two new gate measures);
+   `docs/SOURCES.md` (one row for the recalled facts of §8.11);
+   `docs/ABI.md` §4.7 (the write report's `channels` cell said the row was kept
+   minimal); `dataset/tools/synth/channels/kit.py` (a comment naming marker
+   row 25).
+2. **The specimen family is not registered in the manifest**, because
+   `dataset/manifest.tsv` belongs to build-12 and the manifest's row count is
+   a charter number. The gate writes the five specimens itself through the
+   command line (`off_layer_family` in `tests/dataset/gates/phase7.py`, into
+   `<run>/off-layers/`), and reads them from the manifest too once registered.
+   At merge, after build-12: `python dataset/tools/synth/run.py --pattern
+   mark_off_layers`, then CLAUDE.md §7.1's row count.
+3. **The remover walks every document**, not only one whose catalog has
+   `/OCProperties`: a catalog without it shows every group, but its `/OC`
+   marks and the `/Properties` entries naming groups (whose `/Name` can name
+   things) would stay; `pdfpig-0015` (a second catalog holds the groups) is
+   the dataset's case. The extra lex costs 3.7 s on the 910-page file.
+4. **The leak fixture of §16 puts its optional-content group on the form only
+   page n draws** instead of a BDC in the page's content, so the page's
+   content stream stays byte-identical as the leak test asserts (an `/OC`
+   mark is now removed from every output).
+5. **`/PageMode /UseOC` reads as `/UseNone`**: the layers panel goes with
+   `/OCProperties`.
+6. **Text agreement loses four files by design**: PDFium reads the
+   switched-off text of `synth-0145` to `synth-0147` and `pdfpig-0006` in the
+   input, and the output no longer holds it, so their output-against-input F1
+   is under 1.0 (894 / 898 = 99.55 %, threshold 99.5 %); the pages render
+   identically.
+7. **Seven files timed out under the shared laptop's load** in run `p13-gate`
+   (`dccc-0070`, `dccc-0104`, `dccc-0129`, `nicar25-0006`, `pdfjs-0016`,
+   `pdfpig-0005`, `tika-0016`); main's build takes as long on them (26 s
+   against 20 s for `pdfpig-0005`, 21 s against 23 s for `nicar25-0006`), and
+   run `p13-gate-retry` passes every measure over the seven with one worker.

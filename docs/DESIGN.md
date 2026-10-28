@@ -945,7 +945,7 @@ channel added later must be a row with a test, not a sentence. The rows:
 | outlines `/Outlines` | removed | a bookmark titled with a name is the name |
 | named destinations `/Dests` and every `/Names` tree | removed | destination names name things |
 | the structure tree `/StructTreeRoot`, `/MarkInfo`, page `/StructParents`, `/Tabs` | removed | `/ActualText`, `/Alt`, `/E` and `/T` strings are read aloud and copied out |
-| optional content `/OCProperties` | kept minimal: groups renamed `OC1` to `OCn` in a stable order, the default configuration's ON/OFF state and `/Order` kept, `/Usage`, `/Intent` and alternate configurations dropped (author decision) | removing it would make OFF layers visible; group names can name things |
+| optional content: `/OCProperties`, every `/OC` key, and the content of groups turned off | the content the default configuration (`/D` with its `/BaseState`, `/ON` and `/OFF`) turns off is removed by `redact::OptionalContentRemover` before the strip: an `/OC` marked-content sequence whose group or membership dictionary is off draws nothing (inside it the operators that set the graphics state stay, a path that paints goes, or keeps its construction ended by `n` when it clips, a text-showing operator becomes a `TJ` moving the position by its glyphs' advance, and `Do`, `sh`, inline images and marked-content operators go), and a `Do` of a form or image XObject whose `/OC` is off goes with the XObject's resource entries, so the reachable sweep drops it; the `/OC` marks of a sequence that is on go and its content stays; then `/OCProperties` and every `/OC` key are removed, with the `/Properties` entries naming groups. A catalog without `/OCProperties` shows every group, so only the marks go (owner decision) | a viewer hides switched-off content and every extractor reads it; group names can name things |
 | page labels `/PageLabels` | removed | a label can carry a name or a reference |
 | XMP history `xmpMM:History`, identifiers | removed with every other `xmpMM` (media management) property of the catalog's packet, the rest of the packet kept byte for byte; a packet that does not decode is dropped (`xmp_unreadable`); `xmpMM:DocumentID` and `xmpMM:InstanceID` are kept only holding the placeholder the metadata writer puts there, which the file writer patches with the output's identifier (§10) | a history names the operator and software of every save |
 | article threads `/Threads` and page beads `/B` | removed | a thread title names things |
@@ -959,9 +959,9 @@ channel added later must be a row with a test, not a sentence. The rows:
 | fonts, output intents, colour spaces, ExtGState, shadings, patterns | kept as they are | they draw the page and name no text (a removed glyph's width and ToUnicode entries name no text either) |
 
 Catalog keys not named here are kept only from an allow-list (`/Type`,
-`/Pages`, `/Version`, `/OCProperties` as above, `/OutputIntents`,
-`/ViewerPreferences` with its standard keys only, `/PageMode` (`/UseNone`,
-`/FullScreen` and `/UseOC` kept; any other mode, whose panel the output does
+`/Pages`, `/Version`, `/OutputIntents`,
+`/ViewerPreferences` with its standard keys only, `/PageMode` (`/UseNone` and
+`/FullScreen` kept; any other mode, whose panel the output does
 not have or which names a private index, read as `/UseNone`, and
 `/NonFullScreenPageMode` likewise), `/PageLayout`, `/Lang`, `/Metadata` as
 above, `/Extensions`),
@@ -999,7 +999,7 @@ channel: it is copied as it is until the metadata writer rewrites it (§10).
   draws is never written.
 - Every document-level structure that names a page is already removed by the
   channel table (§15), so nothing outside the page tree points at a removed
-  page; `/OCProperties` keeps only groups a kept page's content references.
+  page, and optional content goes whole after its switched-off content.
 - What only a removed page reached (its content streams, its forms and images,
   its annotations, its thumbnail) is unreachable and is not written (§17).
 - **The leak test**: a fixture written in code holds a unique marker in every

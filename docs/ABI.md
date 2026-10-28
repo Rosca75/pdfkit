@@ -236,7 +236,8 @@ same rows. It takes no options (`NULL` or `{}`; anything else is
 
 ```json
 {
-  "channels": [{"id": "ch_revisions", "name": "earlier revisions (incremental updates)", "present": true, "count": 1}],
+  "channels": [{"id": "ch_revisions", "name": "earlier revisions (incremental updates)", "present": true, "count": 1},
+               {"id": "ch_optional_content", "name": "optional content: groups, and content in groups turned off", "present": true, "count": 3, "off_groups": 1}],
   "present": ["ch_revisions"],
   "pending_redactions": 0,
   "warnings": [{"code": "pending_redactions", "message": "...", "page": 2}]
@@ -256,7 +257,10 @@ JavaScript actions; `ch_embedded_file` the `/EF` and `/AF` entries;
 `ch_annotation` the annotations of every page; `ch_acroform` the top-level
 fields plus one for `/XFA`; `ch_outline` the outline items; `ch_named_dest` the
 `/Dests` entries and the leaves of every `/Names` tree; `ch_struct_tree` the
-structure elements; `ch_optional_content` the groups of `/OCGs`;
+structure elements; `ch_optional_content` the groups of `/OCGs`, and its row alone
+gains `off_groups` after `count`: the groups the default configuration turns
+off (`/BaseState`, then `/ON` and `/OFF`), whose content every write removes
+(text extraction still reads it, with its `optional_content_off` class);
 `ch_page_labels` the label ranges; `ch_xmp_history` 1 when the catalog's
 packet holds `xmpMM:History`; `ch_threads` the threads; the catalog keys
 (`ch_portfolio`, `ch_perms_legal`, `ch_uri_base`, `ch_search_index`) 1 per key
@@ -320,7 +324,7 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `page_count`, `pages` | the output's pages and, in output order, the source page each one is |
 | `bytes`, `sha256` | the output's size and SHA-256 |
 | `objects` | the indirect objects written, the cross-reference stream aside |
-| `channels` | per row of the table, in its order, the occurrences the source held, which the output no longer carries (`ch_optional_content` is kept in its minimal form) |
+| `channels` | per row of the table, in its order, the occurrences the source held, which the output no longer carries (for `ch_optional_content` the groups removed, with the content of those turned off) |
 | `pending_redactions` | the source's `/Redact` annotations never applied; the output drops them with every annotation |
 | `missing_references` | the distinct object numbers referenced but missing, written as `null` |
 | `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
