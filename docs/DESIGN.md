@@ -770,6 +770,21 @@ with different placeholders, the earlier-starting one wins the overlap.
 A string that matches nothing is reported with a count of zero, never as a
 failure.
 
+**Finding before editing.** `pdfkit_find` runs the search above and records
+nothing: per value, every occurrence on the pages asked, so a caller shows the
+counts and lets its user pick one occurrence to send back as a glyph range.
+The search is one function for both callers (`MatchFinder::locate`), and a
+redaction's search takes its occurrences from it, because a count shown to a
+user that differs from the count a search removes is a lie. An occurrence
+found in the reading order is one range; one found only in another order, or
+in the codes of a string operand, keeps every stretch of the glyph list it
+covers as one occurrence with several ranges, named by the first order that
+found it (the codes of one operand are drawn in their order, so they report
+the drawing order); the redaction takes the same stretches one by one, the
+first drawing the placeholder. Its rectangles are its glyphs' boxes united per
+reading line, and its context the page's reading-order words wholly before its
+first glyph and wholly after its last.
+
 ## 12. Text surgery
 
 The matched glyphs leave the content stream and every other glyph keeps the

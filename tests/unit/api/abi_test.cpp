@@ -138,6 +138,8 @@ std::vector<SymbolCalls> catalogue_calls(Fixture& f) {
        }},
       {"pdfkit_check", [](pdfkit_buffer* out) { return pdfkit_check(nullptr, 4, nullptr, out); },
        [=](pdfkit_buffer* out) { return pdfkit_check(bytes, size, "{\"strings\":[]}", out); }},
+      {"pdfkit_find", [](pdfkit_buffer* out) { return pdfkit_find(nullptr, nullptr, out); },
+       [=](pdfkit_buffer* out) { return pdfkit_find(doc, "{\"values\":[]}", out); }},
   };
 }
 

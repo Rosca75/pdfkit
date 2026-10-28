@@ -38,7 +38,7 @@ write the same bytes: an output it writes is named in the outcome relative to
 UTF-8 JSON, LF, no byte-order mark, keys in exactly the order shown, two-space
 indentation, one key per catalogue function in the order of the catalogue
 (`open`, `inspect`, `text`, `images`, `metadata`, `channels`, `redact`), then
-`write`, `select`, `redact_text`, `set_metadata` and `redact_images`, each present always: a
+`write`, `select`, `redact_text`, `set_metadata`, `redact_images` and `find`, each present always: a
 function the verb did not run is `null`.
 
 ```json
@@ -162,6 +162,16 @@ function the verb did not run is `null`.
     "survivors": [],
     "unchanged": [],
     "reopen": {"status": "ok", "code": null, "pages": 3, "repairs": []}
+  },
+  "find": {
+    "status": "ok",
+    "code": null,
+    "values": ["Alpha", "Bravo", "Zebulon Quarterfield"],
+    "counts": [2, 1, 0],
+    "occurrences": 3,
+    "agree": true,
+    "disagreements": [],
+    "feedback": {"status": "ok", "tried": 2, "exact": 2, "failures": []}
   }
 }
 ```
@@ -272,6 +282,25 @@ did not succeed. `tests/dataset/run.py` judges `expect_redact_images` (§3)
 from it: no survivor, at least one treatment, and the output opens again
 without repair with the input's pages.
 
+`find` searches the redaction job's words (the five seeded words and the
+marker, without the metadata originals) with `pdfkit_find` at the default
+folding, then the same words as `search` matches of `pdfkit_redact_text` on a
+fresh edit that is never written: `agree` is true when, value by value, the
+sorted `[page, first, last]` ranges of every occurrence `pdfkit_find` reports
+equal those of every occurrence the redaction answers, and `disagreements`
+names the first five values that differ with the first five ranges of each
+side. `feedback` sends the first occurrence of each of the first two values
+found back as a located match (its `glyphs` and the `fingerprint`, an empty
+placeholder) on a fresh edit each, writes it and searches the output's page
+again: `exact` counts those whose page holds one occurrence fewer, `failures`
+names the others with the reason; `status` is `none` when nothing was found
+and `unsupported` when `pdfkit_redact_text` refuses the array form of
+`glyphs`. The times of the `pdfkit_find` call and of the `text` member go to
+`<dir>/outputs/<id>.find-time.json` (`{"text": <s>, "find": <s>}`), never into
+the outcome, which holds no time. `tests/dataset/run.py` judges `expect_find`
+from the status; `tests/dataset/gates/phase12.py` judges agreement, feedback,
+determinism and the time ratio.
+
 `text` is `pdfkit_text` with `{"blocks": false, "reserialisation": true}`: each
 page's text as the function writes it (visible blocks, then hidden blocks, a
 duplicate copy read once), its unreadable codes and hidden glyphs; over the
@@ -324,6 +353,8 @@ redacted strings.
 | `expect_set_metadata` = `known_gap:<reason>` | none | passes apart, a refusal included |
 | `expect_redact_images` = `clean` | `redact_images.status`, `.survivors`, `.treatments`, `.reopen`, `.pages` | `ok`, no survivor, at least one treatment, and `reopen.status` `ok` with no repairs and the input's page count; the pixel, leak and stability measures are `tests/pdfium/images.py`, `leak.py --images` and `compare.py --check redact` |
 | `expect_redact_images` = `known_gap:<reason>` | none | passes apart, a refusal included |
+| `expect_find` = `agree` | `find.status`, `find.agree`, `find.feedback` | `ok`; agreement and feedback are judged by `tests/dataset/gates/phase12.py` |
+| `expect_find` = `known_gap:<reason>` | none | passes apart, a refusal included |
 | any column = `n/a` | none | not checked |
 
 A function whose status is `not_implemented` makes its column **skipped** for

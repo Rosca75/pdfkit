@@ -166,6 +166,7 @@ def register(paths: list[Path], set_name: str, licence: str, source_for, pool,
         expect.setdefault("expect_redact_text", common.default_expect_redact_text(expect["expect_open"]))
         expect.setdefault("expect_redact_images", common.default_expect_redact_images(
             expect["expect_open"], expect["expect_images"]))
+        expect.setdefault("expect_find", common.default_expect_find(expect["expect_open"]))
         expect.setdefault("expect_select", common.default_expect_select(
             expect["expect_open"], str(probe["pages"]) if probe.get("ok") else ""))
         row = {

@@ -30,7 +30,7 @@ struct Verb {
   int (*run)(std::span<char* const>);
 };
 
-constexpr std::array<Verb, 9> verb_table{{
+constexpr std::array<Verb, 10> verb_table{{
     {"inspect", "the PDF's version, pages, boxes, encryption, repairs and warnings",
      &pdfkit::cli::verbs::inspect_spec, &pdfkit::cli::verbs::run_inspect},
     {"text", "the text in reading order with every glyph record", &pdfkit::cli::verbs::text_spec,
@@ -47,6 +47,8 @@ constexpr std::array<Verb, 9> verb_table{{
      &pdfkit::cli::verbs::run_check},
     {"channels", "which hidden channels the PDF holds", &pdfkit::cli::verbs::channels_spec,
      &pdfkit::cli::verbs::run_channels},
+    {"find", "every occurrence of each value, its glyph ranges and context",
+     &pdfkit::cli::verbs::find_spec, &pdfkit::cli::verbs::run_find},
     {"dataset", "every catalogue function over the dataset manifest",
      &pdfkit::cli::verbs::dataset_spec, &pdfkit::cli::verbs::run_dataset},
 }};

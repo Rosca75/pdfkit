@@ -79,6 +79,9 @@ internal static unsafe partial class Native
     internal static partial int pdfkit_channels(IntPtr document, string? options, ref PdfkitBuffer output);
 
     [LibraryImport(Library, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int pdfkit_find(IntPtr document, string? values, ref PdfkitBuffer output);
+
+    [LibraryImport(Library, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int pdfkit_redact_text(IntPtr edit, string? matches, ref PdfkitBuffer output);
 
     [LibraryImport(Library, StringMarshalling = StringMarshalling.Utf8)]
@@ -342,6 +345,30 @@ internal sealed class Session
         {
             throw new AbiFailure(_file, "pdfkit_channels", "no channel row");
         }
+
+        status = Native.pdfkit_find(document,
+            "{\"values\": [{\"text\": \"e\"}, {\"text\": \"Zebulon Quarterfield\"}], \"pages\": [1], \"context\": 2}",
+            ref buffer);
+        string found = Take("pdfkit_find", status, ref buffer, Expected("pdfkit_find"));
+        if (_implemented.Contains("pdfkit_find"))
+        {
+            using JsonDocument answer = Json("pdfkit_find", found);
+            JsonElement values = answer.RootElement.GetProperty("values");
+            if (answer.RootElement.GetProperty("fingerprint").GetString()?.Length != 64 ||
+                values.GetArrayLength() != 2)
+            {
+                throw new AbiFailure(_file, "pdfkit_find", "the answer lacks the fingerprint or a value");
+            }
+            foreach (JsonElement value in values.EnumerateArray())
+            {
+                if (value.GetProperty("count").GetInt32() != value.GetProperty("occurrences").GetArrayLength())
+                {
+                    throw new AbiFailure(_file, "pdfkit_find", "a count differs from its occurrences");
+                }
+            }
+        }
+        status = Native.pdfkit_find(document, "{\"values\": [{\"text\": \"\"}]}", ref buffer);
+        Take("pdfkit_find", status, ref buffer, Status.InvalidArgument, Status.NotImplemented);
     }
 
     private unsafe void Edit(IntPtr document)

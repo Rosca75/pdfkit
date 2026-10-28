@@ -16,7 +16,7 @@ namespace {
 
 using enum Catalogue::Status;
 
-constexpr std::array<Catalogue::Row, 13> catalogue_rows{{
+constexpr std::array<Catalogue::Row, 14> catalogue_rows{{
     {"1.1", "Open", "pdfkit_open", "inspect", "build-3.md", implemented},
     {"1.2", "Inspect", "pdfkit_inspect", "inspect", "build-3.md", implemented},
     {"2", "Extract text", "pdfkit_text", "text", "build-5.md", implemented},
@@ -30,6 +30,7 @@ constexpr std::array<Catalogue::Row, 13> catalogue_rows{{
     {"9", "Select pages", "pdfkit_select_pages", "select-pages", "build-7.md", implemented},
     {"10.1", "Write", "pdfkit_write", "redact", "build-7.md", implemented},
     {"10.2", "Check", "pdfkit_check", "check", "build-8.md", implemented},
+    {"11", "Find", "pdfkit_find", "find", "build-12.md", implemented},
 }};
 
 }  // namespace

@@ -160,4 +160,49 @@ sections. 7. The merge checks once. Between steps only the unit cases touched.
 
 ## 9. Deviations recorded by this phase
 
-1. *(none yet)*
+1. **Files beyond the Owns row**, each the smallest change the row's files
+   need: `src/redact/text_redactor.cpp` (one hunk: the redaction's search
+   calls `MatchFinder::occurrences`, the flattened `locate`, instead of
+   assembling the three searches itself, so §0's one rule is one function);
+   `src/api/CMakeLists.txt`, `cli/CMakeLists.txt`, `cli/verbs/verbs.hpp`,
+   `tests/unit/CMakeLists.txt` (the new sources); `tests/unit/api/abi_test.cpp`
+   (the symbol in the every-catalogue-symbol table); `dataset/tools/common.py`,
+   `add.py`, `tests/test_common.py` and `tests/dataset/test_run.py` (the
+   column's vocabulary, default and harness tests); `CLAUDE.md` §7.1 (the
+   column list) and `docs/ABI.md` §6 (the verb's row).
+2. **The contract's shape is unchanged; four of its rows are made precise**
+   in `docs/ABI.md` §4.16: an occurrence found in the codes of one string
+   operand reports `order` `drawing` (the order those codes are drawn in);
+   the `text` of an occurrence of several ranges is its glyphs in the order
+   that found them, a word gap read as one space; `rectangles` are the glyph
+   boxes united per reading line, unpadded (the redaction's own rectangles
+   stay padded); `before` and `after` are the words wholly before the first
+   glyph and wholly after the last.
+3. **The time measure** compares the `pdfkit_find` call with the text
+   member's `pdfkit_text` call, both timed by the dataset verb and written to
+   `<run>/outputs/<id>.find-time.json`, because an outcome holds no time.
+4. **The feedback member** sends back at most two occurrences per file (the
+   first of each of the first two values found), with an empty placeholder
+   so nothing drawn spells a value again, and searches only the changed page
+   of the output, so the member stays inside the verb's time limit.
+5. **The feedback measure waits for build-11.** Until `pdfkit_redact_text`
+   takes the array form of `glyphs`, the member reports `unsupported`, the
+   gate reports the measure as not run, and the unit case is skipped by name.
+   Checked on a throwaway local merge of `phase/11-located-check` (never
+   committed): the unit case passes, and eight dataset files fed back 15 of
+   15 occurrences exactly.
+6. **The gate run `phase12-gate`** (2026-10-28, 963-row manifest before the
+   rebase on the office rows, `--checks open,text,find --runs 2 --workers 2`,
+   three other sessions building on the laptop): agreement 901 / 901, two
+   runs identical 901 / 901, no crash and no sanitizer report; feedback not
+   run (item 5); 14 hangs, all near the 30 s limit under load and the files
+   that hang in the other phases' runs of the same day (`p11-gate` lists 7 of
+   them, `hy-final` 4); time of the find call against the text member's 1.59.
+   The 1.59 came from pages where the other orders were built for a value
+   none of their glyphs can spell; the finder now rules those orders out
+   from the characters the glyphs fold to before building them (exact, the
+   unit cases unchanged). The gate was not run again inside the time box;
+   the two calls timed one process each over the same 901 files read 0.97
+   (896 s against 921 s, cold reads both, so an indication and not the
+   gate's measure). Left for the next run, after build-11 merges: the full
+   gate once, with the feedback case's skip removed.

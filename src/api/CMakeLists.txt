@@ -15,6 +15,7 @@ target_sources(pdfkit_core PRIVATE
   lifecycle.cpp
   channels.cpp
   check.cpp
+  find.cpp
   image_data.cpp
   images.cpp
   inspect.cpp

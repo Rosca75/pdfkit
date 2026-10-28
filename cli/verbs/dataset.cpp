@@ -17,6 +17,7 @@
 #include "output.hpp"
 #include "sha256.hpp"
 #include "support.hpp"
+#include "verbs/dataset_find.hpp"
 #include "verbs/dataset_images.hpp"
 #include "verbs/dataset_metadata.hpp"
 #include "verbs/dataset_redact.hpp"
@@ -27,6 +28,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <optional>
@@ -246,8 +248,11 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
     }
   }
   writer.close_object();
+  const auto text_started = std::chrono::steady_clock::now();
   const std::string text = opened.status == PDFKIT_OK ? dataset_text(document)
                                                       : R"({"status": "skipped", "code": null})";
+  const double text_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - text_started).count();
   const std::string images = opened.status == PDFKIT_OK ? dataset_images(document)
                                                         : R"({"status": "skipped", "code": null})";
   const DatasetWrite written = opened.status == PDFKIT_OK
@@ -265,6 +270,9 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   const std::string redact_images = opened.status == PDFKIT_OK
                                         ? dataset_redact_images(document, id, out_dir)
                                         : R"({"status": "skipped", "code": null})";
+  const std::string find = opened.status == PDFKIT_OK
+                               ? dataset_find(document, id, text, text_seconds, out_dir)
+                               : R"({"status": "skipped", "code": null})";
   pdfkit_close(document);
   for (const std::string_view key : later_keys) {
     if (key == "text") {
@@ -282,6 +290,7 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
   writer.raw("redact_text", redact_text);
   writer.raw("set_metadata", set_metadata);
   writer.raw("redact_images", redact_images);
+  writer.raw("find", find);
   writer.close_object();
   return writer.finish();
 }

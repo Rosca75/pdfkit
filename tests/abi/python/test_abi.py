@@ -53,6 +53,7 @@ def declare(library: ctypes.CDLL) -> None:
         "pdfkit_image_data": (status, [handle, text, text, buffer]),
         "pdfkit_metadata": (status, [handle, text, buffer]),
         "pdfkit_channels": (status, [handle, text, buffer]),
+        "pdfkit_find": (status, [handle, text, buffer]),
         "pdfkit_redact_text": (status, [handle, text, buffer]),
         "pdfkit_redact_images": (status, [handle, text, buffer]),
         "pdfkit_set_metadata": (status, [handle, text, buffer]),
@@ -195,6 +196,17 @@ class Session:
         channels = self.json("pdfkit_channels", self.call("pdfkit_channels", document, None))
         if not channels["channels"]:
             self.fail("pdfkit_channels", "no channel row")
+        values = utf8(json.dumps({"values": [{"text": "e"}, {"text": MARKER}], "pages": [1], "context": 2}))
+        found = self.call("pdfkit_find", document, values, allowed=(self.expected("pdfkit_find"),))
+        if "pdfkit_find" in self.implemented:
+            answer = self.json("pdfkit_find", found)
+            if len(answer["fingerprint"]) != 64 or len(answer["values"]) != 2:
+                self.fail("pdfkit_find", "the answer lacks the fingerprint or a value")
+            for value in answer["values"]:
+                if value["count"] != len(value["occurrences"]):
+                    self.fail("pdfkit_find", "a count differs from its occurrences")
+        self.call("pdfkit_find", document, b'{"values": [{"text": ""}]}',
+                  allowed=(INVALID_ARGUMENT, NOT_IMPLEMENTED))
 
     def edit(self, document: int) -> None:
         edit, buffer = ctypes.c_void_p(), Buffer()
