@@ -7,6 +7,9 @@ tests/panel/readers/	change-01a	one adapter per member
 tests/panel/rust/	change-01a	the Rust adapters
 tests/panel/rust/Cargo.toml	change-01a	the Rust adapters' manifest
 tests/panel/rust/Cargo.lock	change-01a	the Rust adapters' pinned crates
+tests/panel/rust/src/bin/panel-oxide.rs	change-01a	the pdf_oxide adapter
+tests/panel/rust/src/bin/panel-extract.rs	change-01a	the pdf-extract adapter
+tests/panel/rust/src/bin/panel-lopdf.rs	change-01a	the lopdf adapter
 tests/panel/members.tsv	change-01a	the members and their measured capabilities
 tests/panel/smoke.tsv	change-01a	the smoke set
 tests/panel/test_answers.py	change-01a	tests of the answers cache
