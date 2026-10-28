@@ -527,6 +527,14 @@ std::vector<MatchFinder::Located> MatchFinder::order_runs(const Match& match,
   if (needle.empty()) {
     return found;
   }
+  // Every order reads the same glyphs, so a character of the needle that no
+  // glyph of the orders folds to rules every order out before one is built.
+  const std::set<char32_t>& shown = order_characters(match.folding);
+  for (const char32_t value : needle) {
+    if (value != U' ' && !shown.contains(value)) {
+      return found;
+    }
+  }
   std::vector<bool> covered(page_->order.size(), false);
   for (const Occurrence& occurrence : known) {
     for (std::size_t p = occurrence.first; p < occurrence.last && p < covered.size(); ++p) {
@@ -778,6 +786,33 @@ std::string MatchFinder::run_text(const std::vector<std::size_t>& draws,
     out += glyph;
   }
   return out;
+}
+
+const std::set<char32_t>& MatchFinder::order_characters(const Folding& folding) {
+  const unsigned index = key(folding) & 7U;
+  if (const auto found = order_shown_.find(index); found != order_shown_.end()) {
+    return found->second;
+  }
+  index_positions();
+  std::set<char32_t> shown;
+  std::u32string folded;
+  const std::vector<text::GlyphRecord>& glyphs = page_->content.glyphs;
+  for (std::size_t draw = 0; draw < glyphs.size(); ++draw) {
+    if (!in_orders(draw)) {
+      continue;
+    }
+    const std::string& text = glyphs[draw].text;
+    std::size_t at = 0;
+    while (at < text.size()) {
+      const platform::Utf8Sequence sequence = platform::next_utf8_sequence(text, at);
+      folded.clear();
+      TextFolding::fold_code_point(sequence.valid ? sequence.code_point : U'�', folding.text,
+                                   folded);
+      shown.insert(folded.begin(), folded.end());
+      at += std::max<std::size_t>(sequence.length, 1);
+    }
+  }
+  return order_shown_.emplace(index, std::move(shown)).first->second;
 }
 
 std::vector<MatchFinder::Located> MatchFinder::locate(const Match& match) {

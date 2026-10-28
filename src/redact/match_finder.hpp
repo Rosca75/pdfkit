@@ -247,6 +247,8 @@ class MatchFinder {
   [[nodiscard]] bool in_orders(std::size_t draw) const;
   void add_step(std::vector<Step>& steps, std::size_t draw, bool& gap) const;
   [[nodiscard]] const std::vector<OrderHaystack>& order_haystacks(const Folding& folding);
+  // The characters the glyphs of the other orders fold to.
+  [[nodiscard]] const std::set<char32_t>& order_characters(const Folding& folding);
 
   const text::PageText* page_;
   std::set<std::string> left_out_;
@@ -258,6 +260,7 @@ class MatchFinder {
   // each glyph's text folded once for all three.
   std::vector<std::vector<Step>> orders_;
   std::map<unsigned, std::vector<OrderHaystack>> order_folded_;
+  std::map<unsigned, std::set<char32_t>> order_shown_;
   // The reading-order position of each draw index, built on first use.
   std::vector<std::size_t> position_;
   // The code bytes of each string operand (consecutive records of one walk,
