@@ -23,6 +23,7 @@ namespace pdfkit::cli::verbs {
 [[nodiscard]] const Arguments::Spec& select_pages_spec();
 [[nodiscard]] const Arguments::Spec& check_spec();
 [[nodiscard]] const Arguments::Spec& channels_spec();
+[[nodiscard]] const Arguments::Spec& find_spec();
 [[nodiscard]] const Arguments::Spec& dataset_spec();
 
 int run_inspect(std::span<char* const> args);
@@ -33,6 +34,7 @@ int run_redact(std::span<char* const> args);
 int run_select_pages(std::span<char* const> args);
 int run_check(std::span<char* const> args);
 int run_channels(std::span<char* const> args);
+int run_find(std::span<char* const> args);
 int run_dataset(std::span<char* const> args);
 
 }  // namespace pdfkit::cli::verbs

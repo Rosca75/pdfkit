@@ -21,12 +21,19 @@
 // merge() applies the overlap rule: overlapping or adjacent occurrences with
 // one placeholder become one, and where placeholders differ the occurrence
 // that starts earlier keeps the overlap.
+// locate() is the one search pdfkit_find reports and pdfkit_redact_text
+// removes (occurrences() is the same run flattened into the stretches a
+// redaction takes), so the count shown to a caller is the count removed:
+// every occurrence of a search in the reading order, in the other orders and
+// in the codes, each with the stretches of the glyph list it covers and the
+// order that found it; rectangles(), hidden() and context() describe one.
 
 #ifndef PDFKIT_REDACT_MATCH_FINDER_HPP
 #define PDFKIT_REDACT_MATCH_FINDER_HPP
 
 #include "platform/unicode/folding.hpp"
 #include "text/page_text.hpp"
+#include "text/rect.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -74,6 +81,26 @@ class MatchFinder {
     std::string placeholder;
   };
 
+  // The order a reader reads the page in: pdfkit's reading order, the
+  // glyphs as drawn (and the codes of one string operand, which are drawn in
+  // their order), and the rows read along the baseline forwards and
+  // backwards.
+  enum class Order : std::uint8_t { reading, drawing, rows_ltr, rows_rtl };
+
+  // One occurrence of a search: its stretches [first, last) of the page's
+  // reading-order glyph list in ascending order (one when the reading order
+  // found it, several when another order or the codes found it), the first
+  // order that found it and its text as that order reads it. lead is false
+  // when the run's first stretch was left out (the reading order had found
+  // its glyphs), so no stretch of it draws the placeholder.
+  struct Located {
+    std::uint32_t page = 0;
+    std::vector<std::pair<std::size_t, std::size_t>> ranges;
+    Order order = Order::reading;
+    std::string text;
+    bool lead = true;
+  };
+
   // page must outlive the finder. The glyphs of the fonts named in
   // left_out (the placeholder faces, when a written output is searched) are
   // left out of the other orders of find_orders, because a placeholder
@@ -112,6 +139,38 @@ class MatchFinder {
   // The same, given what find() returned for the match.
   [[nodiscard]] std::vector<Occurrence> find_orders(const Match& match, std::size_t index,
                                                     std::span<const Occurrence> known);
+
+  // Every occurrence of a search match on the page, in the order the
+  // redaction search finds them: the reading order's, then each other
+  // order's that the reading order does not cover, then the code runs whose
+  // stretches no earlier occurrence overlaps. An occurrence found in another
+  // order or in the codes keeps the stretches it covers together.
+  [[nodiscard]] std::vector<Located> locate(const Match& match);
+
+  // locate() flattened: one occurrence per stretch, the first stretch of
+  // each located occurrence carrying the placeholder; what
+  // pdfkit_redact_text removes for a search.
+  [[nodiscard]] std::vector<Occurrence> occurrences(const Match& match, std::size_t index);
+
+  // The name pdfkit_find writes for an order.
+  [[nodiscard]] static std::string_view order_name(Order order) noexcept;
+
+  // The device boxes of an occurrence's glyphs: one per reading line it
+  // touches, the union of its glyphs' boxes there (a glyph without a box
+  // spans its origin to the end of its advance), in reading order.
+  [[nodiscard]] std::vector<text::Rect> rectangles(const Located& located);
+
+  // The hidden classes (a mask of text::HiddenClass bits) of any of its
+  // glyphs.
+  [[nodiscard]] std::uint16_t hidden(const Located& located) const;
+
+  // Up to words words of the page's reading-order text on each side of the
+  // occurrence (a word of the page as pdfkit_text reads it, the hidden
+  // blocks after the visible ones, a duplicate copy read once), joined by a
+  // space; the words wholly before its first glyph and wholly after its
+  // last, so a value inside a longer word leaves that word out of both.
+  [[nodiscard]] std::pair<std::string, std::string> context(const Located& located,
+                                                            std::size_t words);
 
   // The byte forms of a search string the raw scans look for: its UTF-8, its
   // Latin-1 when every character fits, and its UTF-16BE, its white space
@@ -168,6 +227,16 @@ class MatchFinder {
   };
 
   [[nodiscard]] const Haystack& haystack(const Folding& folding);
+  // The runs another order finds that the known occurrences do not cover,
+  // and the runs the codes spell, each split into its stretches.
+  [[nodiscard]] std::vector<Located> order_runs(const Match& match,
+                                                std::span<const Occurrence> known);
+  [[nodiscard]] std::vector<Located> code_runs(const Match& match);
+  // The glyphs of a run in the order that read it, joined into its text.
+  [[nodiscard]] std::string run_text(const std::vector<std::size_t>& draws,
+                                     const std::vector<bool>& gaps) const;
+  static void flatten(const Located& located, std::size_t index, const std::string& placeholder,
+                      std::vector<Occurrence>& out);
   void build(bool hyphenation, std::vector<Unit>& units) const;
   // The reading-order position of each draw index.
   void index_positions();
@@ -200,6 +269,15 @@ class MatchFinder {
     std::vector<std::size_t> owner;
   };
   std::vector<Operand> operands_;
+  // The reading line of each position and the page's words in reading
+  // order, built on first use of rectangles and context.
+  struct WordAt {
+    std::size_t first = 0;
+    std::size_t last = 0;
+    std::string text;
+  };
+  std::vector<const text::TextLayout::Line*> line_of_;
+  std::vector<WordAt> words_;
 };
 
 }  // namespace pdfkit::redact

@@ -749,20 +749,9 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
     for (std::size_t i = 0; i < matches.size(); ++i) {
       const MatchFinder::Match& match = matches[i];
       if (match.kind == MatchFinder::Match::Kind::search) {
-        std::vector<MatchFinder::Occurrence> here = finder.find(match, base + i);
-        // The string in another reader's order of the page.
-        for (MatchFinder::Occurrence& other : finder.find_orders(match, base + i, here)) {
-          here.push_back(std::move(other));
-        }
-        // The codes that spell the string where the text does not read it.
-        for (const MatchFinder::Occurrence& coded : finder.find_codes(match, base + i)) {
-          const bool read = std::ranges::any_of(here, [&coded](const auto& other) {
-            return other.first < coded.last && coded.first < other.last;
-          });
-          if (!read) {
-            here.push_back(coded);
-          }
-        }
+        // The one search pdfkit_find reports: the reading order, every
+        // other reader's order and the codes that spell the string.
+        const std::vector<MatchFinder::Occurrence> here = finder.occurrences(match, base + i);
         found.insert(found.end(), here.begin(), here.end());
         continue;
       }

@@ -6,7 +6,9 @@
 // units and from them to the glyph positions it covers; the occurrence runs
 // from the first of those glyphs to the last, so the glyphs between them in
 // reading order (a space glyph, an unreadable code, a joined hyphen) go with
-// it.
+// it. The other orders and the codes find runs, each split into the
+// stretches of the reading-order glyph list it covers; locate() keeps a run
+// whole, the redaction's occurrences() takes its stretches one by one.
 
 #include "redact/match_finder.hpp"
 
@@ -15,11 +17,18 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <set>
+#include <span>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace pdfkit::redact {
 
@@ -275,6 +284,21 @@ struct Extent {
   double high = 0.0;
 };
 
+// Sorted, distinct positions as the stretches of consecutive ones.
+[[nodiscard]] std::vector<std::pair<std::size_t, std::size_t>> stretches(
+    const std::vector<std::size_t>& positions) {
+  std::vector<std::pair<std::size_t, std::size_t>> out;
+  for (std::size_t i = 0; i < positions.size();) {
+    std::size_t j = i + 1;
+    while (j < positions.size() && positions[j] == positions[j - 1] + 1) {
+      ++j;
+    }
+    out.emplace_back(positions[i], positions[j - 1] + 1);
+    i = j;
+  }
+  return out;
+}
+
 }  // namespace
 
 void MatchFinder::add_step(std::vector<Step>& steps, std::size_t draw, bool& gap) const {
@@ -477,6 +501,15 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match
 std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match, std::size_t index,
                                                               std::span<const Occurrence> known) {
   std::vector<Occurrence> found;
+  for (const Located& run : order_runs(match, known)) {
+    flatten(run, index, match.placeholder, found);
+  }
+  return found;
+}
+
+std::vector<MatchFinder::Located> MatchFinder::order_runs(const Match& match,
+                                                          std::span<const Occurrence> known) {
+  std::vector<Located> found;
   // The needle as the haystacks hold it, and the characters a space of it
   // precedes.
   std::u32string needle;
@@ -520,23 +553,26 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match
       }
       const std::size_t end = at + needle.size();
       std::vector<std::size_t> positions;
+      std::vector<std::size_t> draws;
+      std::vector<bool> gaps;
       for (std::size_t s = hay.step[at]; s <= hay.step[end - 1] && s < steps.size(); ++s) {
         const std::size_t p = position_[steps[s].draw];
         if (!covered[p]) {
           positions.push_back(p);
+          draws.push_back(steps[s].draw);
+          gaps.push_back(steps[s].gap);
         }
       }
       std::ranges::sort(positions);
       const auto repeated = std::ranges::unique(positions);
       positions.erase(repeated.begin(), repeated.end());
-      for (std::size_t i = 0; i < positions.size();) {
-        std::size_t j = i + 1;
-        while (j < positions.size() && positions[j] == positions[j - 1] + 1) {
-          ++j;
-        }
-        found.push_back({index, page_->page, positions[i], positions[j - 1] + 1,
-                         i == 0 ? match.placeholder : std::string()});
-        i = j;
+      if (!positions.empty()) {
+        Located run;
+        run.page = page_->page;
+        run.order = static_cast<Order>(order + 1);
+        run.ranges = stretches(positions);
+        run.text = run_text(draws, gaps);
+        found.push_back(std::move(run));
       }
       for (const std::size_t p : positions) {
         covered[p] = true;
@@ -612,6 +648,14 @@ std::vector<std::string> MatchFinder::byte_forms(const Match& match) {
 std::vector<MatchFinder::Occurrence> MatchFinder::find_codes(const Match& match,
                                                              std::size_t index) {
   std::vector<Occurrence> found;
+  for (const Located& run : code_runs(match)) {
+    flatten(run, index, match.placeholder, found);
+  }
+  return found;
+}
+
+std::vector<MatchFinder::Located> MatchFinder::code_runs(const Match& match) {
+  std::vector<Located> found;
   const std::vector<std::string> forms = byte_forms(match);
   if (forms.empty()) {
     return found;
@@ -654,14 +698,12 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_codes(const Match& match,
         std::ranges::sort(positions);
         const auto repeated = std::ranges::unique(positions);
         positions.erase(repeated.begin(), repeated.end());
-        for (std::size_t i = 0; i < positions.size();) {
-          std::size_t j = i + 1;
-          while (j < positions.size() && positions[j] == positions[j - 1] + 1) {
-            ++j;
-          }
-          found.push_back({index, page_->page, positions[i], positions[j - 1] + 1,
-                           i == 0 ? match.placeholder : std::string()});
-          i = j;
+        if (!positions.empty()) {
+          Located run;
+          run.page = page_->page;
+          run.order = Order::drawing;
+          run.ranges = stretches(positions);
+          found.push_back(std::move(run));
         }
       }
     }
@@ -714,6 +756,193 @@ std::vector<MatchFinder::Occurrence> MatchFinder::merge(std::vector<Occurrence> 
     merged.push_back(std::move(next));
   }
   return merged;
+}
+
+void MatchFinder::flatten(const Located& located, std::size_t index,
+                          const std::string& placeholder, std::vector<Occurrence>& out) {
+  for (std::size_t i = 0; i < located.ranges.size(); ++i) {
+    out.push_back({index, located.page, located.ranges[i].first, located.ranges[i].second,
+                   i == 0 && located.lead ? placeholder : std::string()});
+  }
+}
+
+std::string MatchFinder::run_text(const std::vector<std::size_t>& draws,
+                                  const std::vector<bool>& gaps) const {
+  std::string out;
+  for (std::size_t i = 0; i < draws.size(); ++i) {
+    const std::string& glyph = page_->content.glyphs[draws[i]].text;
+    if (i < gaps.size() && gaps[i] && !out.empty() && out.back() != ' ' && !glyph.empty() &&
+        glyph.front() != ' ') {
+      out.push_back(' ');
+    }
+    out += glyph;
+  }
+  return out;
+}
+
+std::vector<MatchFinder::Located> MatchFinder::locate(const Match& match) {
+  std::vector<Located> out;
+  std::vector<Occurrence> here = find(match, 0);
+  for (const Occurrence& occurrence : here) {
+    Located run;
+    run.page = page_->page;
+    run.ranges.emplace_back(occurrence.first, occurrence.last);
+    run.text = text(occurrence.first, occurrence.last);
+    out.push_back(std::move(run));
+  }
+  // The string in another reader's order of the page.
+  for (Located& run : order_runs(match, here)) {
+    for (const auto& [first, last] : run.ranges) {
+      here.push_back({0, page_->page, first, last, std::string()});
+    }
+    out.push_back(std::move(run));
+  }
+  // The codes that spell the string where no earlier occurrence reads it:
+  // each stretch on its own, against every occurrence before it.
+  for (const Located& run : code_runs(match)) {
+    Located kept;
+    kept.page = run.page;
+    kept.order = run.order;
+    for (std::size_t i = 0; i < run.ranges.size(); ++i) {
+      const auto [first, last] = run.ranges[i];
+      const bool overlapped = std::ranges::any_of(here, [first, last](const Occurrence& other) {
+        return other.first < last && first < other.last;
+      });
+      if (overlapped) {
+        kept.lead = kept.lead && i != 0;
+        continue;
+      }
+      kept.ranges.emplace_back(first, last);
+      here.push_back({0, page_->page, first, last, std::string()});
+    }
+    if (kept.ranges.empty()) {
+      continue;
+    }
+    // The codes of one operand are drawn in their order.
+    std::vector<std::size_t> draws;
+    for (const auto& [first, last] : kept.ranges) {
+      for (std::size_t p = first; p < last && p < page_->order.size(); ++p) {
+        draws.push_back(page_->order[p]);
+      }
+    }
+    std::ranges::sort(draws);
+    kept.text = run_text(draws, {});
+    out.push_back(std::move(kept));
+  }
+  return out;
+}
+
+std::vector<MatchFinder::Occurrence> MatchFinder::occurrences(const Match& match,
+                                                              std::size_t index) {
+  std::vector<Occurrence> out;
+  for (const Located& located : locate(match)) {
+    flatten(located, index, match.placeholder, out);
+  }
+  return out;
+}
+
+std::string_view MatchFinder::order_name(Order order) noexcept {
+  switch (order) {
+    case Order::reading:
+      return "reading";
+    case Order::drawing:
+      return "drawing";
+    case Order::rows_ltr:
+      return "rows_ltr";
+    case Order::rows_rtl:
+      return "rows_rtl";
+  }
+  return "reading";
+}
+
+std::vector<text::Rect> MatchFinder::rectangles(const Located& located) {
+  if (line_of_.empty()) {
+    line_of_.assign(page_->order.size(), nullptr);
+    for (const std::vector<text::TextLayout::Block>* blocks :
+         {&page_->blocks, &page_->hidden_blocks}) {
+      for (const text::TextLayout::Block& block : *blocks) {
+        for (const text::TextLayout::Line& line : block.lines) {
+          for (std::size_t p = line.first; p < line.last && p < line_of_.size(); ++p) {
+            line_of_[p] = &line;
+          }
+        }
+      }
+    }
+  }
+  // Keyed by the line's first position, so the boxes come in reading order
+  // whatever the lines' addresses.
+  std::map<std::size_t, text::Rect> per_line;
+  for (const auto& [first, last] : located.ranges) {
+    for (std::size_t p = first; p < last && p < page_->order.size(); ++p) {
+      const text::GlyphRecord& record = page_->content.glyphs[page_->order[p]];
+      text::Rect box = record.box;
+      if (box.is_empty()) {
+        box.add(record.origin.x, record.origin.y);
+        box.add(record.advance_end.x, record.advance_end.y);
+      }
+      const text::TextLayout::Line* line = line_of_[p];
+      per_line[line == nullptr ? none : line->first].add(box);
+    }
+  }
+  std::vector<text::Rect> out;
+  for (const auto& [line, box] : per_line) {
+    if (!box.is_empty()) {
+      out.push_back(box);
+    }
+  }
+  return out;
+}
+
+std::uint16_t MatchFinder::hidden(const Located& located) const {
+  std::uint16_t mask = 0;
+  for (const auto& [first, last] : located.ranges) {
+    for (std::size_t p = first; p < last && p < page_->order.size(); ++p) {
+      mask |= page_->content.glyphs[page_->order[p]].hidden;
+    }
+  }
+  return mask;
+}
+
+std::pair<std::string, std::string> MatchFinder::context(const Located& located,
+                                                         std::size_t words) {
+  if (words_.empty()) {
+    const auto duplicate_only = text::hidden_bit(text::HiddenClass::duplicate);
+    for (const std::vector<text::TextLayout::Block>* blocks :
+         {&page_->blocks, &page_->hidden_blocks}) {
+      for (const text::TextLayout::Block& block : *blocks) {
+        for (const text::TextLayout::Line& line : block.lines) {
+          for (const text::TextLayout::Word& word : line.words) {
+            if (!word.text.empty() && word.hidden != duplicate_only) {
+              words_.push_back({word.first, word.last, word.text});
+            }
+          }
+        }
+      }
+    }
+  }
+  std::pair<std::string, std::string> out;
+  if (located.ranges.empty() || words == 0) {
+    return out;
+  }
+  const std::size_t first = located.ranges.front().first;
+  const std::size_t last = located.ranges.back().second;
+  // The words wholly before the first glyph, the last of them kept, and the
+  // first words wholly after the last glyph.
+  std::vector<const std::string*> before;
+  std::size_t taken = 0;
+  for (const WordAt& word : words_) {
+    if (word.last <= first) {
+      before.push_back(&word.text);
+    } else if (word.first >= last && taken < words) {
+      out.second += (taken == 0 ? "" : " ") + word.text;
+      ++taken;
+    }
+  }
+  const std::size_t from = before.size() > words ? before.size() - words : 0;
+  for (std::size_t i = from; i < before.size(); ++i) {
+    out.first += (i == from ? "" : " ") + *before[i];
+  }
+  return out;
 }
 
 }  // namespace pdfkit::redact

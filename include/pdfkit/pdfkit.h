@@ -131,6 +131,14 @@ PDFKIT_API pdfkit_status pdfkit_metadata(pdfkit_document* doc, const char* optio
 PDFKIT_API pdfkit_status pdfkit_channels(pdfkit_document* doc, const char* options_json,
                                          pdfkit_buffer* out);
 
+/*
+ * Catalogue 11, Find: every occurrence of each value, in every order a reader
+ * reads, with its glyph ranges, rectangles, hidden classes and context.
+ * values_json is required.
+ */
+PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char* values_json,
+                                     pdfkit_buffer* out);
+
 /* ---- Editing ------------------------------------------------------------ */
 
 /* Catalogue 5, Redact text. matches_json is required. */

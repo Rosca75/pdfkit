@@ -70,6 +70,7 @@ registry in `src/api/catalogue.cpp` and the CLI verbs to one another.
 | 9 | Select pages | `pdfkit_select_pages` | edit handle; JSON page list | the pages recorded; nothing is written until `pdfkit_write` | an empty, duplicated or out-of-range page list | `docs/archive/build/build-7.md` |
 | 10.1 | Write | `pdfkit_write` | edit handle | PDF bytes; a write report (pages, size and hash, objects, channels stripped, rectangles changed, image treatments, self-check result, warnings) | the self-check finds a redacted string or an original value of a rewritten metadata field in any text surface (the refusal names the page and the surface); a limit met while a stream is read | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
 | 10.2 | Check | `pdfkit_check` | PDF bytes; JSON strings with folding rules | JSON: every surviving occurrence by page and surface | the bytes do not open | `docs/archive/build/build-8.md` |
+| 11 | Find | `pdfkit_find` | document handle; JSON values, each with the caller's folding rules; options (pages, context words) | JSON per value: the occurrences in every order a reader reads, each with page, glyph ranges, rectangles, hidden classes and context; the document fingerprint | a value with an empty text; an unknown folding or key; a page out of range or listed twice; a limit met while reading a page (`limit_exceeded`) | `build-12.md` |
 
 The lifecycle symbols carry no row of their own: `pdfkit_abi_version`,
 `pdfkit_version` (the library and ABI versions, the build and each catalogue
@@ -88,6 +89,7 @@ standard output:
 | `select-pages` | 1.1, 9, 10.1 | the output PDF |
 | `check` | 10.2 | none |
 | `channels` | 1.1, 8 | none |
+| `find` | 1.1, 11 | none |
 | `dataset` | every function the dataset manifest expects, per file | one JSON outcome per file into the run's report folder |
 
 Exit codes: 0 success; 1 usage error; 2 the input was refused (the JSON names

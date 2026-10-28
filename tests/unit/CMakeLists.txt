@@ -48,6 +48,7 @@ add_executable(pdfkit_tests
   redact/form_rewriter_test.cpp
   redact/marked_content_rewriter_test.cpp
   redact/match_finder_test.cpp
+  redact/match_finder_locate_test.cpp
   redact/placeholder_fitting_test.cpp
   redact/placeholder_font_test.cpp
   redact/reader_order_test.cpp
@@ -92,6 +93,7 @@ add_executable(pdfkit_tests
   writer/write_determinism_test.cpp
   writer/xref_stream_writer_test.cpp
   api/abi_test.cpp
+  api/find_test.cpp
   api/open_inspect_test.cpp
   fonts/support/font_builder.cpp
   fonts/support/font_document.cpp
