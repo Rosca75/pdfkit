@@ -113,9 +113,8 @@ class PdfFont {
   [[nodiscard]] const std::vector<std::string>& faults() const noexcept { return faults_; }
 
   // The stable names reports use: "Type1", "MMType1", "TrueType", "Type3",
-  // "Type0"; "none", "Type1", "CFF", "TrueType", "OpenType".
+  // "Type0".
   [[nodiscard]] static std::string_view kind_name(Kind kind) noexcept;
-  [[nodiscard]] static std::string_view program_name(Program program) noexcept;
 
  protected:
   PdfFont() = default;

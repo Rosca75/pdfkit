@@ -43,8 +43,6 @@ class TextDocument {
 
   // The fonts, each added once on first use; the value is its object number.
   std::uint32_t helvetica();
-  std::uint32_t identity_h();
-  std::uint32_t identity_v();
 
   // Adds a page drawing content; resources is the body of its resource
   // dictionary; extra holds further page entries; fonts holds further

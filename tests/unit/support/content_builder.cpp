@@ -54,17 +54,6 @@ ContentBuilder& ContentBuilder::show(std::string_view bytes) {
   return line(literal(bytes) + " Tj");
 }
 
-ContentBuilder& ContentBuilder::show_hex(std::string_view bytes) {
-  static constexpr char digits[] = "0123456789ABCDEF";
-  std::string hex = "<";
-  for (const char value : bytes) {
-    const auto byte = static_cast<unsigned char>(value);
-    hex.push_back(digits[byte >> 4U]);
-    hex.push_back(digits[byte & 0x0FU]);
-  }
-  return line(hex + "> Tj");
-}
-
 ContentBuilder& ContentBuilder::show_array(const std::vector<TjItem>& items) {
   std::string out = "[";
   for (const TjItem& item : items) {

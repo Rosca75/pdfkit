@@ -52,8 +52,6 @@ class TrueTypeTables {
 
   // Whether a cmap subtable of that platform and encoding was read.
   [[nodiscard]] bool has_cmap(std::uint16_t platform, std::uint16_t encoding) const noexcept;
-  // Whether any cmap subtable was read.
-  [[nodiscard]] bool has_any_cmap() const noexcept { return !subtables_.empty(); }
   // The glyph a subtable maps code to; no value for glyph 0 or no subtable.
   [[nodiscard]] std::optional<std::uint32_t> lookup(std::uint16_t platform, std::uint16_t encoding,
                                                     std::uint32_t code) const noexcept;

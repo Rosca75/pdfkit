@@ -27,7 +27,6 @@ class ContentBuilder {
   ContentBuilder& font(std::string_view name, double size);      // /name size Tf
   ContentBuilder& move(double x, double y);                      // x y Td
   ContentBuilder& show(std::string_view bytes);                  // (bytes) Tj
-  ContentBuilder& show_hex(std::string_view bytes);              // <hex> Tj
   ContentBuilder& show_array(const std::vector<TjItem>& items);  // [...] TJ
   ContentBuilder& matrix(double a, double b, double c, double d, double e, double f);  // cm
   ContentBuilder& save();                                                              // q

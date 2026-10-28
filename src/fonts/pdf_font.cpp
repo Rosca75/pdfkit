@@ -68,20 +68,4 @@ std::string_view PdfFont::kind_name(Kind kind) noexcept {
   return "Type1";
 }
 
-std::string_view PdfFont::program_name(Program program) noexcept {
-  switch (program) {
-    case Program::none:
-      return "none";
-    case Program::type1:
-      return "Type1";
-    case Program::cff:
-      return "CFF";
-    case Program::true_type:
-      return "TrueType";
-    case Program::open_type:
-      return "OpenType";
-  }
-  return "none";
-}
-
 }  // namespace pdfkit::fonts

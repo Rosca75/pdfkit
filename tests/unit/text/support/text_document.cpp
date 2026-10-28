@@ -49,14 +49,6 @@ std::uint32_t TextDocument::helvetica() {
   return helvetica_;
 }
 
-std::uint32_t TextDocument::identity_h() {
-  return identity_h_;
-}
-
-std::uint32_t TextDocument::identity_v() {
-  return identity_v_;
-}
-
 std::uint32_t TextDocument::page(const std::string& content, const std::string& resources,
                                  const std::string& extra, const std::string& fonts) {
   const std::string font_entries = "/Font << /F1 " + std::to_string(helvetica_) + " 0 R /F2 " +

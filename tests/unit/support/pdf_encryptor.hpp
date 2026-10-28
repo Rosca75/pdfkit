@@ -61,7 +61,6 @@ class PdfEncryptor {
                                            const std::string& bytes, bool is_metadata) const;
 
   [[nodiscard]] const Spec& spec() const noexcept { return spec_; }
-  [[nodiscard]] const std::string& file_key() const noexcept { return file_key_; }
 
  private:
   [[nodiscard]] std::string encrypt(std::uint32_t number, std::uint32_t generation,
