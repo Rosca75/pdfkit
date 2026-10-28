@@ -349,7 +349,8 @@ def scan_planted(run_dir: Path, rows: list[dict], outcomes: dict) -> dict:
             result["surviving"] += [f"{row['id']}:{m}" for m in surviving(written)]
             result["off_surviving"] += [f"{row['id']}:{m}" for m in classify(written)["off"]]
             result["missing_drawn"] += [f"{row['id']}:{m}" for m in missing_drawn(found, written)]
-        if not classify(found)["drawn"]:
+        # A selection is made only from a file of two pages or more.
+        if not classify(found)["drawn"] or pdfkit_pages(outcome) < 2:
             continue
         result["leak_files"] += 1
         select = outcome.get("select") or {}

@@ -12,6 +12,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zlib
 from pathlib import Path
 
@@ -56,6 +57,25 @@ class ClassifyTest(unittest.TestCase):
         before = {mk(90, 1), mk(91, 1), mk(3)}
         self.assertEqual(phase7.missing_drawn(before, {mk(90, 1)}), [mk(91, 1)])
         self.assertEqual(phase7.missing_drawn(before, before), [])
+
+
+class PlantedScanTest(unittest.TestCase):
+    def test_a_one_page_file_is_not_in_the_selection_leak_test(self):
+        # A selection is made only from two pages or more, so a one-page
+        # planted file has no selection to scan and is no leak.
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            source = run_dir / "source.pdf"
+            source.write_bytes(b"%PDF-1.7\n" + mk(90, 1).encode() + b"\n")
+            (run_dir / "out.pdf").write_bytes(source.read_bytes())
+            rows = [{"id": "synth-one", "set": "synth", "expect_open": "opens"}]
+            outcomes = {"synth-one": {"open": {"status": "ok", "pages": 1},
+                                      "write": {"status": "ok", "output": "out.pdf"}, "select": None}}
+            with mock.patch.object(phase7.common, "file_path", return_value=source):
+                result = phase7.scan_planted(run_dir, rows, outcomes)
+        self.assertEqual(result["files"], 1)
+        self.assertEqual(result["leak_files"], 0)
+        self.assertEqual(result["leaks"], [])
 
 
 class SelectionTest(unittest.TestCase):
