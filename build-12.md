@@ -191,3 +191,18 @@ sections. 7. The merge checks once. Between steps only the unit cases touched.
    Checked on a throwaway local merge of `phase/11-located-check` (never
    committed): the unit case passes, and eight dataset files fed back 15 of
    15 occurrences exactly.
+6. **The gate run `phase12-gate`** (2026-10-28, 963-row manifest before the
+   rebase on the office rows, `--checks open,text,find --runs 2 --workers 2`,
+   three other sessions building on the laptop): agreement 901 / 901, two
+   runs identical 901 / 901, no crash and no sanitizer report; feedback not
+   run (item 5); 14 hangs, all near the 30 s limit under load and the files
+   that hang in the other phases' runs of the same day (`p11-gate` lists 7 of
+   them, `hy-final` 4); time of the find call against the text member's 1.59.
+   The 1.59 came from pages where the other orders were built for a value
+   none of their glyphs can spell; the finder now rules those orders out
+   from the characters the glyphs fold to before building them (exact, the
+   unit cases unchanged). The gate was not run again inside the time box;
+   the two calls timed one process each over the same 901 files read 0.97
+   (896 s against 921 s, cold reads both, so an indication and not the
+   gate's measure). Left for the next run, after build-11 merges: the full
+   gate once, with the feedback case's skip removed.
