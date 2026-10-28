@@ -222,6 +222,41 @@ TEST_CASE("pdfkit_find's occurrences are the ones pdfkit_redact_text removes, ra
 
 TEST_CASE("a range pdfkit_find reports, sent back as a located match, removes that occurrence" *
           doctest::skip(true)) {
-  // Needs the array form of a located match and the location self-check;
-  // enabled when both are in pdfkit_redact_text.
+  const std::string file = two_pages();
+  // "EU" on page 2 (one range, the reading order) and "Bravo Charlie" (two
+  // ranges, the drawing order): each sent back alone leaves every other
+  // occurrence of its value.
+  for (const auto& [value, chosen, left] :
+       {std::tuple<std::string, std::size_t, std::int64_t>{"EU", 1, 2},
+        std::tuple<std::string, std::size_t, std::int64_t>{"Bravo Charlie", 0, 0}}) {
+    INFO(value);
+    const std::string values = R"({"values": [{"text": ")" + value + R"("}]})";
+    const Answer found = find(file, values);
+    REQUIRE(found.status == PDFKIT_OK);
+    const JsonValue answer = JsonReader::parse(found.json);
+    const auto& occurrences = answer.find("values")->as_array()[0].find("occurrences")->as_array();
+    REQUIRE(chosen < occurrences.size());
+    std::string glyphs = "[";
+    for (const JsonValue& range : occurrences[chosen].find("glyphs")->as_array()) {
+      glyphs += (glyphs.size() == 1 ? "" : ", ") + std::string(R"({"page": )") +
+                std::to_string(range.find("page")->as_int64().value_or(-1)) + R"(, "first": )" +
+                std::to_string(range.find("first")->as_int64().value_or(-1)) + R"(, "last": )" +
+                std::to_string(range.find("last")->as_int64().value_or(-1)) + "}";
+    }
+    glyphs += "]";
+    const pdfkit::test::Redaction redacted = pdfkit::test::redact(
+        file, R"({"matches": [{"glyphs": )" + glyphs + R"(, "fingerprint": ")" +
+                  answer.find("fingerprint")->as_string() + R"(", "placeholder": ""}]})");
+    INFO(redacted.matches, redacted.report);
+    REQUIRE(redacted.match_status == PDFKIT_OK);
+    REQUIRE(redacted.write_status == PDFKIT_OK);
+    const Answer after = find(redacted.pdf, values);
+    REQUIRE(after.status == PDFKIT_OK);
+    CHECK(JsonReader::parse(after.json)
+              .find("values")
+              ->as_array()[0]
+              .find("count")
+              ->as_int64()
+              .value_or(-1) == left);
+  }
 }
