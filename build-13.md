@@ -128,3 +128,13 @@ the documentation sweep of the owned sections. 6. The merge checks once.
    mark is now removed from every output).
 5. **`/PageMode /UseOC` reads as `/UseNone`**: the layers panel goes with
    `/OCProperties`.
+6. **Text agreement loses four files by design**: PDFium reads the
+   switched-off text of `synth-0145` to `synth-0147` and `pdfpig-0006` in the
+   input, and the output no longer holds it, so their output-against-input F1
+   is under 1.0 (894 / 898 = 99.55 %, threshold 99.5 %); the pages render
+   identically.
+7. **Seven files timed out under the shared laptop's load** in run `p13-gate`
+   (`dccc-0070`, `dccc-0104`, `dccc-0129`, `nicar25-0006`, `pdfjs-0016`,
+   `pdfpig-0005`, `tika-0016`); main's build takes as long on them (26 s
+   against 20 s for `pdfpig-0005`, 21 s against 23 s for `nicar25-0006`), and
+   run `p13-gate-retry` passes every measure over the seven with one worker.
