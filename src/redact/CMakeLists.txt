@@ -12,6 +12,7 @@ target_sources(pdfkit_core PRIVATE
   image_treatment_plan.cpp
   marked_content_rewriter.cpp
   match_finder.cpp
+  optional_content_remover.cpp
   placeholder_drawing.cpp
   placeholder_fitting.cpp
   self_check.cpp

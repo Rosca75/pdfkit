@@ -47,6 +47,10 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_channels(pdfkit_document* doc, const 
       writer.key("name").string(rows[i].name);
       writer.key("present").boolean(report.counts[i].count > 0);
       writer.key("count").unsigned_integer(report.counts[i].count);
+      // The groups whose content every write removes.
+      if (rows[i].id == "ch_optional_content") {
+        writer.key("off_groups").unsigned_integer(report.off_groups);
+      }
       writer.end_object();
     }
     writer.end_array();

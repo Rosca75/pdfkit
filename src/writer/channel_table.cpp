@@ -7,9 +7,10 @@
 // row removes; the allow-lists after the rows are the author decision of
 // docs/DESIGN.md section 15. Every walk here is iterative with a visited set
 // and a bound, so a hostile tree cannot loop or exhaust the stack. Optional
-// content keeps the groups the kept pages' content uses, renamed OC1 to OCn,
-// with the default configuration's ON and OFF state and its /Order, because
-// dropping it would make every switched-off layer visible. The XMP packet
+// content goes whole: /OCProperties and every /OC key, once
+// redact::OptionalContentRemover has removed the content the default
+// configuration turns off, because a group's name can name things and the
+// switched-off content is read by every extractor. The XMP packet
 // loses its xmpMM (media management) properties, which hold the history of
 // every save and the identifiers of the original (XMP specification part 2,
 // section 3.3, recalled); every other byte of the packet is kept. The one
@@ -46,9 +47,9 @@ using Edits = ChannelTable::Edits;
 constexpr std::size_t walk_bound = 1000000;
 
 // ISO 32000-1 table 28 (read): the catalog keys kept; DESIGN.md section 15.
-constexpr std::array<std::string_view, 11> catalog_keys{
-    "Type",     "Pages",      "Version", "OCProperties", "OutputIntents", "ViewerPreferences",
-    "PageMode", "PageLayout", "Lang",    "Metadata",     "Extensions"};
+constexpr std::array<std::string_view, 10> catalog_keys{
+    "Type",     "Pages",      "Version", "OutputIntents", "ViewerPreferences",
+    "PageMode", "PageLayout", "Lang",    "Metadata",      "Extensions"};
 // ISO 32000-1 table 30 (read): the page keys kept.
 constexpr std::array<std::string_view, 16> page_keys{
     "Type",   "Parent",   "Resources", "MediaBox", "CropBox", "BleedBox",     "TrimBox", "ArtBox",
@@ -349,6 +350,48 @@ std::size_t detect_optional_content(Scan& scan) {
   return std::max<std::size_t>(groups != nullptr ? groups->size() : 0, 1);
 }
 
+// The groups of /OCGs the default configuration turns off: with /BaseState
+// /OFF those its /ON list does not name, else those its /OFF list names. A
+// group written as a direct object, which no list can name, is on, as
+// text::OptionalContent reads it.
+std::size_t off_groups(Scan& scan) {
+  const Object properties = catalog_entry(scan, "OCProperties");
+  const Dictionary* dictionary = properties.dictionary();
+  if (dictionary == nullptr) {
+    return 0;
+  }
+  const Object groups = graph_of(scan).resolve_entry(*dictionary, "OCGs");
+  const Object defaults = graph_of(scan).resolve_entry(*dictionary, "D");
+  const Dictionary* configuration = defaults.dictionary();
+  if (groups.array() == nullptr || configuration == nullptr) {
+    return 0;
+  }
+  const auto numbers = [&](std::string_view key) {
+    std::set<std::uint32_t> out;
+    const Object list = graph_of(scan).resolve_entry(*configuration, key);
+    if (const Object::Array* items = list.array()) {
+      for (const Object& item : *items) {
+        if (const auto reference = item.reference()) {
+          out.insert(reference->number);
+        }
+      }
+    }
+    return out;
+  };
+  const bool base_off = graph_of(scan).resolve_entry(*configuration, "BaseState").is_name("OFF");
+  const std::set<std::uint32_t> on = numbers("ON");
+  const std::set<std::uint32_t> off = numbers("OFF");
+  std::set<std::uint32_t> turned_off;
+  for (const Object& item : *groups.array()) {
+    const auto reference = item.reference();
+    if (reference &&
+        (off.contains(reference->number) || (base_off && !on.contains(reference->number)))) {
+      turned_off.insert(reference->number);
+    }
+  }
+  return turned_off.size();
+}
+
 std::size_t detect_page_labels(Scan& scan) {
   const Object labels = scan.catalog.get("PageLabels");
   if (labels.is_null()) {
@@ -486,7 +529,8 @@ void strip_structure(Edits& edits) {
 }
 
 void strip_optional_content(Edits& edits) {
-  edits.optional_content = true;
+  edits.catalog.insert("OCProperties");
+  edits.everywhere.insert("OC");
 }
 
 void strip_page_labels(Edits& edits) {
@@ -549,7 +593,8 @@ constexpr std::array<ChannelTable::Row, 24> table{{
     {"ch_named_dest", "named destinations and name trees", &detect_named_destinations,
      &strip_named_destinations},
     {"ch_struct_tree", "the structure tree", &detect_structure, &strip_structure},
-    {"ch_optional_content", "optional content group names", &detect_optional_content,
+    {"ch_optional_content", "optional content: groups, and content in groups turned off",
+     &detect_optional_content,
      &strip_optional_content},
     {"ch_page_labels", "page labels /PageLabels", &detect_page_labels, &strip_page_labels},
     {"ch_xmp_history", "XMP history and identifiers", &detect_xmp_history, &strip_xmp_history},
@@ -697,10 +742,11 @@ class Rewriter {
     return out;
   }
 
-  // A page mode whose panel the output still has, else /UseNone.
+  // A page mode whose panel the output still has, else /UseNone; the layers
+  // panel of /UseOC goes with the optional content.
   static std::string kept_mode(const Object& value) {
     const std::string* name = value.name();
-    if (name != nullptr && (*name == "UseNone" || *name == "FullScreen" || *name == "UseOC")) {
+    if (name != nullptr && (*name == "UseNone" || *name == "FullScreen")) {
       return *name;
     }
     return "UseNone";
@@ -729,137 +775,6 @@ class Rewriter {
   std::set<std::uint32_t> pages_;
   std::uint32_t root_;
 };
-
-// ---- optional content ---------------------------------------------------------
-
-Object::Array kept_references(const Object::Array& items, const std::set<std::uint32_t>& used) {
-  Object::Array out;
-  for (const Object& item : items) {
-    if (const auto reference = item.reference(); reference && used.contains(reference->number)) {
-      out.push_back(item);
-    }
-  }
-  return out;
-}
-
-// An /Order array without its labels (strings name things) and without the
-// groups no kept content uses.
-Object::Array kept_order(ObjectGraph& graph, const Object::Array& items,
-                         const std::set<std::uint32_t>& used, int depth) {
-  Object::Array out;
-  if (depth > 16) {
-    return out;
-  }
-  for (const Object& item : items) {
-    if (const auto reference = item.reference()) {
-      if (used.contains(reference->number)) {
-        out.push_back(item);
-        continue;
-      }
-    }
-    const Object resolved = graph.resolve(item);
-    if (const Object::Array* nested = resolved.array()) {
-      Object::Array inner = kept_order(graph, *nested, used, depth + 1);
-      if (!inner.empty()) {
-        out.push_back(Object::make_array(std::move(inner)));
-      }
-    }
-  }
-  return out;
-}
-
-void minimise_optional_content(ObjectGraph& graph) {
-  const std::uint32_t root = graph.root();
-  const Object catalog_value = graph.get(root);
-  const Dictionary* catalog = catalog_value.dictionary();
-  if (catalog == nullptr || !catalog->contains("OCProperties")) {
-    return;
-  }
-  const Object properties = graph.resolve_entry(*catalog, "OCProperties");
-  // The groups the kept pages reach: everything reachable from the page tree.
-  std::set<std::uint32_t> used;
-  std::vector<std::uint32_t> stack;
-  if (const auto pages = catalog->get("Pages").reference()) {
-    stack.push_back(pages->number);
-  }
-  std::set<std::uint32_t> seen;
-  std::vector<Object::Reference> found;
-  while (!stack.empty()) {
-    const std::uint32_t number = stack.back();
-    stack.pop_back();
-    if (!seen.insert(number).second) {
-      continue;
-    }
-    const Object value = graph.get(number);
-    if (const Dictionary* dictionary = value.dictionary();
-        dictionary != nullptr && dictionary->get("Type").is_name("OCG")) {
-      used.insert(number);
-    }
-    found.clear();
-    Reachability::references(value, found);
-    for (const Object::Reference reference : found) {
-      if (!seen.contains(reference.number)) {
-        stack.push_back(reference.number);
-      }
-    }
-  }
-  Dictionary updated = *catalog;
-  const Dictionary* source = properties.dictionary();
-  if (used.empty() || source == nullptr) {
-    updated.erase("OCProperties");
-    graph.set(root, Object::make_dictionary(std::move(updated)));
-    return;
-  }
-  // OC1 to OCn: the listed groups in their /OCGs order, then any other group
-  // the content uses, by number.
-  std::vector<std::uint32_t> order;
-  if (const Object::Array* listed_groups = graph.resolve_entry(*source, "OCGs").array()) {
-    for (const Object& item : *listed_groups) {
-      if (const auto reference = item.reference();
-          reference && used.contains(reference->number) &&
-          std::ranges::find(order, reference->number) == order.end()) {
-        order.push_back(reference->number);
-      }
-    }
-  }
-  for (const std::uint32_t number : used) {
-    if (std::ranges::find(order, number) == order.end()) {
-      order.push_back(number);
-    }
-  }
-  Object::Array groups;
-  for (std::size_t i = 0; i < order.size(); ++i) {
-    Dictionary group;
-    group.set("Type", Object::make_name("OCG"));
-    group.set("Name", Object::make_string("OC" + std::to_string(i + 1)));
-    graph.set(order[i], Object::make_dictionary(std::move(group)));
-    groups.push_back(Object::make_reference({order[i], 0}));
-  }
-  Dictionary configuration;
-  if (const Dictionary* defaults = graph.resolve_entry(*source, "D").dictionary()) {
-    const Object base = graph.resolve_entry(*defaults, "BaseState");
-    if (base.is_name("ON") || base.is_name("OFF") || base.is_name("Unchanged")) {
-      configuration.set("BaseState", base);
-    }
-    for (const std::string_view key : {"ON", "OFF", "RBGroups"}) {
-      const Object list = graph.resolve_entry(*defaults, key);
-      if (const Object::Array* items = list.array()) {
-        Object::Array kept =
-            key == "RBGroups" ? kept_order(graph, *items, used, 0) : kept_references(*items, used);
-        configuration.set(std::string(key), Object::make_array(std::move(kept)));
-      }
-    }
-    const Object list = graph.resolve_entry(*defaults, "Order");
-    if (const Object::Array* items = list.array()) {
-      configuration.set("Order", Object::make_array(kept_order(graph, *items, used, 0)));
-    }
-  }
-  Dictionary minimal;
-  minimal.set("OCGs", Object::make_array(std::move(groups)));
-  minimal.set("D", Object::make_dictionary(std::move(configuration)));
-  updated.set("OCProperties", Object::make_dictionary(std::move(minimal)));
-  graph.set(root, Object::make_dictionary(std::move(updated)));
-}
 
 // ---- the XMP packet -------------------------------------------------------------
 
@@ -1151,6 +1066,7 @@ ChannelTable::Report ChannelTable::detect(ObjectGraph& graph,
   for (const Row& row : table) {
     report.counts.push_back({row.id, row.detect(found)});
   }
+  report.off_groups = off_groups(found);
   report.pending_redactions = pending_redactions(found, page_labels, report.warnings);
   return report;
 }
@@ -1164,12 +1080,10 @@ ChannelTable::Report ChannelTable::strip(ObjectGraph& graph,
     report.counts.push_back({row.id, row.detect(found)});
     row.strip(edits);
   }
+  report.off_groups = off_groups(found);
   report.pending_redactions = pending_redactions(found, page_labels, report.warnings);
   const std::set<std::uint32_t> pages(found.page_numbers.begin(), found.page_numbers.end());
   Rewriter(graph, edits, pages).run();
-  if (edits.optional_content) {
-    minimise_optional_content(graph);
-  }
   if (edits.xmp_history) {
     strip_xmp(graph, report.warnings);
   }

@@ -89,12 +89,9 @@ void check_row(std::string_view id) {
   REQUIRE(document->pages().size() == 1);
   CHECK(pdfkit::test::page_text(*document, 1).find(PdfBuilderChannels::drawn_text) !=
         std::string::npos);
-  // The output carries no channel of the table any more, except the minimal
-  // optional content that keeps hidden layers hidden.
+  // The output carries no channel of the table any more.
   const JsonValue again = channels_of(output);
-  for (const JsonValue& present : again.find("present")->as_array()) {
-    CHECK(present.as_string() == "ch_optional_content");
-  }
+  CHECK(again.find("present")->as_array().empty());
 }
 
 }  // namespace

@@ -47,6 +47,7 @@ add_executable(pdfkit_tests
   redact/determinism_test.cpp
   redact/form_rewriter_test.cpp
   redact/marked_content_rewriter_test.cpp
+  redact/optional_content_remover_test.cpp
   redact/match_finder_test.cpp
   redact/placeholder_fitting_test.cpp
   redact/placeholder_font_test.cpp
@@ -83,7 +84,6 @@ add_executable(pdfkit_tests
   syntax/stream_test.cpp
   writer/api_edit_test.cpp
   writer/channel_table_test.cpp
-  writer/optional_content_test.cpp
   writer/output_scan.cpp
   writer/page_selector_test.cpp
   writer/reachability_test.cpp
