@@ -10,7 +10,12 @@
 # every measure (measure, value, threshold, pass or fail) with the files behind
 # each failure into a markdown and a JSON file named after this script in the
 # run folder. A row the manifest names a known gap is counted apart and named.
-# A survivor is a leak, and one stops the line.
+# A survivor is a leak, and one stops the line. The located job (one
+# occurrence of a repeated word redacted by its glyph range) is judged too:
+# its outputs pass the self-check, hold exactly one occurrence fewer of the
+# word in pdfkit's text and in PDFium's (over the files where PDFium reads
+# the word in the input at all), and PDFium reads no word inside the
+# redacted word's box.
 
 from __future__ import annotations
 
@@ -27,6 +32,7 @@ import common  # noqa: E402
 from phase7 import Measures, read_json  # noqa: E402
 
 SELF_CHECK = 1.0
+LOCATED = 1.0
 PIXELS = 0.99
 PLACEHOLDERS = 0.99
 DETERMINISM = 1.0
@@ -61,7 +67,40 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
     measures.share("outputs that pass the self-check (known gaps apart)", len(passed), len(judged), SELF_CHECK,
                    {"refused": refused, "known_gaps": gaps})
 
+    # The located job: every file with a candidate word.
+    located = {k: ((outcomes.get(k) or {}).get("redact_text") or {}).get("located") or {} for k in judged}
+    tried = {k: v for k, v in located.items() if v.get("status") not in (None, "skipped")}
+    located_passed = [k for k, v in tried.items() if v.get("status") == "ok" and v.get("self_check") == "passed"]
+    measures.share("located outputs that pass the self-check (files with a candidate word)",
+                   len(located_passed), len(tried), SELF_CHECK,
+                   {"refused": {k: {"status": v.get("status"), "code": v.get("code"),
+                                    "message": (v.get("message") or "")[:300]}
+                                for k, v in sorted(tried.items()) if k not in located_passed}})
+    fewer = [k for k in located_passed if tried[k].get("before") is not None
+             and tried[k].get("after") is not None and tried[k]["before"] - tried[k]["after"] == 1]
+    measures.share("located outputs holding exactly one occurrence fewer of the word (pdfkit's text)",
+                   len(fewer), len(tried), LOCATED,
+                   {"other": {k: [tried[k].get("word"), tried[k].get("before"), tried[k].get("after")]
+                              for k in sorted(tried) if k not in fewer}})
+
     leak = read_json(run_dir / "pdfium-leak.json") or {}
+    pdfium_located = {k: v for k, v in ((leak.get("located") or {}).get("files") or {}).items()
+                      if k in tried and v.get("opens")}
+    if leak and "located" not in leak:
+        measures.add("located measures in the leak check", None, "not run", "run", False,
+                     {"fix": "python tests/pdfium/leak.py --run " + run_dir.name})
+    read = {k: v for k, v in pdfium_located.items() if v.get("pdfium_before", 0) > 0}
+    pdfium_fewer = [k for k, v in read.items() if v["pdfium_before"] - v["pdfium_after"] == 1]
+    measures.share("located outputs holding exactly one occurrence fewer of the word (PDFium's text, "
+                   "files where PDFium reads the word)", len(pdfium_fewer), len(read), LOCATED,
+                   {"other": {k: [v["word"], v["pdfium_before"], v["pdfium_after"]]
+                              for k, v in sorted(read.items()) if k not in pdfium_fewer},
+                    "not_read_by_pdfium": sorted(k for k in pdfium_located if k not in read)})
+    at_location = {k: {"word": v["word"], "read": v.get("at_location")}
+                   for k, v in sorted(pdfium_located.items()) if v.get("leak")}
+    measures.zero("located redactions whose box holds the word in PDFium's text of the output page",
+                  len(at_location), {"leaks": at_location})
+
     leaks = {k: v for k, v in (leak.get("leaks") or {}).items() if k in ids}
     text_hits = {k: [h for h in v if h["surface"] == "pdfium_text"] for k, v in leaks.items()}
     byte_hits = {k: [h for h in v if h["surface"].startswith("bytes")] for k, v in leaks.items()}

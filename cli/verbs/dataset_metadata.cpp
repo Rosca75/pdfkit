@@ -3,9 +3,10 @@
 //
 // The metadata members of a dataset outcome. The rewrite job sets each field
 // the file holds to "[_n_]" (n its place in the field list), and adds every
-// original value of those fields the self-check searches for as a text
-// search with the default folding and the placeholder [REDACTED], so an
-// original the page text also holds is redacted there rather than refused;
+// original value of those fields, of any length, as a text search with the
+// default folding and the placeholder [REDACTED], as a caller removing the
+// value from the whole document does, so the leak measures read every
+// surface for it;
 // its result is read back through pdfkit_metadata, field by field, in both
 // places.
 
@@ -61,9 +62,9 @@ std::string lower(std::string_view text) {
 }
 
 // The value the jobs write into field: "[_" and the field's place in the
-// field list, then "_]". It holds one digit and no letter, so no original the
-// self-check searches for (three letters or digits at least) can occur in it,
-// as an original "Word" occurs in a value such as "REDACTED KEYWORDS".
+// field list, then "_]". It holds one digit and no letter, so no original of
+// a letter can occur in it, as an original "Word" occurs in a value such as
+// "REDACTED KEYWORDS".
 std::string written_value(std::string_view field) {
   constexpr std::array<std::string_view, 8> names = {
       "Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate"};
@@ -72,15 +73,10 @@ std::string written_value(std::string_view field) {
   return std::string("[_") + place + "_]";
 }
 
-// Whether the self-check searches for an original value: three letters or
-// digits or more (a character outside ASCII counts by its lead byte).
+// Whether the self-check searches for an original value: any that is not
+// white space alone, whatever its length.
 bool searchable(std::string_view value) {
-  const auto letters = std::ranges::count_if(value, [](char c) {
-    const auto byte = static_cast<unsigned char>(c);
-    return (byte >= '0' && byte <= '9') || ((byte | 0x20U) >= 'a' && (byte | 0x20U) <= 'z') ||
-           byte >= 0xC0;
-  });
-  return letters >= 3;
+  return !blank(value);
 }
 
 // The rows of a pdfkit_metadata answer: field, Info value, XMP values.
