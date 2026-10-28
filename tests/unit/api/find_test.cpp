@@ -243,7 +243,7 @@ TEST_CASE("a range pdfkit_find reports, sent back as a located match, removes th
                 std::to_string(range.find("first")->as_int64().value_or(-1)) + R"(, "last": )" +
                 std::to_string(range.find("last")->as_int64().value_or(-1)) + "}";
     }
-    glyphs += "]";
+    glyphs += ']';
     const pdfkit::test::Redaction redacted = pdfkit::test::redact(
         file, R"({"matches": [{"glyphs": )" + glyphs + R"(, "fingerprint": ")" +
                   answer.find("fingerprint")->as_string() + R"(", "placeholder": ""}]})");
