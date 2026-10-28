@@ -184,9 +184,8 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
   }
   std::vector<std::string> pool;
   for (const auto& [text, indices] : by_text) {
-    if (indices.size() >= 2 && std::ranges::any_of(indices, [&words](std::size_t i) {
-          return words[i].visible;
-        })) {
+    if (indices.size() >= 2 &&
+        std::ranges::any_of(indices, [&words](std::size_t i) { return words[i].visible; })) {
       pool.push_back(text);
     }
   }

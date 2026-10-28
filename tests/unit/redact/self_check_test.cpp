@@ -7,7 +7,13 @@
 // operand, the raw bytes of another stream in UTF-16BE) is found and named
 // by page and surface; a clean file passes; the placeholder font's own glyphs
 // and the placeholders cut out of a surface are not survivors; the refusal
-// carries the three parts; pdfkit_check answers over bytes.
+// carries the three parts; pdfkit_check answers over bytes. A glyph range is
+// verified at its location only: a second occurrence elsewhere stays and the
+// write passes, an array of ranges is one expression with one placeholder,
+// the glyphs, the codes or a marked-content property left at the location
+// are a survivor named "location", and a malformed array is refused before
+// anything is recorded. A rewritten metadata field's original is searched in
+// the metadata alone, whatever its length.
 
 #include "redact/self_check.hpp"
 
@@ -380,8 +386,7 @@ TEST_CASE("an array of ranges on two pages, overlapping or empty, is refused bef
        {std::string("[]"), "[" + range(0, 3) + ", " + range(0, 2, 2) + "]",
         "[" + range(0, 3) + ", " + range(2, 5) + "]", "[" + range(2, 2) + "]"}) {
     INFO(glyphs);
-    const pdfkit::test::Redaction result =
-        pdfkit::test::redact(file, located(glyphs, fingerprint));
+    const pdfkit::test::Redaction result = pdfkit::test::redact(file, located(glyphs, fingerprint));
     CHECK(result.match_status == PDFKIT_E_INVALID_ARGUMENT);
     CHECK(result.matches.find("\"code\":\"invalid_argument\"") != std::string::npos);
   }

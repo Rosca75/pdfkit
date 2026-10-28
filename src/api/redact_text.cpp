@@ -86,9 +86,9 @@ std::size_t count_member(const JsonValue& glyphs, std::size_t index, const std::
 // One {"page", "first", "last"} object.
 TextPlan::Range read_range(const JsonValue& value, std::size_t index) {
   if (value.kind() != JsonValue::Kind::object) {
-    refuse(where(index) + " gives a glyph range as " +
-               std::string(JsonValue::kind_name(value.kind())),
-           R"(write the range as {"page": 1, "first": 0, "last": 5}, or an array of such ranges)");
+    refuse(
+        where(index) + " gives a glyph range as " + std::string(JsonValue::kind_name(value.kind())),
+        R"(write the range as {"page": 1, "first": 0, "last": 5}, or an array of such ranges)");
   }
   for (const auto& [key, unused] : value.as_object()) {
     if (key != "page" && key != "first" && key != "last") {

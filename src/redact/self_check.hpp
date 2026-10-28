@@ -121,8 +121,7 @@ class SelfCheck {
   // The same with every kind of request; the pages of the located matches
   // are read whatever pages names.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
-                                  const Needles& needles,
-                                  std::span<const std::string> placeholders,
+                                  const Needles& needles, std::span<const std::string> placeholders,
                                   const std::set<std::uint32_t>* pages = nullptr);
 
   // The self-check stage of the write pipeline: verifies pdf, the output of

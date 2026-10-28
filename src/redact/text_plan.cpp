@@ -61,8 +61,8 @@ std::vector<TextPlan::Range> TextPlan::located_ranges(std::vector<Range> ranges,
   for (std::size_t i = 1; i < ranges.size(); ++i) {
     if (ranges[i].first < ranges[i - 1].last) {
       refuse("gives the overlapping glyph ranges [" + std::to_string(ranges[i - 1].first) + ", " +
-                 std::to_string(ranges[i - 1].last) + ") and [" +
-                 std::to_string(ranges[i].first) + ", " + std::to_string(ranges[i].last) + ")",
+                 std::to_string(ranges[i - 1].last) + ") and [" + std::to_string(ranges[i].first) +
+                 ", " + std::to_string(ranges[i].last) + ")",
              "give each glyph once: join overlapping ranges into one");
     }
   }

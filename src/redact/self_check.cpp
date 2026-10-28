@@ -205,9 +205,8 @@ enum class Kind : std::uint8_t { scan, content, skip };
 
 class Search {
  public:
-  Search(std::span<const MatchFinder::Match> needles,
-         std::span<const MatchFinder::Match> metadata, std::span<const std::string> placeholders,
-         SelfCheck::Result& result)
+  Search(std::span<const MatchFinder::Match> needles, std::span<const MatchFinder::Match> metadata,
+         std::span<const std::string> placeholders, SelfCheck::Result& result)
       : needles_(needles), metadata_(metadata), placeholders_(placeholders), result_(result) {
     for (const MatchFinder::Match& needle : needles) {
       forms_.push_back(MatchFinder::byte_forms(needle));
@@ -383,8 +382,7 @@ void check_located(const text::PageText& page, MatchFinder& finder,
       occurrences.push_back(std::move(other));
     }
     for (const MatchFinder::Occurrence& found : occurrences) {
-      for (std::size_t p = found.first; p < found.last && p < page.order.size() && !survives;
-           ++p) {
+      for (std::size_t p = found.first; p < found.last && p < page.order.size() && !survives; ++p) {
         const text::GlyphRecord& record = glyphs[page.order[p]];
         survives = !record.text.empty() && !record.is_space() && !placeholder(record) &&
                    there(record, entry->boxes);
@@ -429,10 +427,11 @@ void check_located(const text::PageText& page, MatchFinder& finder,
     }
     for (const std::size_t s : spans) {
       const text::MarkedSpan& span = page.content.spans[s];
-      for (const std::optional<std::string>* value : {&span.actual_text, &span.alt, &span.expansion}) {
-        if (*value && !MatchFinder::ranges_in(
-                          TextFolding::decode(without(**value, placeholders)), needle)
-                           .empty()) {
+      for (const std::optional<std::string>* value :
+           {&span.actual_text, &span.alt, &span.expansion}) {
+        if (*value &&
+            !MatchFinder::ranges_in(TextFolding::decode(without(**value, placeholders)), needle)
+                 .empty()) {
           survives = true;
         }
       }
@@ -453,8 +452,7 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
 }
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
-                                 const Needles& requests,
-                                 std::span<const std::string> placeholders,
+                                 const Needles& requests, std::span<const std::string> placeholders,
                                  const std::set<std::uint32_t>* pages) {
   Result result;
   const std::span<const MatchFinder::Match> needles = requests.values;
