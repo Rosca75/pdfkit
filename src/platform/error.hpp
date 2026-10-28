@@ -31,6 +31,10 @@ enum class ErrorCode : std::uint8_t {
   undecodable_image,
   self_check,
   invalid_argument,
+  // Two invalid arguments a caller acts on apart: an occurrence match that
+  // names no occurrence, or more than one.
+  occurrence_not_found,
+  occurrence_ambiguous,
   not_implemented,
   internal,
 };

@@ -5,7 +5,8 @@
 // section 12): a form drawn on three pages, redacted by a search that finds
 // it on each, leaves the output with one form object, drawn by all three
 // pages, whose text lacks the match and draws the placeholder; a glyph range
-// on one page reaches every page that draws the form; a form without
+// on one page removes that page's draw alone (one occurrence is one place);
+// a form without
 // resources of its own gets the placeholder font in the dictionaries of the
 // pages that draw it.
 
@@ -66,7 +67,7 @@ TEST_CASE("a form drawn on three pages is rewritten once") {
   CHECK(result.report.find("\"status\":\"passed\"") != std::string::npos);
 }
 
-TEST_CASE("a glyph range inside a form reaches every page that draws it") {
+TEST_CASE("a glyph range inside a form drawn on three pages removes that page's draw") {
   pdfkit::test::TextDocument fixture;
   const std::string file = three_pages(fixture, false);
   // Find the range and the fingerprint the way a caller does: from the text.
@@ -91,8 +92,8 @@ TEST_CASE("a glyph range inside a form reaches every page that draws it") {
   for (std::uint32_t page = 1; page <= 3; ++page) {
     const std::string text = pdfkit::test::page_text(result.pdf, page);
     INFO("page " << page << ": " << text);
-    CHECK(text.find("Zebulon") == std::string::npos);
-    CHECK(text.find("[NAME]") != std::string::npos);
+    CHECK((text.find("Zebulon") == std::string::npos) == (page == 1));
+    CHECK((text.find("[NAME]") != std::string::npos) == (page == 1));
   }
 }
 

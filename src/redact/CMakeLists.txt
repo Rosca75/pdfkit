@@ -7,6 +7,7 @@
 target_sources(pdfkit_core PRIVATE
   content_syntax.cpp
   edit_plan.cpp
+  form_splitter.cpp
   image_remover.cpp
   image_treatment_applier.cpp
   image_treatment_plan.cpp

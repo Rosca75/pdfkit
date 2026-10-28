@@ -760,6 +760,8 @@ class ContentInterpreter::Walk {
     walk_stream.form = number;
     walk_stream.form_path = path;
     walk_stream.form_path.push_back(number);
+    walk_stream.parent = stream;
+    walk_stream.drawn_at = index;
     walk_stream.matrix = state.ctm;
     walk_stream.damaged = damaged;
     content_.streams.push_back(std::move(walk_stream));
