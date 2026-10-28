@@ -145,6 +145,7 @@ type and never a time, so two builds of one tree report the same text.
 | 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `docs/archive/build/build-7.md` |
 | 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
 | 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md` |
+| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `build-12.md` |
 
 Every function returns `PDFKIT_E_INVALID_ARGUMENT` for a missing required
 argument or malformed JSON; each function's section below gives its JSON
@@ -676,6 +677,75 @@ recorded, so a refused call leaves the plan as it was.
 | a box, blur or region of an image that does not decode (the message offers `remove`) | `PDFKIT_E_REFUSED` | `undecodable_image` |
 | a limit met while a page or an image is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
 
+### 4.16 pdfkit_find (catalogue 11)
+
+`pdfkit_find(doc, values_json, out)` answers, for each value, every place it
+occurs, before anything is edited: the caller shows the counts and lets its
+user choose one occurrence, which it sends back to `pdfkit_redact_text` as a
+located match (§4.11). It runs the search `pdfkit_redact_text` runs for a
+`search` match (`docs/DESIGN.md` §11): the reading order with the hidden
+blocks, every other order a reader reads the page in, and the codes that spell
+the value, so the occurrences it reports for a value are exactly those a
+search of that value with the same folding removes. Nothing is recorded on the
+document.
+
+```json
+{"values": [{"text": "EU", "folding": {"case": true, "diacritics": true,
+                                        "whitespace": true, "hyphenation": true}}],
+ "pages": [1, 2, 3],
+ "context": 5}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `values` | required | one entry per value; `text` is UTF-8, non-empty; `folding` as in §4.11 (each flag `true` by default) |
+| `pages` | every page | page numbers from 1, each at most once |
+| `context` | 5 | words of context on each side, 0 to 50 |
+
+```json
+{"fingerprint": "83ce7c...",
+ "values": [{"value": 0, "text": "EU", "count": 2,
+   "occurrences": [
+     {"occurrence": 0, "page": 3,
+      "glyphs": [{"page": 3, "first": 120, "last": 122}],
+      "text": "EU", "order": "reading",
+      "rectangles": [[70.17, 696.26, 84.8, 708.85]],
+      "hidden": [],
+      "before": "the member states of the", "after": "agreed on the following"}]}]}
+```
+
+| Key | Holds |
+|---|---|
+| `fingerprint` | the document fingerprint of `pdfkit_text` |
+| `value`, `text`, `count` | the value's index in the call, its text as given, its occurrences (zero is an answer) |
+| `occurrence` | the index within the value, in page order then first glyph |
+| `glyphs` | the ranges in the page's glyph list of `pdfkit_text`; one range normally, several when the occurrence was found only in the drawing or a row order; passed back unchanged as a located match of `pdfkit_redact_text` with this `fingerprint` |
+| `text` | the occurrence as the extraction reads it: the page's text over the range for the reading order, the glyphs in the order that found them otherwise (a word gap that order reads as one space) |
+| `order` | `reading`, `drawing`, `rows_ltr` or `rows_rtl`: the first order that found it; an occurrence found in the codes of one string operand is `drawing`, the order those codes are drawn in |
+| `rectangles` | the device boxes of its glyphs, `[left, bottom, right, top]`, 0.01 pt: one per line of the reading order it lies on, the union of its glyphs' boxes there |
+| `hidden` | the hidden classes (`CLAUDE.md` §4) of any of its glyphs, in the order of `pdfkit_text`'s `hidden.classes` |
+| `before`, `after` | up to `context` words of the page's reading-order text on each side, joined by a space: the words wholly before its first glyph and wholly after its last, so the word a value is found inside is in neither |
+
+Every key is written in the order shown; two calls give the same bytes. A
+value found inside a longer word is an occurrence (`CLAUDE.md` §5): deciding
+whether it stands as a word is the caller's. Pages are read in page order
+whatever order `pages` lists them in.
+
+| Failure | Status | `code` |
+|---|---|---|
+| a null `doc`, `values_json` or `out`, malformed JSON, no `values` array, an unknown key, a value that is not an object, a value without `text` or with an empty one, an unknown folding or a non-boolean one | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a page number outside the document or listed twice, a `context` that is not a whole number from 0 to 50 | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a limit met while a page is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
+
+**The integration sequence a caller follows:** `pdfkit_open`, then
+`pdfkit_text` (to show the text) and `pdfkit_find` (values and their spelling
+variants, counts and places), then `pdfkit_edit_new` and `pdfkit_redact_text`
+(each value as a `search`; each single expression the user picked as `glyphs`
+with the `fingerprint`), then `pdfkit_redact_images` and `pdfkit_set_metadata`
+as needed, then `pdfkit_write` (a refused output is status 3 with the surface
+named), optionally `pdfkit_check` on the bytes, and `pdfkit_buffer_free`,
+`pdfkit_edit_free` and `pdfkit_close`.
+
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
@@ -704,6 +774,7 @@ version object of §4.1. The tool calls the C ABI and nothing beneath it.
 | `select-pages` | `<file.pdf> --pages <list> --out <output.pdf> [--open-options <json>]`, the list being page numbers and ascending ranges separated by commas (`1,3-5`) | 9, 10.1, 1.1 |
 | `check` | `<file.pdf> --strings <json>` | 10.2 |
 | `channels` | `<file.pdf> [--options <json>] [--open-options <json>]` | 8, 1.1 |
+| `find` | `<file.pdf> --values <json> [--open-options <json>]`, the JSON being the argument of `pdfkit_find` (§4.16) | 11, 1.1 |
 | `dataset` | `--file <file.pdf> --id <id> --out <folder>`, or `--manifest <manifest.tsv> --files <files root> --out <folder>` | every function this build implements (`tests/dataset/outcome.md` owns the outcome) |
 
 The redact job file is a JSON object: `input` and `output` (paths), an optional

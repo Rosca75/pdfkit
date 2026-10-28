@@ -353,7 +353,7 @@ One row per file: `id`, `set`, `source` (URL or generator), `licence`, `sha256`,
 dataset verb measures (`expect_open`: `opens`, `repaired` or `refused:<code>`;
 `expect_text`, `expect_fonts`, `expect_images`, `expect_metadata`,
 `expect_write`, `expect_select`, `expect_redact_text`, `expect_set_metadata`,
-`expect_redact_images`, each a pass value, `known_gap:<reason>` or `n/a`), and
+`expect_redact_images`, `expect_find`, each a pass value, `known_gap:<reason>` or `n/a`), and
 `notes`. The manifest holds 960 rows.
 
 ### 7.2 Composition and licences
