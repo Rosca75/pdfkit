@@ -25,6 +25,7 @@
 #include "text/page_text.hpp"
 #include "text/text_reader.hpp"
 #include "text/text_string.hpp"
+#include "writer/metadata_writer.hpp"
 #include "writer/placeholder_font.hpp"
 
 #include <algorithm>
@@ -206,8 +207,13 @@ enum class Kind : std::uint8_t { scan, content, skip };
 class Search {
  public:
   Search(std::span<const MatchFinder::Match> needles, std::span<const MatchFinder::Match> metadata,
-         std::span<const std::string> placeholders, SelfCheck::Result& result)
-      : needles_(needles), metadata_(metadata), placeholders_(placeholders), result_(result) {
+         std::span<const std::string> placeholders, std::span<const std::string> written,
+         SelfCheck::Result& result)
+      : needles_(needles),
+        metadata_(metadata),
+        placeholders_(placeholders),
+        written_(written),
+        result_(result) {
     for (const MatchFinder::Match& needle : needles) {
       forms_.push_back(MatchFinder::byte_forms(needle));
     }
@@ -225,9 +231,13 @@ class Search {
         add(needle, page, surface, object);
       }
     }
-    if (metadata_surface(surface)) {
+    if (metadata_surface(surface) && !metadata_.empty()) {
+      // The values the caller wrote are cut out too, as the placeholders
+      // are: "[_5_]" written over an original "5" is the caller's own value.
+      const std::u32string fresh =
+          TextFolding::decode(without(without(value, placeholders_), written_));
       for (const MatchFinder::Match& needle : metadata_) {
-        if (!MatchFinder::ranges_in(cut, needle).empty()) {
+        if (!MatchFinder::ranges_in(fresh, needle).empty()) {
           add(needle, page, surface, object);
         }
       }
@@ -264,6 +274,7 @@ class Search {
   std::span<const MatchFinder::Match> needles_;
   std::span<const MatchFinder::Match> metadata_;
   std::span<const std::string> placeholders_;
+  std::span<const std::string> written_;
   std::vector<std::vector<std::string>> forms_;
   SelfCheck::Result& result_;
   std::set<std::tuple<std::string, std::optional<std::uint32_t>, std::string, std::uint32_t>> seen_;
@@ -448,7 +459,7 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
                                  std::span<const MatchFinder::Match> needles,
                                  std::span<const std::string> placeholders,
                                  const std::set<std::uint32_t>* pages) {
-  return run(pdf, limits, Needles{needles, {}, {}}, placeholders, pages);
+  return run(pdf, limits, Needles{needles, {}, {}, {}}, placeholders, pages);
 }
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
@@ -466,7 +477,7 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   result.metadata_values = originals.size();
   result.strings = needles.size() + result.located + result.metadata_values;
   std::unique_ptr<syntax::Document> document = syntax::Document::open(pdf, limits);
-  Search search(needles, originals, placeholders, result);
+  Search search(needles, originals, placeholders, requests.written, result);
   if (result.strings == 0) {
     return result;
   }
@@ -735,6 +746,15 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
       metadata.push_back(original);
     }
   }
+  std::vector<std::string> written;
+  for (const writer::MetadataWriter::Written& field :
+       writer::MetadataWriter::preview(plan.metadata())) {
+    for (const std::string* value : {&field.info, &field.xmp}) {
+      if (!value->empty()) {
+        written.push_back(*value);
+      }
+    }
+  }
   // The output page of each source page.
   std::map<std::uint32_t, std::uint32_t> output_page;
   for (std::size_t i = 0; i < report.pages.size(); ++i) {
@@ -775,7 +795,8 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
     }
   }
   const Result result = run(platform::as_bytes(pdf), plan.document().limits(),
-                            Needles{text.needles, located, metadata}, placeholders, &changed);
+                            Needles{text.needles, located, metadata, written}, placeholders,
+                            &changed);
   report.self_check_strings = result.strings;
   report.self_check_located = result.located;
   report.self_check_metadata_values = result.metadata_values;

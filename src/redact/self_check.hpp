@@ -94,6 +94,10 @@ class SelfCheck {
     std::span<const Located> located;
     // Searched under the default folding.
     std::span<const std::string> metadata;
+    // The values the caller wrote into the metadata fields, cut out of the
+    // metadata surfaces before the originals are searched, as placeholders
+    // are.
+    std::span<const std::string> written;
   };
 
   struct Result {

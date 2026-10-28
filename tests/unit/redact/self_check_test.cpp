@@ -268,7 +268,7 @@ pdfkit::test::Redaction rewrite(const std::string& file, const std::string& fiel
 SelfCheck::Result check_located(const std::string& file, const SelfCheck::Located& entry) {
   const std::vector<SelfCheck::Located> entries{entry};
   return SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{},
-                        SelfCheck::Needles{{}, entries, {}}, std::vector<std::string>{});
+                        SelfCheck::Needles{{}, entries, {}, {}}, std::vector<std::string>{});
 }
 
 }  // namespace
@@ -365,6 +365,15 @@ TEST_CASE("a rewritten metadata field is verified in the metadata, whatever its 
   REQUIRE(written.write_status == PDFKIT_OK);
   CHECK(written.report.find(R"("metadata_values":1)") != std::string::npos);
   CHECK(pdfkit::test::page_text(written.pdf).find("PC") != std::string::npos);
+
+  // A value the caller writes that holds the original is the caller's own.
+  pdfkit::test::TextDocument digit;
+  digit.page("BT /F1 10 Tf 72 700 Td (x) Tj ET");
+  digit.info("<< /Keywords (5) /Creator (Maker) >>");
+  const pdfkit::test::Redaction own =
+      rewrite(digit.bytes(), R"({"Keywords": "[_4_]", "Creator": "[_5_]"})");
+  INFO(own.report);
+  CHECK(own.write_status == PDFKIT_OK);
 
   // The same value left in a field the caller did not rewrite is refused (a
   // key outside the field list that repeats it is dropped by the writer).
