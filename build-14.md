@@ -207,3 +207,27 @@ cases touched (`CLAUDE.md` §8.2).
    `one_occurrence_test.cpp` and `form_rewriter_test.cpp` failing) before
    the source was restored. The Python cases of `test_places.py` were seen
    red first.
+9. **PDFium's count is judged where PDFium reads the word at the place**:
+   `tests/pdfium/leak.py` (outside the Owns row) also reads PDFium's text of
+   the input inside the picked word's whole box, and a file where PDFium
+   does not read the word there, whole, is listed as `not_read_by_pdfium`
+   (dccc-0041: PDFium reads the letter-spaced header "BRI E F", so its count
+   of "BRIEF" never held that occurrence). The off-layer text is cut out of
+   the input's text word by word where it starts a word, because PDFium
+   joins an off-layer "x" to the drawn word after it (synth-0904).
+10. **The gate run `p14-gate`** (968 files, release build of this branch, two
+    runs, four workers, 13 min; nothing else running): every measure of
+    §4 holds. Located (424 files with a candidate word, 216 of them sent as
+    an occurrence, 168 at a place repeated on several pages): self-check
+    424 / 424, one place fewer in pdfkit's text 424 / 424, in PDFium's
+    416 / 416 (pdfminer-0013 named apart, five files where PDFium does not
+    read the word at the place), occurrence form resolving to the same
+    glyphs 216 / 216, PDFium reading the word in the redacted box 0; byte
+    and PDFium leaks 0; feedback 1470 / 1470; find agreement 918 / 918;
+    two runs identical 968 / 968; phase 7's text F1 905 / 906 (99.89 %,
+    seven off-layer files left out of the count of misses), phase 9's
+    357 / 357. One hang, dccc-0129 (394 pages), which passed alone in
+    `p14-gate-retry` (44.6 s of its 60 s, every member ok, both self-checks
+    passed); the rows it fails in `p14-gate` (identity write reopening and
+    its 399 pages of pixels, the self-check, phase 9's reopening) are that
+    file alone.

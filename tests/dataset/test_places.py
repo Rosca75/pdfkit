@@ -62,6 +62,10 @@ class PlaceCountTest(unittest.TestCase):
         self.assertEqual(places.f1_without_off("one two secret layer", "one two", "secret layer"), 1.0)
         self.assertLess(places.f1_without_off("one two three", "one two", ""), 1.0)
 
+    def test_an_off_layer_word_joined_to_a_drawn_one_is_cut_from_it(self):
+        # PDFium reads an off-layer "x" and the drawn word after it as one word.
+        self.assertEqual(places.f1_without_off("ALPHA25 xMARK90 shown", "MARK90 shown", "ALPHA25 x"), 1.0)
+
 
 def run_folder(tmp: str, outcomes: dict, extra: dict | None = None) -> Path:
     run_dir = Path(tmp) / "run"
@@ -121,6 +125,15 @@ class LocatedRowsTest(unittest.TestCase):
             row = self.row(self.judge(leak), "located outputs holding exactly one occurrence fewer of the word (PDFium")
         self.assertTrue(row["pass"], row)
         self.assertEqual(row["detail"]["pdfium_readings"], {"synth-0097": "pdfium: a form cycle"})
+
+    def test_a_word_pdfium_does_not_read_at_the_place_is_not_judged(self):
+        leak = {"leaks": {}, "located": {"files": {
+            "synth-0905": {"word": "MARK", "opens": True, "pdfium_before": 2, "pdfium_after": 1},
+            "synth-0097": {"word": "MARK", "opens": True, "pdfium_before": 2, "pdfium_after": 2,
+                           "read_at_location": False}}}}
+        row = self.row(self.judge(leak), "located outputs holding exactly one occurrence fewer of the word (PDFium")
+        self.assertTrue(row["pass"], row)
+        self.assertIn("synth-0097", row["detail"]["not_read_by_pdfium"])
 
     def test_occurrence_form_resolving_to_the_same_glyphs(self):
         row = self.row(self.judge(), "occurrence-form matches resolving to the glyphs")

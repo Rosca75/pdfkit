@@ -87,22 +87,27 @@ def extra_copies(occurrences: list[dict] | None, box: list[float] | None, page=N
     return off
 
 
+def without_words(text: str, off: str) -> str:
+    """text with each word of off cut out once, longest first, where it starts a word of text
+    (a reader may join an off-layer word to the drawn word after it)."""
+    for item in sorted(off.split(), key=len, reverse=True):
+        at = 0
+        while True:
+            at = text.find(item, at)
+            if at < 0:
+                break
+            if at == 0 or not text[at - 1].isalnum():
+                text = text[:at] + " " + text[at + len(item):]
+                break
+            at += 1
+    return text
+
+
 def f1_without_off(before: str, after: str, off: str) -> float:
     """PDFium's word-bag F1 of the output's text against the input's, the input's words of the
-    switched-off layers taken out (each once per time it occurs there)."""
+    switched-off layers cut out of it (each once per time it occurs there)."""
     import words
-    reference = words.words(before) - words.words(off)
-    candidate = words.words(after)
-    total_a, total_b = sum(candidate.values()), sum(reference.values())
-    if total_a == 0 and total_b == 0:
-        return 1.0
-    if total_a == 0 or total_b == 0:
-        return 0.0
-    common = sum((candidate & reference).values())
-    if common == 0:
-        return 0.0
-    precision, recall = common / total_a, common / total_b
-    return 2 * precision * recall / (precision + recall)
+    return words.f1(without_words(before, off), after)
 
 
 def off_text(answer: dict) -> str:

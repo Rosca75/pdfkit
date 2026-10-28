@@ -14,7 +14,9 @@
 # occurrence of a repeated word redacted by its glyph range) is judged too:
 # its outputs pass the self-check, hold exactly one occurrence fewer of the
 # word in pdfkit's text and in PDFium's (over the files where PDFium reads
-# the word in the input at all), and PDFium reads no word inside the
+# the word in the input at all and reads it inside the picked word's box,
+# because a word PDFium reads otherwise there, joined to a neighbour or
+# spaced into letters, is not one of the occurrences it counts), and PDFium reads no word inside the
 # redacted word's box. One occurrence is one place on one page (places.py):
 # pdfkit's counts take the copies drawn at one place once and leave out the
 # occurrences in a switched-off layer, which every write removes; PDFium's
@@ -126,7 +128,8 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
         measures.add("located measures in the leak check", None, "not run", "run", False,
                      {"fix": "python tests/pdfium/leak.py --run " + run_dir.name})
     read = {k: v for k, v in pdfium_located.items()
-            if v.get("pdfium_before", 0) > 0 and k not in PDFIUM_READINGS}
+            if v.get("pdfium_before", 0) > 0 and v.get("read_at_location") is not False
+            and k not in PDFIUM_READINGS}
     pdfium_fewer = [k for k, v in read.items()
                     if 1 <= v["pdfium_before"] - v["pdfium_after"] <= 1 + extra(tried[k])]
     measures.share("located outputs holding exactly one occurrence fewer of the word (PDFium's text, "
