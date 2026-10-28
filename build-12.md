@@ -206,3 +206,28 @@ sections. 7. The merge checks once. Between steps only the unit cases touched.
    (896 s against 921 s, cold reads both, so an indication and not the
    gate's measure). Left for the next run, after build-11 merges: the full
    gate once, with the feedback case's skip removed.
+7. **The gate on the integrated tip** (`int-final`, 968 files, release
+   build, two runs, four workers): agreement 918 / 918, two runs identical
+   918 / 918, time 58.0 s against 51.7 s = 1.12, one hang (dccc-0129, which
+   passed alone in `int-final-retry`), feedback 1463 / 1470. None of the
+   seven misses is a located match inside a form drawn more than once (the
+   gap `build-14.md` closes); each was read from `pdfkit find` and `pdfkit
+   text --glyphs` on page 1:
+   - `synth-0097` (`MARKER`, `ALPHA`), `synth-0251` (`Zebulon`,
+     `Statement`), `tika-0012` (`processed`): the value is drawn again in
+     the page's own content at the same place (`duplicate`; five copies in
+     `tika-0012`'s CutePDF line), and a located match takes its duplicate
+     copies with it (`build-11.md` §9), so the page holds 0 where the
+     measure expects one fewer.
+   - `synth-0905` (`PDFKITMARK`): the two occurrences are in two forms, each
+     drawn once; the second sits in an optional-content group turned off,
+     which every write removes (`build-13.md`), so removing the first leaves
+     none.
+   - `pdfdiff-0017` (`Times`): the occurrence fed back (glyphs 79 to 84,
+     20 pt) has a second copy drawn at font size 0 at (59.24, 600), inside
+     its rectangle (glyphs 120 to 125); the located self-check finds that
+     copy at the location and refuses the output.
+   The measure counts exactly one fewer occurrence; the first six are
+   removals the library makes by design, and the seventh is a refusal, not
+   a leak. Whether the measure should count a duplicate copy and an off
+   layer with the occurrence is the owner's question.
