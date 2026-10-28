@@ -25,7 +25,7 @@ import queue
 import subprocess
 import sys
 import threading
-from ctypes import (POINTER, c_char_p, c_float, c_int, c_ulong, c_ushort, c_void_p)
+from ctypes import (POINTER, c_char_p, c_double, c_float, c_int, c_ulong, c_ushort, c_void_p)
 from pathlib import Path
 
 ERRORS = {
@@ -88,6 +88,8 @@ class Library:
             "FPDFText_ClosePage": (None, [c_void_p]),
             "FPDFText_CountChars": (c_int, [c_void_p]),
             "FPDFText_GetText": (c_int, [c_void_p, c_int, c_int, POINTER(c_ushort)]),
+            "FPDFText_GetBoundedText": (c_int, [c_void_p, c_double, c_double, c_double, c_double,
+                                                POINTER(c_ushort), c_int]),
             "FPDFBitmap_Create": (c_void_p, [c_int, c_int, c_int]),
             "FPDFBitmap_FillRect": (c_int, [c_void_p, c_int, c_int, c_int, c_int, c_ulong]),
             "FPDFBitmap_GetBuffer": (c_void_p, [c_void_p]),
@@ -188,6 +190,30 @@ class Document:
         finally:
             self.lib.FPDF_ClosePage(page)
 
+    def bounded_text(self, index: int, box: list[float]) -> str:
+        """The text of page `index` inside box [left, bottom, right, top] in page space
+        (FPDFText_GetBoundedText)."""
+        page = self.lib.FPDF_LoadPage(self.handle, index)
+        if not page:
+            raise PdfiumError(6)
+        try:
+            text_page = self.lib.FPDFText_LoadPage(page)
+            if not text_page:
+                return ""
+            try:
+                left, bottom, right, top = (float(v) for v in box)
+                count = self.lib.FPDFText_GetBoundedText(text_page, left, top, right, bottom, None, 0)
+                if count <= 0:
+                    return ""
+                buf = (c_ushort * (count + 1))()
+                written = self.lib.FPDFText_GetBoundedText(text_page, left, top, right, bottom, buf, count + 1)
+                raw = bytes(memoryview(buf).cast("B"))[: max(written, 0) * 2]
+                return raw.decode("utf-16-le", "replace").rstrip("\x00")
+            finally:
+                self.lib.FPDFText_ClosePage(text_page)
+        finally:
+            self.lib.FPDF_ClosePage(page)
+
     def page_size(self, index: int) -> tuple[float, float]:
         page = self.lib.FPDF_LoadPage(self.handle, index)
         if not page:
@@ -278,6 +304,15 @@ def handle_request(library: Library, request: dict) -> dict:
                 except PdfiumError:
                     texts.append(None)
             result["text"] = texts
+        if "bounded" in ops:
+            # Each [page index, left, bottom, right, top]: the text PDFium reads inside it.
+            bounded = []
+            for page_index, *box in request.get("bounded", []):
+                try:
+                    bounded.append(doc.bounded_text(int(page_index), box))
+                except PdfiumError:
+                    bounded.append(None)
+            result["bounded"] = bounded
         if "images" in ops:
             result["images"] = [doc.page_images(i) for i in range(min(result["pages"], max_pages))]
         if "render" in ops:

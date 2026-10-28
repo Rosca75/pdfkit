@@ -312,7 +312,7 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 ```json
   "rectangles": [{"page": 1, "source_page": 3, "placeholders": 1,
                   "boxes": [[70.17, 697.9, 129.6, 711.2], [70.17, 696.4, 131.2, 712.1]]}],
-  "self_check": {"status": "passed", "strings": 2},
+  "self_check": {"status": "passed", "strings": 2, "located": 1, "metadata_values": 0},
 ```
 
 | Key | Holds |
@@ -326,7 +326,7 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `unpruned_resources` | the resource dictionaries kept whole because their content stream did not read whole |
 | `rectangles` | per output page a text redaction or an image treatment changed (`page`, and `source_page` it was): the `boxes` it changed (`[left, bottom, right, top]` in default user space, rounded to 0.01: each removed run per reading line with the glyphs drawn after it on that line, each placeholder drawn, widened by a sixth of the glyph size, and per draw of a treated image the page bound of each treated pixel rectangle, or the draw's box when the image is removed) and the `placeholders` drawn there; empty when nothing was redacted |
 | `images` | per image identity the plan treats, in identity order: `identity`, `treatment` (`box`, `blur`, `remove`, or `region` for region boxes alone), `objects` (the image objects replaced or emptied), `inline_draws` (the inline draws rewritten or removed), `draws_removed` (the `Do` and `BI` operations removed), `sha256` (per replaced object, and once per rewritten inline image, the SHA-256 of the new encoded data as stored: the stream's bytes, or the inline data from after `ID` to its closing `>`); empty without a treatment |
-| `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match and no rewritten metadata field; `{"status": "passed", "strings": n}` when the output was re-read and none of the n redacted strings (the text matches' strings, and the original values of the metadata fields rewritten) survives (`docs/DESIGN.md` §18); a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface and page, and no PDF is returned |
+| `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match and no rewritten metadata field; `{"status": "passed", "strings": n, "located": l, "metadata_values": m}` when the output was re-read and none of the n requests verified survives where it is verified (`docs/DESIGN.md` §18): the search strings in every surface, the l glyph-range matches at their location, the m original values of the metadata fields rewritten (those the plan does not also search for) in the Info dictionary, the XMP packet and the string objects; a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface (`location` for a glyph range's text at its location) and page, and no PDF is returned |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode or scan and was dropped |
 
 ### 4.8 pdfkit_image_data (catalogue 3.2)
@@ -503,7 +503,7 @@ written. `matches_json` is `{"matches": [...]}`, each match one of:
 | Form | Keys |
 |---|---|
 | search | `search` (the string, UTF-8), optional `folding` (`case`, `diacritics`, `whitespace`, `hyphenation`, each `true` by default: simple case folding, marks stripped after canonical decomposition, any run of white space or an inferred word gap as one space, a joined hyphenation read without its hyphen), optional `placeholder` |
-| glyph range | `glyphs` (`{"page": n, "first": i, "last": j}`, a half-open range of positions in the page's glyph list of `pdfkit_text`), `fingerprint` (the one `pdfkit_text` reported), optional `placeholder` |
+| glyph range | `glyphs` (`{"page": n, "first": i, "last": j}`, a half-open range of positions in the page's glyph list of `pdfkit_text`, or an array of such ranges on one page read as one expression, the form an occurrence found in a drawing or row order takes), `fingerprint` (the one `pdfkit_text` reported), optional `placeholder` |
 
 The placeholder defaults to `[REDACTED]`, holds only the characters `[`, `]`,
 `_`, `0` to `9` and `A` to `Z`, and may be empty, which removes the text and
@@ -513,7 +513,12 @@ hidden blocks included, and over the other orders a reader reads the page in
 `docs/DESIGN.md` §11), and matches inside words; an occurrence found only in
 another order is reported once per stretch of the glyph list it covers, the
 first drawing the placeholder. An Arabic presentation form matches its
-letters under every folding. Every match is checked
+letters under every folding. A glyph range is one expression at one place:
+it removes its glyphs, is verified at that place by the self-check and is
+searched nowhere else; given as an array, its ranges are sorted, the
+placeholder is drawn once at the first and the others are holes, and it is
+answered as one occurrence whose `glyphs` holds the ranges (`[[i, j], ...]`)
+and whose `text` joins their text with a space. Every match is checked
 before any is recorded, so a refused call leaves the plan as it was. Calls add
 up; occurrences that overlap across matches follow the overlap rule of
 `docs/DESIGN.md` §11 when the plan is written.
@@ -539,13 +544,15 @@ up; occurrences that overlap across matches follow the overlap rule of
 | a null `edit` or `out`, malformed JSON, no `matches` array, an unknown key, a match with both or neither of `search` and `glyphs`, a non-boolean folding | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a placeholder with a character outside the alphabet (the message names it) | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a glyph range whose fingerprint is not this document's, a page outside the document, a range empty or past the page's glyphs | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| an array of ranges that is empty, names two pages or holds overlapping ranges | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a limit met while a page is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
 
 ### 4.12 pdfkit_check (catalogue 10.2)
 
 `pdfkit_check(bytes, size, strings_json, out)` runs the search of the
 self-check (`docs/DESIGN.md` §18) over any PDF bytes, opened with the default
-limits. `strings_json` is `{"strings": [{"text": "...", "folding": {...}}]}`,
+limits, each string searched as a value in every surface (the location check
+of a glyph range is the self-check's alone). `strings_json` is `{"strings": [{"text": "...", "folding": {...}}]}`,
 the folding as in §4.11. Finding a string is the answer:
 
 ```json

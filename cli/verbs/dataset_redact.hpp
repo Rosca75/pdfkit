@@ -8,7 +8,10 @@
 // carries, each searched with the default folding and replaced by
 // [REDACTED]; the output written to <dir>/outputs/<id>.redact.pdf with the
 // rectangles, the placeholders drawn per page, the removed codes and the
-// output opened again.
+// output opened again; and its located member, one occurrence of a word that
+// occurs twice or more redacted by its glyph range, written to
+// <dir>/outputs/<id>.located.pdf with the word's occurrences before and
+// after.
 
 #ifndef PDFKIT_CLI_VERBS_DATASET_REDACT_HPP
 #define PDFKIT_CLI_VERBS_DATASET_REDACT_HPP

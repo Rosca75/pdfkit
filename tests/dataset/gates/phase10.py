@@ -311,8 +311,8 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
         leaks = {k: v for k, v in (leak.get("leaks") or {}).items() if k in ids and k not in gaps}
         explained = {k: {"gap": gaps[k], "hits": len(v)} for k, v in (leak.get("leaks") or {}).items()
                      if k in gaps}
-        measures.zero("original values of rewritten fields found in an output or by PDFium "
-                      "(known gaps apart)", sum(len(v) for v in leaks.values()),
+        measures.zero("original values of rewritten fields, of any length, found in an output or by "
+                      "PDFium (known gaps apart)", sum(len(v) for v in leaks.values()),
                       {"leaks": leaks, "known_gaps": explained})
 
     nondeterministic = [i for i in summary.get("nondeterministic", []) if i in ids]

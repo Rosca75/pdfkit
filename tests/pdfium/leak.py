@@ -28,6 +28,14 @@
 # other text, which the two searches above judge.
 # A counted hit is a leak, and one stops the line. The report goes to
 # <run>/pdfium-leak.json.
+# The located job (one occurrence of a repeated word redacted by its glyph
+# range, the outcome's redact_text.located) is judged in the same report
+# under "located": the word's whole-word occurrences in PDFium's text of the
+# input and of the output, which must differ by exactly one, and PDFium's
+# text inside the redacted word's box on its page of the output
+# (FPDFText_GetBoundedText, the box narrowed by a tenth of its width at each
+# side, so a neighbour whose box touches it is not read), which must not hold
+# the word. A word is a maximal run of letters, compared with case.
 # With --images it checks an image treatment run instead: for every outcome
 # whose redact_images output was written, the encoded bytes of every treated
 # and every removed image are taken from the input by PDFium (each image
@@ -295,6 +303,63 @@ def images_main(args, rows: list[dict], run_dir: Path) -> int:
     return 1 if leaking else 0
 
 
+LETTERS = re.compile(r"[^\W\d_]+")
+
+
+def whole_words(texts: list, word: str) -> int:
+    """The maximal runs of letters equal to word in every page's text."""
+    return sum(1 for text in texts for run in LETTERS.findall(text or "") if run == word)
+
+
+def check_located(pool, row: dict, run_dir: Path, part: dict) -> dict:
+    """PDFium's reading of the located job's input and output: the word's occurrences before and
+    after, and the text inside the redacted word's box."""
+    word = part["word"]
+    left, bottom, right, top = part["box"]
+    inset = (right - left) / 10.0
+    box = [left + inset, bottom, right - inset, top]
+    before = pool.probe(common.file_path(row), ["text"])
+    after = pool.probe(run_dir / part["output"], ["text", "bounded"],
+                       bounded=[[int(part["page"]) - 1, *box]])
+    entry = {"word": word, "page": part["page"], "pdfkit_before": part.get("before"),
+             "pdfkit_after": part.get("after"), "opens": bool(before.get("ok")) and bool(after.get("ok"))}
+    if not entry["opens"]:
+        return entry
+    entry["pdfium_before"] = whole_words(before.get("text") or [], word)
+    entry["pdfium_after"] = whole_words(after.get("text") or [], word)
+    inside = ((after.get("bounded") or [""])[0]) or ""
+    entry["at_location"] = inside
+    entry["leak"] = bool(fold(word)) and fold(word) in fold(inside.replace(PLACEHOLDER, " "))
+    return entry
+
+
+def located_main(rows: list[dict], run_dir: Path, workers: int) -> dict:
+    """The located job's PDFium measures for every outcome that carries one."""
+    jobs = []
+    for row in rows:
+        path = run_dir / "outcomes" / f"{row['id']}.json"
+        if not path.exists():
+            continue
+        part = ((json.loads(path.read_text(encoding="utf-8")).get("redact_text") or {}).get("located")
+                or {})
+        if part.get("status") == "ok" and part.get("output"):
+            jobs.append((row, part))
+    results = {}
+    with pdfium.Pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:
+        futures = {row["id"]: threads.submit(check_located, pool, row, run_dir, part) for row, part in jobs}
+        for row_id, future in futures.items():
+            results[row_id] = future.result()
+    opened = {k: v for k, v in results.items() if v["opens"]}
+    summary = {"files": len(results), "opened": len(opened),
+               "one_fewer_pdfkit": sum(1 for v in results.values()
+                                       if v["pdfkit_after"] is not None
+                                       and v["pdfkit_before"] - v["pdfkit_after"] == 1),
+               "one_fewer_pdfium": sum(1 for v in opened.values()
+                                       if v["pdfium_before"] - v["pdfium_after"] == 1),
+               "location_leaks": sum(1 for v in opened.values() if v["leak"])}
+    return {"summary": summary, "files": dict(sorted(results.items()))}
+
+
 def check_file(pool, scans, row: dict, run_dir: Path, part: dict) -> dict:
     output = run_dir / part["output"]
     strings = [s for s in part.get("strings", []) if s]
@@ -396,14 +461,15 @@ def main() -> int:
     summary = {"files": len(results), "leaking_files": len(leaking), "pdfium_text_hits": text_words,
                "byte_hits": byte_words, "code_matches": sum(len(v) for v in codes.values()),
                "unopened": sorted(k for k, v in results.items() if not v["opens"])}
+    located = located_main(rows, run_dir, args.workers)
     (run_dir / "pdfium-leak.json").write_text(
         json.dumps({"summary": summary, "leaks": dict(sorted(leaking.items())),
-                    "codes": dict(sorted(codes.items()))}, indent=1), encoding="utf-8")
-    print(json.dumps(summary | {"leaking": sorted(leaking)[:50]}, indent=1))
+                    "codes": dict(sorted(codes.items())), "located": located}, indent=1), encoding="utf-8")
+    print(json.dumps(summary | {"leaking": sorted(leaking)[:50], "located": located["summary"]}, indent=1))
     if not results:
         print("SKIPPED leak check: no outcome of this run carries a redact_text output", file=sys.stderr)
     metadata = metadata_leaks(run_dir, rows, args.workers) if args.metadata else 0
-    return 1 if leaking or metadata else 0
+    return 1 if leaking or metadata or located["summary"]["location_leaks"] else 0
 
 
 if __name__ == "__main__":

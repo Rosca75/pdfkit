@@ -75,6 +75,8 @@ std::string WriteReport::json() const {
   }
   if (self_check_status != "not_run") {
     writer.key("strings").unsigned_integer(self_check_strings);
+    writer.key("located").unsigned_integer(self_check_located);
+    writer.key("metadata_values").unsigned_integer(self_check_metadata_values);
   }
   writer.end_object();
   writer.key("warnings").begin_array();

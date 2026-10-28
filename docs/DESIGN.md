@@ -685,7 +685,15 @@ A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
 - **Glyph ranges** from an earlier extraction: page and half-open glyph-index
   range, with the document fingerprint (the SHA-256 of the file from its
   `%PDF-` header on) the extraction reported; a range from another document or
-  out of range is refused, because a stale range redacts the wrong glyphs.
+  out of range is refused, because a stale range redacts the wrong glyphs. A
+  glyph range is an expression at a location, not a value: it removes its
+  glyphs and is verified there (§18), never searched elsewhere. It may be an
+  array of ranges on one page, read as one expression (the form an
+  occurrence found in another order takes, which covers several stretches of
+  the glyph list): the ranges are sorted, none may be empty or overlap
+  another, the placeholder is drawn once at the first and the others are
+  holes, and the answer is one occurrence whose text is the ranges' text
+  joined by a space.
 - **Search strings** with the caller's folding options, matched over each page's
   reading-order text, hidden blocks included:
   - `case`: Unicode simple case folding (CaseFolding.txt status C and S);
@@ -1049,12 +1057,29 @@ channel: it is copied as it is until the metadata writer rewrites it (§10).
 ## 18. The self-check
 
 Before `pdfkit_write` hands an output back, the library re-reads it with its own
-reader and searches every text surface for every redacted string, under each
-string's folding options (for glyph-range matches, the matched text as
-extracted is the string; for a rewritten metadata field, each of its source
-values in the Info dictionary and the packet, an array's items included, under
-the default folding, when it holds three letters or digits or more, because a
-shorter one occurs in almost any text):
+reader and verifies each request where it applies, because pdfkit is a
+literal tool (CLAUDE.md §5): a value removed everywhere is verified
+everywhere, an expression removed at a location is verified there, and a
+rewritten metadata field is verified in the metadata.
+
+| Request | Removed from | Verified on |
+|---|---|---|
+| a search string (a value) | every occurrence in every order of every page (§11) | every surface below, under the string's folding |
+| a glyph range (an expression at a location) | the glyphs of its ranges | that location: no occurrence of its text, in the reading order or any other order of §11, has a glyph (outside the placeholder font) whose box's centre lies in the box of a glyph the match removed; no string operator drawing a glyph there holds a code run the answer reported under `codes` (at a code boundary); no `/ActualText`, `/Alt` or `/E` of a span over the place (one whose `BDC` ... `EMC` encloses a glyph there, the placeholder included, or whose `/ActualText` a glyph there names) holds the text. Nothing elsewhere is searched for it |
+| a rewritten metadata field | the Info entry and its paired XMP properties | each of its source values (the Info value, each paired XMP value and array item), of any length, under the default folding, in the Info dictionary, the XMP packet and every string object outside content streams; the page text is not searched for it, because the document may say it for another reason (an author "PC" in a page about a PC) |
+
+The location is the removed glyphs' own boxes and a glyph is there by its
+centre, because a kept neighbour's box touches a removed one while its centre
+lies outside, and a second text layer drawn over the word lies inside; the
+answer's `rectangles` run over the rest of the line and the placeholder, so a
+second occurrence on the same line would lie in them. A value whose search
+the caller also adds (with the default folding) is verified everywhere as a
+value, whatever else the plan holds. The values the caller writes into the
+metadata fields are cut out of the metadata surfaces before the originals are
+searched, as the placeholders are, because a written value holding an
+original ("[_5_]" over "5") is the caller's own.
+
+The surfaces of a value:
 
 - the glyph text of every page in reading order and in every other order a
   reader uses (§11: the drawing order and the rows read from either end),
@@ -1085,22 +1110,19 @@ shorter one occurs in almost any text):
   stream whole, except font programs and a font's CMaps, image samples, ICC
   profiles, functions and the XMP packet (searched as text above).
 
-For a plan of search strings alone, whose strings were searched on every
-page by the same reader when the matches were added, the page text is read
-again on the pages the redaction changed (an edit, or an edited form drawn);
-an unchanged page reads as it did. Every other surface is searched on every
-page, and a plan with a glyph range, or with a metadata value the plan does
-not also search for in the text, reads every page's text.
+Every value was searched on every page by the same reader when its match was
+added, so the page text is read again on the pages the redaction changed (an
+edit, or an edited form drawn) and on the page of every located match; an
+unchanged page reads as it did. Every other surface is searched on every
+page.
 
 Before a surface is searched every placeholder of the plan is cut out of it,
-so a placeholder holding a redacted string is not a survivor. For a glyph
-range the string is the range's text as the extraction reads it, under the
-default folding.
+so a placeholder holding a redacted string is not a survivor.
 
 A survivor is a refusal (exit code 3 in the CLI) naming the page and the surface
-for each occurrence; no output is handed back. The re-read is bounded by the
-same limits as any open. `pdfkit_check` runs the same search over any bytes the
-caller hands it.
+for each occurrence (`location` for a glyph range's text at its location); no
+output is handed back. The re-read is bounded by the same limits as any open.
+`pdfkit_check` runs the search of a value over any bytes the caller hands it.
 
 ## 19. Refusals and warnings
 

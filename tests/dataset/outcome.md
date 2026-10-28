@@ -208,6 +208,23 @@ still holds a redacted string. A self-check refusal is `status`
 and the `strings` that were asked; no output is written. It is `skipped` when
 `open` did not succeed.
 
+`redact_text.located` is the located job, present whenever `redact_text` ran:
+one occurrence of a repeated word redacted by its glyph range. The words are
+those of `pdfkit_text`'s blocks and hidden blocks made of letters alone (as
+above), three or more, that occur twice or more in the document and are no
+part of `[REDACTED]` read without case; SplitMix64 seeded from the SHA-256 of
+`11:<id>` draws one of them (sorted by their bytes), then one of its visible
+occurrences (in a visible block, no hidden class, not hyphenated). It is
+redacted by `{"glyphs": {"page", "first", "last"}}` with the fingerprint and
+the placeholder `[REDACTED]`, written to `<dir>/outputs/<id>.located.pdf` and
+read back: `{"status": "ok", "code": null, "word", "page", "glyphs": [first,
+last], "box" (the word's box), "before" and "after" (the word's whole-word
+occurrences in pdfkit's text of the input and the output), "self_check",
+"output", "sha256"}`; `skipped` with `no_candidate` when no word qualifies; a
+refusal as for `redact_text`, with the word asked. `tests/pdfium/leak.py`
+counts the word in PDFium's text before and after and reads PDFium's text
+inside `box`.
+
 `metadata` is `pdfkit_metadata` in brief: whether the file has an Info
 dictionary, the packet's state (`read`, `absent` or `unreadable`), whether no
 field disagrees, the fields present in either place, those whose two values
@@ -217,11 +234,11 @@ UTF-16LE, the namespaces of the packet's properties and whether it holds an
 
 `set_metadata` rewrites every field present in either place to `REDACTED
 <FIELD>` with `pdfkit_set_metadata`, adds every original value of those fields
-of three letters or digits or more, the ones the self-check searches for (each
-Info value, paired XMP value and array item, each once, sorted by their
-bytes), as a search of one `pdfkit_redact_text` call with the default folding and
-the placeholder `[REDACTED]`, because the self-check refuses an output in which
-an original survives in the page text, writes `<dir>/outputs/<id>.metadata.pdf`
+of any length that is not white space alone (each Info value, paired XMP value
+and array item, each once, sorted by their bytes), as a search of one
+`pdfkit_redact_text` call with the default folding and the placeholder
+`[REDACTED]`, as a caller removing the values from the whole document does, so
+the leak measures read every surface for them, writes `<dir>/outputs/<id>.metadata.pdf`
 and opens it again: `mismatches` names every rewritten field whose Info value is
 not the written one, or, when the output's packet is read, whose XMP values are
 not all the written one. It is `skipped` with the code `no_metadata` for a file

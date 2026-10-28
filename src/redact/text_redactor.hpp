@@ -25,6 +25,7 @@
 #include "redact/edit_plan.hpp"
 #include "redact/match_finder.hpp"
 #include "redact/placeholder_fitting.hpp"
+#include "redact/text_plan.hpp"
 #include "text/rect.hpp"
 #include "writer/object_graph.hpp"
 #include "writer/write_report.hpp"
@@ -50,6 +51,8 @@ class TextRedactor {
     double scale = 1.0;
     // The removed glyphs' codes in draw order, as hexadecimal, per font run.
     std::vector<std::string> codes;
+    // A located match's ranges, sorted; empty for a search's occurrence.
+    std::vector<TextPlan::Range> ranges;
   };
 
   struct MatchReport {
@@ -60,6 +63,14 @@ class TextRedactor {
   // invalid_argument); returns per match what was found.
   [[nodiscard]] static std::vector<MatchReport> add(EditPlan& plan,
                                                     std::vector<MatchFinder::Match> matches);
+  // The same, ranges[i] holding the ranges of glyph-range match i when the
+  // caller gave several (one expression, docs/DESIGN.md section 11): checked
+  // by TextPlan::located_ranges, the placeholder drawn at the first and the
+  // others holes, answered as one occurrence. An empty entry reads the
+  // match's own page, first and last.
+  [[nodiscard]] static std::vector<MatchReport> add(
+      EditPlan& plan, std::vector<MatchFinder::Match> matches,
+      std::vector<std::vector<TextPlan::Range>> ranges);
 
   // The text surgery stage: applies the plan's page work to graph, whose
   // pages are report.pages, and records the rectangles in report.

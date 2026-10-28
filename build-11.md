@@ -124,4 +124,68 @@ the merge. Between steps run only the unit cases touched (`CLAUDE.md` §8.2).
 
 ## 9. Deviations recorded by this phase
 
-1. *(none yet)*
+1. **Files outside the Owns row.** The split could not be made inside it:
+   `src/redact/text_redactor.{hpp,cpp}` (owned by no session) stop turning a
+   glyph range's text into a value, take the array form and record each
+   located match (ranges, text, removed glyphs' boxes, codes);
+   `src/redact/write_pipeline.cpp` (build-13's) keeps its self-check stage
+   but its body is one call to `SelfCheck::verify`, which holds what the
+   stage computed, so build-13's added stage call does not meet this change;
+   `src/writer/write_report.{hpp,cpp}` write `located` and
+   `metadata_values`; `src/api/set_metadata.cpp` drops the three-letter
+   floor on originals (the exemption of §0); the two cases of
+   `tests/unit/metadata/self_check_metadata_test.cpp` that encoded the old
+   contract (an original in the page text refused, a short original not
+   searched) now test the new one; `tests/pdfium/pdfium.py` gains the
+   `bounded` request (`FPDFText_GetBoundedText`) the location measure reads.
+2. **The location is the removed glyphs' boxes**, unpadded, and a glyph is
+   there when its box's centre lies in one, not "the occurrence's
+   rectangles" of §0.1: those run over the rest of the line after the hole
+   and over the placeholder, so a second occurrence on the same line would
+   be refused, which is the refusal this phase removes. A kept neighbour's
+   box touches a removed one but its centre lies outside; a second text
+   layer drawn over the word lies inside. A marked-content span is over the
+   place when its `BDC` ... `EMC` encloses a glyph there (the placeholder
+   included) or the glyph's `/ActualText` names it.
+3. **The located member is nested** in the outcome's `redact_text` as
+   `located`, not a key of its own, because `cli/verbs/dataset.cpp` is
+   build-12's.
+4. **The PDFium count** of §4's first measure is judged over the files where
+   PDFium reads the word in the input at all (a word PDFium reads otherwise,
+   joined to a neighbour or not decoded, cannot lose an occurrence it never
+   had); those files are listed by `phase8.py` as `not_read_by_pdfium`.
+   PDFium's text inside the box is read with the box narrowed by a tenth of
+   its width at each side, so a touching neighbour is not read.
+5. **The unit test "PC left in a custom Info key"** leaves it in a field the
+   caller did not rewrite (`/Subject`), because the metadata writer drops a
+   key outside the field list that repeats an original, so a custom key
+   never survives to be refused.
+6. **The caller's written values are cut** out of the metadata surfaces
+   before the originals are searched, as the placeholders are: the gate run
+   refused pdfbox-0006, whose original Keywords "5" stood in the job's own
+   written value "[_5_]". A written value holding an original is the
+   caller's own (`docs/DESIGN.md` §18).
+7. **The dataset gate ran under load**: three other sessions shared the
+   laptop, and `open,text` alone took 54 s on opf-0005, against 8 s for every
+   check of it in the run `bs-final`; the 19 files that met the timeout in
+   `p11-gate` were run again apart (see the merge commit).
+8. **The gate is not met: a located match in a shared form removes every
+   draw of it.** The text surgery rewrites a form XObject in place, so a
+   glyph range inside a form drawn on several pages (a running header or
+   footer: dccc-0024 "Peters" 3 to 0, pdfjs-0022, synth-0253, pdfminer-0013
+   in PDFium's reading) removes the word from every draw. Nothing leaks
+   (the location check and both leak measures read 0); the output removes
+   more than was asked. The fix is a copy of the form for the draws the
+   match covers, with the resource names re-pointed along the form path,
+   which the time box did not leave room for. Owner's question: copy a
+   shared form per located match (recommended; about 3 h, $60), or refuse a
+   glyph range inside a form drawn more than once with `invalid_argument`
+   naming the form (1 h, $20)? Also counted against the measure:
+   dccc-0040, where a second text layer over the word holds it and the
+   self-check refuses the write at its location, as §0.1 asks, and
+   pdfdiff-0017, where PDFium's count of "font" does not move though PDFium
+   reads no word at the location. The job counted a word's `duplicate`
+   copies as occurrences of their own until a correction made during the
+   gate (`p11-located`).
+9. **Tests first**: the code of steps 2 and 3 was written before the unit
+   tests of §3, which passed on their first run; they were not seen red.

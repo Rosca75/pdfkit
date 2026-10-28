@@ -295,15 +295,21 @@ std::vector<std::size_t> closings(const text::ContentStream& stream) {
 
 // Rewrites every marked-content property list of the page (BDC and DP,
 // inline or through /Properties) that names a redacted string or covers
-// removed glyphs (MarkedContentRewriter).
+// removed glyphs (MarkedContentRewriter). A value (a search string) is
+// replaced in every list of the page; a located match's text only in the
+// lists of the spans that cover a removed glyph, because it is an expression
+// at that place and nowhere else.
 void rewrite_properties(syntax::Document& document, const PageText& page,
                         const std::set<std::size_t>& removed,
                         const std::map<std::size_t, std::string>& placeholder_of,
-                        const std::vector<MatchFinder::Match>& needles, TextPlan::PageWork& work) {
+                        const std::vector<MatchFinder::Match>& needles,
+                        const std::vector<MatchFinder::Match>& located, TextPlan::PageWork& work) {
   const text::PageContent& content = page.content;
   if (needles.empty() && removed.empty()) {
     return;
   }
+  std::vector<MatchFinder::Match> covering = needles;
+  covering.insert(covering.end(), located.begin(), located.end());
   // Per walk, its glyphs by operation, for the glyphs a span covers.
   std::map<std::size_t, std::vector<std::pair<std::size_t, std::size_t>>> by_walk;
   for (const GlyphRecord& record : content.glyphs) {
@@ -349,10 +355,11 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
         }
       }
       const std::string* whole_text = all && whole.has_value() ? &whole.value() : nullptr;
+      const std::vector<MatchFinder::Match>& here = whole.has_value() ? covering : needles;
       const Object& operand = marked.operands[1];
       if (const Dictionary* inline_properties = operand.dictionary()) {
         if (const auto rewritten =
-                MarkedContentRewriter::rewrite(*inline_properties, needles, whole_text, resolve)) {
+                MarkedContentRewriter::rewrite(*inline_properties, here, whole_text, resolve)) {
           target_of(work, content, walk).replaced[index] =
               MarkedContentRewriter::operation(marked.operands[0], *rewritten, marked.op);
         }
@@ -370,7 +377,7 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
         continue;
       }
       if (const auto rewritten =
-              MarkedContentRewriter::rewrite(*properties, needles, whole_text, resolve)) {
+              MarkedContentRewriter::rewrite(*properties, here, whole_text, resolve)) {
         if (const auto reference = entry.reference()) {
           work.property_objects[reference->number] = *rewritten;
         } else {
@@ -518,10 +525,12 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
   }
 }
 
-// The page's work over its merged occurrences.
+// The page's work over its merged occurrences; needles are the values,
+// located the texts of the page's located matches.
 [[nodiscard]] TextPlan::PageWork build_work(syntax::Document& document, const PageText& page,
                                             const std::vector<MatchFinder::Occurrence>& merged,
-                                            const std::vector<MatchFinder::Match>& needles) {
+                                            const std::vector<MatchFinder::Match>& needles,
+                                            const std::vector<MatchFinder::Match>& located) {
   TextPlan::PageWork work;
   const Layout layout = layout_of(page);
   const text::PageContent& content = page.content;
@@ -563,7 +572,7 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
     }
     ++work.placeholders;
   }
-  rewrite_properties(document, page, page_removed, placeholder_of, needles, work);
+  rewrite_properties(document, page, page_removed, placeholder_of, needles, located, work);
   remove_unshown(page, needles, work);
   return work;
 }
@@ -690,20 +699,36 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
 
 std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
                                                          std::vector<MatchFinder::Match> matches) {
+  return add(plan, std::move(matches), {});
+}
+
+std::vector<TextRedactor::MatchReport> TextRedactor::add(
+    EditPlan& plan, std::vector<MatchFinder::Match> matches,
+    std::vector<std::vector<TextPlan::Range>> ranges) {
   TextPlan& state = plan.text();
   syntax::Document& document = plan.document();
   const std::size_t page_count = document.pages().size();
   const std::size_t base = state.matches.size();
+  ranges.resize(matches.size());
   bool any_search = false;
   std::set<std::uint32_t> pages;
   for (std::size_t i = 0; i < matches.size(); ++i) {
-    const MatchFinder::Match& match = matches[i];
+    MatchFinder::Match& match = matches[i];
     PlaceholderFitting::require_alphabet(match.placeholder,
                                          "pdfkit_redact_text match " + std::to_string(i));
     if (match.kind == MatchFinder::Match::Kind::search) {
       any_search = true;
       continue;
     }
+    // A glyph range is one expression at one place: its ranges, checked and
+    // sorted; the match names the first.
+    if (ranges[i].empty()) {
+      ranges[i].push_back({match.page, match.first, match.last});
+    }
+    ranges[i] = TextPlan::located_ranges(std::move(ranges[i]), "match " + std::to_string(i));
+    match.page = ranges[i].front().page;
+    match.first = ranges[i].front().first;
+    match.last = ranges[i].front().last;
     if (match.fingerprint != plan.fingerprint()) {
       refuse(
           i,
@@ -735,6 +760,7 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
   std::map<std::uint32_t, std::vector<MatchFinder::Occurrence>> found_pages;
   std::map<std::uint32_t, std::optional<TextPlan::PageWork>> works;
   std::map<std::uint32_t, std::set<std::uint32_t>> forms_drawn;
+  std::vector<TextPlan::Located> located;
   text::TextReader reader(document);
   for (const std::uint32_t number : pages) {
     const PageText page = reader.read(number);
@@ -746,6 +772,9 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
     }
     MatchFinder finder(page);
     std::vector<MatchFinder::Occurrence> found;
+    // The located matches of this call on the page: the match and the
+    // stretch [from, to) of found its ranges take.
+    std::vector<std::pair<std::size_t, std::pair<std::size_t, std::size_t>>> here_located;
     for (std::size_t i = 0; i < matches.size(); ++i) {
       const MatchFinder::Match& match = matches[i];
       if (match.kind == MatchFinder::Match::Kind::search) {
@@ -769,21 +798,26 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
       if (match.page != number) {
         continue;
       }
-      if (match.first >= match.last || match.last > page.order.size()) {
-        refuse(
-            i,
-            "is the glyph range [" + std::to_string(match.first) + ", " +
-                std::to_string(match.last) + ") of page " + std::to_string(number),
-            "a non-empty range within the page's " + std::to_string(page.order.size()) + " glyphs",
-            "take the range from the glyphs of this page's extraction");
+      const std::size_t from = found.size();
+      for (const TextPlan::Range& range : ranges[i]) {
+        if (range.last > page.order.size()) {
+          refuse(i,
+                 "is the glyph range [" + std::to_string(range.first) + ", " +
+                     std::to_string(range.last) + ") of page " + std::to_string(number),
+                 "a non-empty range within the page's " + std::to_string(page.order.size()) +
+                     " glyphs",
+                 "take the range from the glyphs of this page's extraction");
+        }
+        // The placeholder is drawn once, at the first range; the others are
+        // holes.
+        found.push_back({base + i, number, range.first, range.last,
+                         from == found.size() ? match.placeholder : std::string()});
       }
-      found.push_back({base + i, number, match.first, match.last, match.placeholder});
-      MatchFinder::Match needle;
-      needle.search = finder.text(match.first, match.last);
-      needle.placeholder = match.placeholder;
-      needles.push_back(std::move(needle));
+      here_located.push_back({i, {from, found.size()}});
     }
     const Layout layout = layout_of(page);
+    std::vector<Found> entries;
+    std::vector<std::set<std::size_t>> removed_of;
     for (const MatchFinder::Occurrence& occurrence : found) {
       const Geometry shape = geometry(page, layout, occurrence, nullptr);
       Found entry;
@@ -804,14 +838,71 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
         }
         entry.codes.back() += hex_of(record);
       }
-      reports[occurrence.match - base].occurrences.push_back(std::move(entry));
+      entries.push_back(std::move(entry));
+      removed_of.push_back(shape.removed);
+    }
+    // A located match is answered as one occurrence: its ranges, their text
+    // joined by a space, every rectangle and every code run.
+    std::set<std::size_t> joined;
+    for (const auto& [i, stretch] : here_located) {
+      Found& first = entries[stretch.first];
+      TextPlan::Located entry;
+      entry.match = base + i;
+      entry.page = number;
+      entry.ranges = ranges[i];
+      first.ranges = ranges[i];
+      for (std::size_t k = stretch.first; k < stretch.second; ++k) {
+        if (k != stretch.first) {
+          const Found& other = entries[k];
+          first.text += " " + other.text;
+          first.rectangles.insert(first.rectangles.end(), other.rectangles.begin(),
+                                  other.rectangles.end());
+          first.codes.insert(first.codes.end(), other.codes.begin(), other.codes.end());
+          joined.insert(k);
+        }
+        // The glyph's own box, unpadded, so a neighbour's centre lies
+        // outside it.
+        for (const std::size_t draw : removed_of[k]) {
+          const GlyphRecord& record = page.content.glyphs[draw];
+          Rect box = record.box;
+          if (box.is_empty()) {
+            box.add(record.origin.x, record.origin.y);
+            box.add(record.advance_end.x, record.advance_end.y);
+          }
+          if (!box.is_empty()) {
+            entry.boxes.push_back(box);
+          }
+        }
+      }
+      entry.text = first.text;
+      entry.codes = first.codes;
+      located.push_back(std::move(entry));
+    }
+    for (std::size_t k = 0; k < entries.size(); ++k) {
+      if (!joined.contains(k)) {
+        reports[found[k].match - base].occurrences.push_back(std::move(entries[k]));
+      }
     }
     std::vector<MatchFinder::Occurrence> all;
     if (const auto earlier = state.occurrences.find(number); earlier != state.occurrences.end()) {
       all = earlier->second;
     }
     all.insert(all.end(), found.begin(), found.end());
-    TextPlan::PageWork work = build_work(document, page, MatchFinder::merge(all), needles);
+    // The texts of the page's located matches, earlier calls' included.
+    std::vector<MatchFinder::Match> located_texts;
+    for (const std::vector<TextPlan::Located>* list : {&state.located, &located}) {
+      for (const TextPlan::Located& entry : *list) {
+        if (entry.page == number) {
+          MatchFinder::Match text;
+          text.search = entry.text;
+          text.placeholder = entry.match < base ? state.matches[entry.match].placeholder
+                                                : matches[entry.match - base].placeholder;
+          located_texts.push_back(std::move(text));
+        }
+      }
+    }
+    TextPlan::PageWork work =
+        build_work(document, page, MatchFinder::merge(all), needles, located_texts);
     if (!work_empty(work)) {
       works[number] = std::move(work);
     } else {
@@ -826,13 +917,11 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
     state.matches.push_back(std::move(match));
   }
   state.needles = std::move(needles);
+  state.located.insert(state.located.end(), std::make_move_iterator(located.begin()),
+                       std::make_move_iterator(located.end()));
   for (auto& [number, forms] : forms_drawn) {
     state.forms_drawn[number] = std::move(forms);
   }
-  state.glyph_ranges =
-      state.glyph_ranges || std::ranges::any_of(state.matches, [](const MatchFinder::Match& match) {
-        return match.kind == MatchFinder::Match::Kind::glyphs;
-      });
   for (auto& [number, found] : found_pages) {
     std::vector<MatchFinder::Occurrence>& list = state.occurrences[number];
     list.insert(list.end(), found.begin(), found.end());
