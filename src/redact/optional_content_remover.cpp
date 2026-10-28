@@ -56,7 +56,7 @@ constexpr std::size_t own_resources = std::numeric_limits<std::size_t>::max();
 // ISO 32000-1 Annex A, table A.1 (read): the path construction and painting
 // operators, sh with them because it paints.
 constexpr std::array<std::string_view, 7> construction{"m", "l", "c", "v", "y", "h", "re"};
-constexpr std::array<std::string_view, 11> painting{"S", "s",  "f", "F", "f*", "B",
+constexpr std::array<std::string_view, 11> painting{"S",  "s", "f",  "F", "f*", "B",
                                                     "B*", "b", "b*", "n", "sh"};
 
 template <std::size_t N>
@@ -225,7 +225,7 @@ class Walker {
     const std::string* name = operand.name();
     const Dictionary* entries = resources.dictionary();
     if (name == nullptr || entries == nullptr) {
-      return Object();
+      return {};
     }
     const Object properties = graph_.resolve(entries->get("Properties"));
     const Dictionary* names = properties.dictionary();
@@ -258,8 +258,8 @@ class Walker {
         const double width =
             vertical ? font->vertical_advance(code.code).w1 : font->width(code.code);
         const double spacing =
-            state.char_spacing + (code.byte_length == 1 && code.code == 32 ? state.word_spacing
-                                                                           : 0.0);
+            state.char_spacing +
+            (code.byte_length == 1 && code.code == 32 ? state.word_spacing : 0.0);
         moved += (width / 1000.0 * state.size + spacing) * scale;
       }
     };
@@ -286,8 +286,8 @@ class Walker {
 
   // What replaces an off text-showing operation: the line move of ' and ",
   // the spacing " sets, and a TJ moving the position as its glyphs did.
-  std::string hidden_show(const syntax::ContentLexer::Operation& operation,
-                          const TextState& state, const Object& resources) {
+  std::string hidden_show(const syntax::ContentLexer::Operation& operation, const TextState& state,
+                          const Object& resources) {
     std::string out;
     if (operation.op == "\"" && operation.operands.size() == 3) {
       out = ContentSyntax::number(state.word_spacing) + " Tw " +
