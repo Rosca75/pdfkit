@@ -18,7 +18,9 @@
 # file holding optional content must hold no /OCProperties and no /OC name. The result is a markdown table of every
 # measure (measure, value, threshold, pass or fail), written into the run folder
 # as a markdown and a JSON file named after this script, with every differing
-# page listed by file, page and cause.
+# page listed by file, page and cause. The text agreement of an identity write
+# leaves out the input's text of its switched-off optional-content layers,
+# which every write removes (places.py), read only for a file under 1.0.
 # A page whose comparison names no cause is `unclassified` until the analyst
 # writes its cause into <run>/causes.json, a map from "<id>:<page>" to the text.
 
@@ -36,6 +38,7 @@ sys.path.insert(0, str(REPO / "dataset" / "tools"))
 
 import autotag  # noqa: E402
 import common  # noqa: E402
+import places  # noqa: E402
 
 sys.path.insert(0, str(REPO / "tests" / "dataset"))
 
@@ -216,6 +219,42 @@ def differing_pages(entries: dict | None, ids: set, causes: dict) -> list[dict]:
     return out
 
 
+def off_layer_f1(run_dir: Path, row: dict, outcome: dict) -> float | None:
+    """PDFium's word-bag F1 of the identity write's text against the input's without the text of
+    its switched-off optional-content layers, which every write removes; None when it cannot be
+    read."""
+    output = ((outcome or {}).get("write") or {}).get("output")
+    if not output:
+        return None
+    sys.path.insert(0, str(REPO / "tests" / "pdfium"))
+    import pdfium
+    import results_cache
+    with pdfium.Pool(1) as pool:
+        before = results_cache.cached_probe(pool, common.file_path(row), ["text"])
+        after = pool.probe(run_dir / output, ["text"])
+    if not before.get("ok") or not after.get("ok"):
+        return None
+    off = places.off_text_of(dataset_run.find_pdfkit(None), common.file_path(row))
+    if not off:
+        return None
+    return round(places.f1_without_off("\n".join(t or "" for t in before["text"]),
+                                       "\n".join(t or "" for t in after["text"]), off), 6)
+
+
+def text_perfect(run_dir: Path, opened: list[dict], entries: dict, outcomes: dict) -> tuple[list, list]:
+    """The files whose output's PDFium text equals the input's, and among them those that do so
+    once the input's switched-off layers are left out."""
+    perfect, adjusted = [], []
+    for row in opened:
+        f1 = entries.get(row["id"], {}).get("f1")
+        if f1 == 1.0:
+            perfect.append(row["id"])
+        elif f1 is not None and off_layer_f1(run_dir, row, outcomes.get(row["id"])) == 1.0:
+            perfect.append(row["id"])
+            adjusted.append(row["id"])
+    return perfect, adjusted
+
+
 def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
     """The whole gate over one run folder and the population of manifest rows; family is what
     off_layer_family found, none when the specimens were not written."""
@@ -251,10 +290,11 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
                    total_pages, WRITE_PIXELS, {"differing_pages": len(write_diffs)})
 
     text_entries = text_write.get("files", {})
-    perfect = [r["id"] for r in opened if text_entries.get(r["id"], {}).get("f1") == 1.0]
+    perfect, adjusted = text_perfect(run_dir, opened, text_entries, outcomes)
     measures.share("text agreement, output against input (PDFium on both sides): F1 = 1.0",
                    len(perfect), len(opened), TEXT_F1,
-                   {"under_one": sorted({r["id"] for r in opened} - set(perfect))[:50]})
+                   {"under_one": sorted({r["id"] for r in opened} - set(perfect))[:50],
+                    "off_layers_left_out": adjusted})
 
     planted = scan_planted(run_dir, rows, outcomes)
     family = family or {"files": 0, "failed": [], "off_surviving": [], "missing_drawn": [], "oc_named": []}
