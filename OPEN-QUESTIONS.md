@@ -43,6 +43,13 @@ judgement. Two kinds of text match follow:
   XMP, every string of the file); a caller that wants the value gone from the
   page text sends it as a value.
 
+The owner added on 2026-10-28: pdfkit offers two text operations, every
+occurrence of a string or one single occurrence; one occurrence is that place
+on that page only (an occurrence in a header drawn on 30 pages goes from the
+picked page alone), and the single-occurrence call takes parameters that
+narrow which text is meant. **Action**: `build-14.md` (shared forms copied per
+located edit; the `occurrence` form with `index`, `near`, `before`, `after`).
+
 `CLAUDE.md` §5 states the principle. **Action**: a branch changes the
 self-check's glyph-range and metadata scope and drops the three-character
 exemption (`docs/DESIGN.md` §18, `docs/ABI.md` §4.11, the dataset job and the
