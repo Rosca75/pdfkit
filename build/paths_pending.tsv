@@ -1,1 +1,25 @@
 path	phase	note
+tests/panel/	change-01a	the reference panel's folder
+tests/panel/fetch.py	change-01a	fetches and builds the panel's readers by hash
+tests/panel/answers.py	change-01a	the panel's answers cache
+tests/panel/collect.py	change-01a	asks every member about the dataset
+tests/panel/readers/	change-01a	one adapter per member
+tests/panel/rust/	change-01a	the Rust adapters
+tests/panel/rust/Cargo.toml	change-01a	the Rust adapters' manifest
+tests/panel/rust/Cargo.lock	change-01a	the Rust adapters' pinned crates
+tests/panel/members.tsv	change-01a	the members and their measured capabilities
+tests/panel/smoke.tsv	change-01a	the smoke set
+tests/panel/test_answers.py	change-01a	tests of the answers cache
+tests/panel/test_readers.py	change-01a	tests of the adapters
+tests/panel/judge.py	change-01b	the majority judge
+tests/panel/test_judge.py	change-01b	tests of the judge
+tests/panel/redecide.py	change-01b	the three re-decisions
+tests/panel/specimens.py	change-01b	the /MediaBox specimens, written at run time
+tests/panel/text_causes.tsv	change-01b	the files the panel counts against pdfkit
+tests/dataset/gates/phase5_panel.py	change-01b	the reading gate judged by the panel
+tests/dataset/gates/phase6_panel.py	change-01b	the bitonal gate judged by the panel
+tests/dataset/test_panel_gates.py	change-01b	tests of the two panel gates
+third_party/adobe-cmaps/	change-01c	the Adobe CMap resources
+build/fonts/cmaps.py	change-01c	the CMap table generator
+build/fonts/cmaps.lock	change-01c	the CMap generator's lock
+src/fonts/predefined_cmaps.hpp	change-01c	the predefined CMaps' lookup

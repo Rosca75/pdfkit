@@ -36,6 +36,7 @@ performs no OCR.
 | `THIRD-PARTY-NOTICES.md` | the licence notices shipped with every artefact |
 | `build/toolchain.md` | the pinned compiler, CMake, Ninja, clang-format and clang-tidy versions and the proxy behaviour |
 | `build-5.md`, `build-6.md`, `build-10.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 |
+| `docs/change-01.md`, `docs/change-01a.md`, `docs/change-01b.md`, `docs/change-01c.md` | the reference panel order, awaiting the owner's launch: the parent holds its decisions and batch index, each batch file the work of one session |
 
 Every other markdown file is a working document. `OPEN-QUESTIONS.md` holds the
 questions waiting for the owner. A file added to or removed from this set moves
