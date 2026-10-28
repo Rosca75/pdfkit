@@ -63,6 +63,10 @@ class WriteReport {
   std::string self_check_reason;
   // The strings the self-check searched for, when it ran.
   std::size_t self_check_strings = 0;
+  // Of those, the located matches verified at their location and the
+  // original values of rewritten metadata fields searched in the metadata.
+  std::size_t self_check_located = 0;
+  std::size_t self_check_metadata_values = 0;
   std::vector<ChannelTable::Warning> warnings;
 
   [[nodiscard]] std::string json() const;

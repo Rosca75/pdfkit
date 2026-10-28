@@ -6,9 +6,11 @@
 // fingerprint it reported) or as search strings with the caller's folding,
 // each with its placeholder, and answers per match the occurrences found,
 // their device rectangles and how each placeholder is fitted (CLAUDE.md
-// section 2, the pdfkit_redact_text section of docs/ABI.md). Every match is
-// checked before any is recorded, so a refused call leaves the plan as it
-// was. The text is removed when the plan is written.
+// section 2, the pdfkit_redact_text section of docs/ABI.md). A glyph range
+// is one range or an array of ranges on one page, read as one expression at
+// one place. Every match is checked before any is recorded, so a refused
+// call leaves the plan as it was. The text is removed when the plan is
+// written.
 
 #include "pdfkit/pdfkit.h"
 
@@ -21,6 +23,7 @@
 #include "platform/json_writer.hpp"
 #include "redact/match_finder.hpp"
 #include "redact/placeholder_fitting.hpp"
+#include "redact/text_plan.hpp"
 #include "redact/text_redactor.hpp"
 
 #include <cmath>
@@ -34,9 +37,10 @@ using pdfkit::platform::Error;
 using pdfkit::platform::ErrorCode;
 using pdfkit::platform::JsonValue;
 using pdfkit::redact::MatchFinder;
+using pdfkit::redact::TextPlan;
 
 constexpr std::string_view shape =
-    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>}, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"})";
+    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"})";
 constexpr std::string_view default_placeholder = "[REDACTED]";
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
@@ -79,7 +83,31 @@ std::size_t count_member(const JsonValue& glyphs, std::size_t index, const std::
   return static_cast<std::size_t>(*number);
 }
 
-MatchFinder::Match read_match(const JsonValue& item, std::size_t index) {
+// One {"page", "first", "last"} object.
+TextPlan::Range read_range(const JsonValue& value, std::size_t index) {
+  if (value.kind() != JsonValue::Kind::object) {
+    refuse(where(index) + " gives a glyph range as " +
+               std::string(JsonValue::kind_name(value.kind())),
+           R"(write the range as {"page": 1, "first": 0, "last": 5}, or an array of such ranges)");
+  }
+  for (const auto& [key, unused] : value.as_object()) {
+    if (key != "page" && key != "first" && key != "last") {
+      refuse(where(index) + " names \"" + key + R"(" in "glyphs")",
+             "give only page, first and last");
+    }
+  }
+  TextPlan::Range range;
+  const std::size_t page = count_member(value, index, "page");
+  range.page = page > 0xFFFFFFFFU ? 0U : static_cast<std::uint32_t>(page);
+  range.first = count_member(value, index, "first");
+  range.last = count_member(value, index, "last");
+  return range;
+}
+
+// A match, and the ranges of a glyph range given as an array (empty for one
+// range or a search).
+MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
+                              std::vector<TextPlan::Range>& ranges) {
   if (item.kind() != JsonValue::Kind::object) {
     refuse(where(index) + " is " + std::string(JsonValue::kind_name(item.kind())),
            "write each match as an object");
@@ -118,22 +146,23 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index) {
       }
     } else if (name == "glyphs") {
       glyphs = true;
-      if (value.kind() != JsonValue::Kind::object) {
-        refuse(where(index) + " gives \"glyphs\" as " +
-                   std::string(JsonValue::kind_name(value.kind())),
-               R"(write the range as {"page": 1, "first": 0, "last": 5})");
-      }
-      for (const auto& [key, unused] : value.as_object()) {
-        if (key != "page" && key != "first" && key != "last") {
-          refuse(where(index) + " names \"" + key + R"(" in "glyphs")",
-                 "give only page, first and last");
-        }
-      }
       match.kind = MatchFinder::Match::Kind::glyphs;
-      const std::size_t page = count_member(value, index, "page");
-      match.page = page > 0xFFFFFFFFU ? 0U : static_cast<std::uint32_t>(page);
-      match.first = count_member(value, index, "first");
-      match.last = count_member(value, index, "last");
+      if (value.kind() == JsonValue::Kind::array) {
+        for (const JsonValue& entry : value.as_array()) {
+          ranges.push_back(read_range(entry, index));
+        }
+        // Checked whole here (one page, none empty, none overlapping), so an
+        // empty array is refused rather than read as one range.
+        ranges = TextPlan::located_ranges(std::move(ranges), where(index));
+        match.page = ranges.front().page;
+        match.first = ranges.front().first;
+        match.last = ranges.front().last;
+      } else {
+        const TextPlan::Range range = read_range(value, index);
+        match.page = range.page;
+        match.first = range.first;
+        match.last = range.last;
+      }
     } else {
       refuse(where(index) + " names the unknown key \"" + name + "\"",
              "use search, folding, glyphs, fingerprint and placeholder only");
@@ -174,13 +203,15 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       refuse("has no \"matches\" array", "list the matches as {\"matches\": [...]}");
     }
     std::vector<MatchFinder::Match> matches;
+    std::vector<std::vector<TextPlan::Range>> ranges(list->as_array().size());
     matches.reserve(list->as_array().size());
     for (std::size_t i = 0; i < list->as_array().size(); ++i) {
-      matches.push_back(read_match(list->as_array()[i], i));
+      matches.push_back(read_match(list->as_array()[i], i, ranges[i]));
     }
     const std::vector<MatchFinder::Match> given = matches;
+    const std::vector<std::vector<TextPlan::Range>> arrays = ranges;
     const std::vector<pdfkit::redact::TextRedactor::MatchReport> reports =
-        pdfkit::redact::TextRedactor::add(*handle.plan, std::move(matches));
+        pdfkit::redact::TextRedactor::add(*handle.plan, std::move(matches), std::move(ranges));
 
     pdfkit::platform::JsonWriter writer;
     writer.begin_object();
@@ -201,11 +232,19 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       for (const pdfkit::redact::TextRedactor::Found& found : reports[i].occurrences) {
         writer.begin_object();
         writer.key("page").unsigned_integer(found.page);
-        writer.key("glyphs")
-            .begin_array()
-            .unsigned_integer(found.first)
-            .unsigned_integer(found.last)
-            .end_array();
+        // A glyph range given as an array is answered with its ranges.
+        writer.key("glyphs").begin_array();
+        if (arrays[i].empty()) {
+          writer.unsigned_integer(found.first).unsigned_integer(found.last);
+        } else {
+          for (const TextPlan::Range& range : found.ranges) {
+            writer.begin_array()
+                .unsigned_integer(range.first)
+                .unsigned_integer(range.last)
+                .end_array();
+          }
+        }
+        writer.end_array();
         writer.key("text").string(found.text);
         writer.key("rectangles").begin_array();
         for (const pdfkit::text::Rect& box : found.rectangles) {

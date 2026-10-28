@@ -7,7 +7,12 @@
 // names it, not from the stream's own dictionary, so the referrers are read
 // before any stream is scanned. The raw scan folds ASCII letters to lower
 // case when the string's folding folds case; it applies no other folding,
-// because it looks for the bytes a producer would have written.
+// because it looks for the bytes a producer would have written. A located
+// match is verified on its output page alone: the glyphs "there" are those
+// whose box centre lies in the box of a glyph the match removed, because a
+// kept neighbour's box touches a removed glyph's but its centre lies
+// outside, and a glyph drawn over the removed one (a second text layer)
+// lies inside.
 
 #include "redact/self_check.hpp"
 
@@ -17,6 +22,7 @@
 #include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
 #include "syntax/stream.hpp"
+#include "text/page_text.hpp"
 #include "text/text_reader.hpp"
 #include "text/text_string.hpp"
 #include "writer/placeholder_font.hpp"
@@ -191,11 +197,18 @@ enum class Kind : std::uint8_t { scan, content, skip };
   return out;
 }
 
+// The surfaces an original value of a rewritten metadata field is searched
+// in.
+[[nodiscard]] bool metadata_surface(std::string_view surface) noexcept {
+  return surface == "info" || surface == "xmp" || surface == "string";
+}
+
 class Search {
  public:
-  Search(std::span<const MatchFinder::Match> needles, std::span<const std::string> placeholders,
+  Search(std::span<const MatchFinder::Match> needles,
+         std::span<const MatchFinder::Match> metadata, std::span<const std::string> placeholders,
          SelfCheck::Result& result)
-      : needles_(needles), placeholders_(placeholders), result_(result) {
+      : needles_(needles), metadata_(metadata), placeholders_(placeholders), result_(result) {
     for (const MatchFinder::Match& needle : needles) {
       forms_.push_back(MatchFinder::byte_forms(needle));
     }
@@ -211,6 +224,13 @@ class Search {
     for (const MatchFinder::Match& needle : needles_) {
       if (!MatchFinder::ranges_in(cut, needle).empty()) {
         add(needle, page, surface, object);
+      }
+    }
+    if (metadata_surface(surface)) {
+      for (const MatchFinder::Match& needle : metadata_) {
+        if (!MatchFinder::ranges_in(cut, needle).empty()) {
+          add(needle, page, surface, object);
+        }
       }
     }
   }
@@ -229,15 +249,21 @@ class Search {
 
   void add(const MatchFinder::Match& needle, std::optional<std::uint32_t> page,
            std::string_view surface, std::uint32_t object) {
+    add(needle.search, page, surface, object);
+  }
+
+  void add(const std::string& string, std::optional<std::uint32_t> page, std::string_view surface,
+           std::uint32_t object) {
     const std::tuple<std::string, std::optional<std::uint32_t>, std::string, std::uint32_t> key{
-        needle.search, page, std::string(surface), object};
+        string, page, std::string(surface), object};
     if (seen_.insert(key).second) {
-      result_.survivors.push_back({needle.search, page, std::string(surface), object});
+      result_.survivors.push_back({string, page, std::string(surface), object});
     }
   }
 
  private:
   std::span<const MatchFinder::Match> needles_;
+  std::span<const MatchFinder::Match> metadata_;
   std::span<const std::string> placeholders_;
   std::vector<std::vector<std::string>> forms_;
   SelfCheck::Result& result_;
@@ -289,18 +315,166 @@ void operand_strings(const Object& value, int depth, std::string& out) {
   }
 }
 
+// Whether the centre of a glyph's box lies in one of boxes.
+[[nodiscard]] bool there(const text::GlyphRecord& record, std::span<const text::Rect> boxes) {
+  text::Rect box = record.box;
+  if (box.is_empty()) {
+    box.add(record.origin.x, record.origin.y);
+    box.add(record.advance_end.x, record.advance_end.y);
+  }
+  if (box.is_empty()) {
+    return false;
+  }
+  const double x = (box.left + box.right) / 2.0;
+  const double y = (box.bottom + box.top) / 2.0;
+  return std::ranges::any_of(boxes, [x, y](const text::Rect& hole) {
+    return x >= hole.left && x <= hole.right && y >= hole.bottom && y <= hole.top;
+  });
+}
+
+[[nodiscard]] std::string hex_of(const text::GlyphRecord& record) {
+  constexpr std::string_view hex = "0123456789abcdef";
+  std::string out;
+  for (std::size_t i = record.code_length; i > 0; --i) {
+    const unsigned byte = (record.code >> (8U * (i - 1))) & 0xFFU;
+    out += hex[byte >> 4U];
+    out += hex[byte & 0x0FU];
+  }
+  return out;
+}
+
+// Per walk, the index one past the EMC closing each BDC or BMC (the end of
+// the walk when none closes it).
+[[nodiscard]] std::vector<std::size_t> closings(const text::ContentStream& stream) {
+  const std::size_t size = stream.operations.size();
+  std::vector<std::size_t> out(size, size);
+  std::vector<std::size_t> open;
+  for (std::size_t index = 0; index < size; ++index) {
+    const std::string& op = stream.operations[index].op;
+    if (op == "BDC" || op == "BMC") {
+      open.push_back(index);
+    } else if (op == "EMC" && !open.empty()) {
+      out[open.back()] = index + 1;
+      open.pop_back();
+    }
+  }
+  return out;
+}
+
+// The located check of docs/DESIGN.md section 18 over one output page.
+void check_located(const text::PageText& page, MatchFinder& finder,
+                   std::span<const SelfCheck::Located* const> located,
+                   std::span<const std::string> placeholders,
+                   const std::set<std::string_view>& placeholder_fonts, Search& search) {
+  const std::vector<text::GlyphRecord>& glyphs = page.content.glyphs;
+  const auto placeholder = [&placeholder_fonts](const text::GlyphRecord& record) {
+    return record.font != nullptr && placeholder_fonts.contains(record.font->name());
+  };
+  std::vector<std::vector<std::size_t>> ends(page.content.streams.size());
+  for (const SelfCheck::Located* entry : located) {
+    const std::uint32_t number = page.content.page;
+    MatchFinder::Match needle;
+    needle.search = entry->text;
+    bool survives = false;
+    // The text, in the reading order and every other order, with a glyph
+    // there.
+    std::vector<MatchFinder::Occurrence> occurrences = finder.find(needle, 0);
+    for (MatchFinder::Occurrence& other : finder.find_orders(needle, 0, occurrences)) {
+      occurrences.push_back(std::move(other));
+    }
+    for (const MatchFinder::Occurrence& found : occurrences) {
+      for (std::size_t p = found.first; p < found.last && p < page.order.size() && !survives;
+           ++p) {
+        const text::GlyphRecord& record = glyphs[page.order[p]];
+        survives = !record.text.empty() && !record.is_space() && !placeholder(record) &&
+                   there(record, entry->boxes);
+      }
+    }
+    // The removed codes in a string operator drawing a glyph there: the
+    // codes of its glyphs there, in draw order, hold a removed run.
+    std::map<std::pair<std::size_t, std::size_t>, std::string> drawn;
+    std::set<std::size_t> spans;
+    for (const text::GlyphRecord& record : glyphs) {
+      if (!there(record, entry->boxes)) {
+        continue;
+      }
+      if (!placeholder(record)) {
+        drawn[{record.stream, record.operation}] += hex_of(record);
+      }
+      if (record.actual_text) {
+        spans.insert(*record.actual_text);
+      }
+      // Every span whose BDC encloses the glyph in its walk.
+      for (std::size_t s = 0; s < page.content.spans.size(); ++s) {
+        const text::MarkedSpan& span = page.content.spans[s];
+        if (span.stream != record.stream || span.operation > record.operation) {
+          continue;
+        }
+        std::vector<std::size_t>& closing = ends[span.stream];
+        if (closing.empty()) {
+          closing = closings(page.content.streams[span.stream]);
+        }
+        if (span.operation < closing.size() && record.operation < closing[span.operation]) {
+          spans.insert(s);
+        }
+      }
+    }
+    for (const auto& [where, codes] : drawn) {
+      for (const std::string& run : entry->codes) {
+        for (std::size_t at = codes.find(run); !run.empty() && at != std::string::npos && !survives;
+             at = codes.find(run, at + 1)) {
+          survives = at % 2 == 0;
+        }
+      }
+    }
+    for (const std::size_t s : spans) {
+      const text::MarkedSpan& span = page.content.spans[s];
+      for (const std::optional<std::string>* value : {&span.actual_text, &span.alt, &span.expansion}) {
+        if (*value && !MatchFinder::ranges_in(
+                          TextFolding::decode(without(**value, placeholders)), needle)
+                           .empty()) {
+          survives = true;
+        }
+      }
+    }
+    if (survives) {
+      search.add(entry->text, number, "location", 0);
+    }
+  }
+}
+
 }  // namespace
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                  std::span<const MatchFinder::Match> needles,
                                  std::span<const std::string> placeholders,
                                  const std::set<std::uint32_t>* pages) {
+  return run(pdf, limits, Needles{needles, {}, {}}, placeholders, pages);
+}
+
+SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
+                                 const Needles& requests,
+                                 std::span<const std::string> placeholders,
+                                 const std::set<std::uint32_t>* pages) {
   Result result;
-  result.strings = needles.size();
+  const std::span<const MatchFinder::Match> needles = requests.values;
+  std::vector<MatchFinder::Match> originals;
+  for (const std::string& original : requests.metadata) {
+    MatchFinder::Match needle;
+    needle.search = original;
+    originals.push_back(std::move(needle));
+  }
+  result.located = requests.located.size();
+  result.metadata_values = originals.size();
+  result.strings = needles.size() + result.located + result.metadata_values;
   std::unique_ptr<syntax::Document> document = syntax::Document::open(pdf, limits);
-  Search search(needles, placeholders, result);
-  if (needles.empty()) {
+  Search search(needles, originals, placeholders, result);
+  if (result.strings == 0) {
     return result;
+  }
+  std::map<std::uint32_t, std::vector<const Located*>> located_on;
+  for (const Located& entry : requests.located) {
+    located_on[entry.page].push_back(&entry);
   }
   const std::set<std::string_view> placeholder_fonts{
       writer::PlaceholderFont::metrics(writer::PlaceholderFont::Face::regular).base_font,
@@ -310,12 +484,20 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   text::TextReader reader(*document);
   result.pages = document->pages().size();
   for (const syntax::Page& source : document->pages()) {
-    if (pages != nullptr && !pages->contains(source.number)) {
+    const auto here = located_on.find(source.number);
+    const bool values = !needles.empty() && (pages == nullptr || pages->contains(source.number));
+    if (!values && here == located_on.end()) {
       continue;
     }
     ++result.pages_read;
     const text::PageText page = reader.read(source.number);
     MatchFinder finder(page, {placeholder_fonts.begin(), placeholder_fonts.end()});
+    if (here != located_on.end()) {
+      check_located(page, finder, here->second, placeholders, placeholder_fonts, search);
+    }
+    if (!values) {
+      continue;
+    }
     for (const MatchFinder::Match& needle : needles) {
       // The reading order and every other order a reader reads the page in.
       std::vector<MatchFinder::Occurrence> occurrences = finder.find(needle, 0);
@@ -526,6 +708,86 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   return result;
 }
 
+void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteReport& report) {
+  const TextPlan& text = plan.text();
+  if (text.matches.empty() && plan.metadata_originals().empty()) {
+    report.self_check_status = "not_run";
+    report.self_check_reason = "no text redaction in the edit plan";
+    return;
+  }
+  std::set<std::string> unique;
+  for (const MatchFinder::Match& match : text.matches) {
+    unique.insert(match.placeholder);
+  }
+  const std::vector<std::string> placeholders(unique.begin(), unique.end());
+  // An original the plan also searches for with the default folding is
+  // verified everywhere as a value already.
+  const auto searched = [&text](const std::string& original) {
+    return std::ranges::any_of(text.needles, [&original](const MatchFinder::Match& match) {
+      const MatchFinder::Folding defaults;
+      return match.search == original && match.folding.hyphenation == defaults.hyphenation &&
+             match.folding.text.case_fold == defaults.text.case_fold &&
+             match.folding.text.diacritics == defaults.text.diacritics &&
+             match.folding.text.whitespace == defaults.text.whitespace;
+    });
+  };
+  std::vector<std::string> metadata;
+  for (const std::string& original : plan.metadata_originals()) {
+    if (!searched(original)) {
+      metadata.push_back(original);
+    }
+  }
+  // The output page of each source page.
+  std::map<std::uint32_t, std::uint32_t> output_page;
+  for (std::size_t i = 0; i < report.pages.size(); ++i) {
+    output_page.try_emplace(report.pages[i], static_cast<std::uint32_t>(i + 1));
+  }
+  std::vector<Located> located;
+  for (const TextPlan::Located& entry : text.located) {
+    if (const auto kept = output_page.find(entry.page); kept != output_page.end()) {
+      located.push_back({entry.text, kept->second, entry.boxes, entry.codes});
+    }
+  }
+  // Every value was searched on every source page when its match was added,
+  // so a page the redaction left as it was (no edit, no edited form drawn)
+  // reads as it did then and holds no occurrence; its text is not read
+  // again. The page text of every changed page and every other surface of
+  // every page is.
+  std::set<std::uint32_t> forms;
+  for (const auto& [number, work] : text.pages) {
+    for (const auto& [form, target] : work.forms) {
+      if (!target.empty()) {
+        forms.insert(form);
+      }
+    }
+  }
+  std::set<std::uint32_t> changed;
+  for (std::size_t i = 0; i < report.pages.size(); ++i) {
+    const std::uint32_t source = report.pages[i];
+    bool touched = text.pages.contains(source);
+    if (const auto drawn = text.forms_drawn.find(source); drawn != text.forms_drawn.end()) {
+      for (const std::uint32_t form : drawn->second) {
+        touched = touched || forms.contains(form);
+      }
+    } else {
+      touched = true;
+    }
+    if (touched) {
+      changed.insert(static_cast<std::uint32_t>(i + 1));
+    }
+  }
+  const Result result = run(platform::as_bytes(pdf), plan.document().limits(),
+                            Needles{text.needles, located, metadata}, placeholders, &changed);
+  report.self_check_strings = result.strings;
+  report.self_check_located = result.located;
+  report.self_check_metadata_values = result.metadata_values;
+  if (!result.survivors.empty()) {
+    throw refusal(result);
+  }
+  report.self_check_status = "passed";
+  report.self_check_reason.clear();
+}
+
 platform::Error SelfCheck::refusal(const Result& result) {
   std::string failed = "the self-check found " + std::to_string(result.survivors.size()) +
                        " surviving occurrence" + (result.survivors.size() == 1 ? "" : "s") +
@@ -547,11 +809,13 @@ platform::Error SelfCheck::refusal(const Result& result) {
     failed += "; and " + std::to_string(result.survivors.size() - listed) + " more";
   }
   return {platform::ErrorCode::self_check, failed,
-          "an output in which no redacted string survives in any text surface (page text, "
+          "an output in which no searched string survives in any text surface (page text, "
           "marked-content properties, the Info dictionary, the XMP packet, string objects, "
-          "stream bytes)",
-          "redact the string where it survives: add a match for page text, set the metadata "
-          "fields that hold it, or report the surface as a defect when it is drawn text"};
+          "stream bytes), no glyph range's text survives at its location, and no original "
+          "value of a rewritten metadata field survives in the metadata",
+          "redact the string where it survives: add a match for page text (a glyph range for "
+          "text drawn over the location), set the metadata fields that hold it, or report the "
+          "surface as a defect when it is drawn text"};
 }
 
 }  // namespace pdfkit::redact

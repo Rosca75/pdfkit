@@ -5,9 +5,10 @@
 // rewritten field planted in a second place is removed with the rewrite when
 // no function could rewrite it (a custom Info key, an XMP property no field
 // pairs with) and is found and refused, naming the surface, where it stays
-// (a field the caller did not set, the page text, a content stream's
-// comment); a rewrite whose originals are nowhere else passes and says so in
-// the report.
+// in the metadata (a field the caller did not set), whatever its length; the
+// page text and the content streams are not searched for it, where the
+// document may say it for another reason; a rewrite whose originals are
+// nowhere else passes and says so in the report.
 
 #include "metadata/support/metadata_fixture.hpp"
 #include "redact/self_check.hpp"
@@ -116,7 +117,7 @@ TEST_CASE("a namespace URI of the packet is not text the self-check searches") {
   CHECK(written.write_status == PDFKIT_OK);
 }
 
-TEST_CASE("an original of fewer than three letters or digits is not searched for") {
+TEST_CASE("an original of any length is searched for in the metadata") {
   MetadataFixture made;
   made.info = "/Author (A.B)";
   made.content = "BT /F1 12 Tf 72 700 Td (A.B wrote this) Tj ET";
@@ -124,16 +125,27 @@ TEST_CASE("an original of fewer than three letters or digits is not searched for
       MetadataFixture::write(made.build(), R"({"Author": "REDACTED AUTHOR"})");
   INFO(written.report);
   CHECK(written.write_status == PDFKIT_OK);
+  CHECK(written.report.find("\"metadata_values\":1") != std::string::npos);
+
+  MetadataFixture kept;
+  kept.info = "/Author (A.B) /Subject (notes by A.B)";
+  check_refused(kept, R"({"Author": "REDACTED AUTHOR"})", "info");
 }
 
-TEST_CASE("an original value in the page text or a content stream's comment is refused") {
+TEST_CASE("an original value in the page text or a content stream's comment is not searched") {
   MetadataFixture text = fixture();
   text.content = "BT /F1 12 Tf 72 700 Td (By Ann Planted) Tj ET";
-  check_refused(text, R"({"Author": "REDACTED AUTHOR"})", "text");
+  const MetadataFixture::Write in_text =
+      MetadataFixture::write(text.build(), R"({"Author": "REDACTED AUTHOR"})");
+  INFO(in_text.report);
+  CHECK(in_text.write_status == PDFKIT_OK);
 
   MetadataFixture comment = fixture();
   comment.content = "% drawn for Ann Planted\nBT /F1 12 Tf 72 700 Td (Body) Tj ET";
-  check_refused(comment, R"({"Author": "REDACTED AUTHOR"})", "stream");
+  const MetadataFixture::Write in_comment =
+      MetadataFixture::write(comment.build(), R"({"Author": "REDACTED AUTHOR"})");
+  INFO(in_comment.report);
+  CHECK(in_comment.write_status == PDFKIT_OK);
 }
 
 TEST_CASE("the original value removed from the page text by a text redaction passes") {

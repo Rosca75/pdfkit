@@ -1,10 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// SelfCheck re-reads an output with the library's own reader and searches
-// every text surface for every redacted string under that string's folding,
-// docs/DESIGN.md section 18, so a redaction that left a string anywhere is
-// refused rather than handed back. The surfaces:
+// SelfCheck re-reads an output with the library's own reader and verifies
+// each kind of request where it applies, docs/DESIGN.md section 18, so a
+// redaction that left what it removed is refused rather than handed back:
+//   - a value (a search string) is searched for in every surface below,
+//     under its folding;
+//   - a located match (a glyph range: one expression at one place) is
+//     verified at that place ("location"): no occurrence of its text, in any
+//     order a reader uses, has a glyph whose centre lies in the box of a
+//     glyph the match removed; no string operator drawing a glyph there
+//     holds the codes the match removed; no /ActualText, /Alt or /E of a
+//     marked-content span drawing a glyph there holds its text. Nothing
+//     elsewhere is searched for it;
+//   - an original value of a rewritten metadata field is searched for in the
+//     Info dictionary, the XMP packet and the string objects, whatever its
+//     length, and not in the page text, where the document may say it for
+//     another reason.
+// The surfaces of a value:
 //   - the text of every page in reading order and in every other order a
 //     reader uses (MatchFinder::find_orders), hidden blocks included
 //     ("text"), because a phrase another reader puts together survives for
@@ -37,8 +50,11 @@
 
 #include "platform/byte_span.hpp"
 #include "platform/error.hpp"
+#include "redact/edit_plan.hpp"
 #include "redact/match_finder.hpp"
 #include "syntax/limits.hpp"
+#include "text/rect.hpp"
+#include "writer/write_report.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -62,9 +78,30 @@ class SelfCheck {
     std::uint32_t object = 0;
   };
 
+  // A located match on an output page.
+  struct Located {
+    std::string text;
+    std::uint32_t page = 0;
+    // The boxes of the glyphs the match removed.
+    std::vector<text::Rect> boxes;
+    // The removed codes per font run, hexadecimal.
+    std::vector<std::string> codes;
+  };
+
+  // What one check verifies, by kind of request.
+  struct Needles {
+    std::span<const MatchFinder::Match> values;
+    std::span<const Located> located;
+    // Searched under the default folding.
+    std::span<const std::string> metadata;
+  };
+
   struct Result {
     std::vector<Survivor> survivors;
+    // Every request verified: values, located matches and metadata values.
     std::size_t strings = 0;
+    std::size_t located = 0;
+    std::size_t metadata_values = 0;
     std::size_t pages = 0;
     // The pages whose text was read.
     std::size_t pages_read = 0;
@@ -81,6 +118,18 @@ class SelfCheck {
                                   std::span<const MatchFinder::Match> needles,
                                   std::span<const std::string> placeholders,
                                   const std::set<std::uint32_t>* pages = nullptr);
+  // The same with every kind of request; the pages of the located matches
+  // are read whatever pages names.
+  [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
+                                  const Needles& needles,
+                                  std::span<const std::string> placeholders,
+                                  const std::set<std::uint32_t>* pages = nullptr);
+
+  // The self-check stage of the write pipeline: verifies pdf, the output of
+  // plan whose pages are report.pages, and records the verdict in report;
+  // throws the refusal when anything survives. A plan with no text match
+  // and no rewritten metadata field is not checked.
+  static void verify(EditPlan& plan, const std::string& pdf, writer::WriteReport& report);
 
   // The self_check refusal naming the survivors' pages and surfaces.
   [[nodiscard]] static platform::Error refusal(const Result& result);

@@ -25,7 +25,6 @@
 #include "writer/metadata_writer.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,19 +45,12 @@ std::string field_list() {
   return out;
 }
 
-// The shortest original the self-check searches for, in letters and digits:
-// a value of one or two (an initial, "PC", "1") reads as part of any text, so
-// searching for it would refuse every output rather than find a leak.
-constexpr std::size_t shortest_original = 3;
-
 void add_original(std::vector<std::string>& originals, const std::string& value) {
-  std::size_t letters = 0;
-  for (const char c : value) {
-    const auto byte = static_cast<unsigned char>(c);
-    // ASCII letters and digits, and the lead byte of every other character.
-    letters += (std::isalnum(byte) != 0 || byte >= 0xC0) ? 1 : 0;
-  }
-  if (letters >= shortest_original && std::ranges::find(originals, value) == originals.end()) {
+  // Every original of any length: the self-check searches the metadata
+  // alone for it, where a short value is no less a value.
+  const bool blank = std::ranges::all_of(
+      value, [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; });
+  if (!blank && std::ranges::find(originals, value) == originals.end()) {
     originals.push_back(value);
   }
 }

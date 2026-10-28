@@ -14,6 +14,10 @@
 // the resource dictionaries that gain the placeholder font or a rewritten
 // property list, the property lists to replace by object number, the device
 // rectangles the redaction changes on the page and the placeholders drawn.
+// A glyph-range match is an expression at a location (docs/DESIGN.md
+// section 18): its ranges, all on one page, sorted and disjoint, are kept
+// with the text they read, the boxes of the glyphs they remove and the codes
+// removed, so the self-check verifies it where it was and nowhere else.
 
 #ifndef PDFKIT_REDACT_TEXT_PLAN_HPP
 #define PDFKIT_REDACT_TEXT_PLAN_HPP
@@ -86,17 +90,49 @@ class TextPlan {
     std::vector<std::string> notes;
   };
 
+  // One stretch of a page's reading-order glyph list, [first, last).
+  struct Range {
+    std::uint32_t page = 0;
+    std::size_t first = 0;
+    std::size_t last = 0;
+  };
+
+  // A glyph-range match: one expression at one place.
+  struct Located {
+    // The match it is (its index in matches).
+    std::size_t match = 0;
+    std::uint32_t page = 0;
+    // Sorted and disjoint.
+    std::vector<Range> ranges;
+    // The ranges' text as the extraction reads it, the ranges joined by a
+    // space.
+    std::string text;
+    // The device boxes of every glyph the match removes (its duplicates and
+    // the glyphs of an /ActualText span it reaches included).
+    std::vector<text::Rect> boxes;
+    // The removed codes per font run, hexadecimal, as pdfkit_redact_text
+    // reports them.
+    std::vector<std::string> codes;
+  };
+
+  // The ranges of one located match checked and sorted: at least one, all
+  // on one page, none empty and no two overlapping. Throws platform::Error
+  // (invalid_argument) naming where (the match) otherwise. Whether a range
+  // lies within its page is checked when the page is read.
+  [[nodiscard]] static std::vector<Range> located_ranges(std::vector<Range> ranges,
+                                                         const std::string& where);
+
   std::vector<MatchFinder::Match> matches;
   // Every occurrence found, by page, before the overlap rule.
   std::map<std::uint32_t, std::vector<MatchFinder::Occurrence>> occurrences;
-  // The strings the self-check searches for: each search string, and the
-  // text of each glyph range as the extraction read it.
+  // The values the self-check searches every surface for: each search
+  // string.
   std::vector<MatchFinder::Match> needles;
+  // The glyph-range matches, verified at their location.
+  std::vector<Located> located;
   std::map<std::uint32_t, PageWork> pages;
   // The forms each page read draws, by object number.
   std::map<std::uint32_t, std::set<std::uint32_t>> forms_drawn;
-  // Whether a glyph range was given: its text was searched on no other page.
-  bool glyph_ranges = false;
 };
 
 }  // namespace pdfkit::redact
