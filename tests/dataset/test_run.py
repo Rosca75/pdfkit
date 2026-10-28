@@ -148,6 +148,36 @@ class TimeoutTest(unittest.TestCase):
         self.assertEqual(run.timeout_for({"pages": "201"}, 3.0), 6 * run.TIMEOUT)
 
 
+class SelectTest(unittest.TestCase):
+    ROWS = [{"id": "a-1", "set": "a"}, {"id": "a-2", "set": "a"}, {"id": "b-1", "set": "b"}]
+
+    def ids(self, sets=None, ids=None):
+        return [r["id"] for r in run.select_rows(self.ROWS, sets, ids)]
+
+    def test_no_filter_keeps_every_row(self):
+        self.assertEqual(self.ids(), ["a-1", "a-2", "b-1"])
+
+    def test_a_comma_list_of_ids_is_split(self):
+        self.assertEqual(self.ids(ids=["a-1,b-1"]), ["a-1", "b-1"])
+        self.assertEqual(self.ids(ids=["a-2", " b-1 "]), ["a-2", "b-1"])
+
+    def test_a_comma_list_of_sets_is_split(self):
+        self.assertEqual(self.ids(sets=["a, b"]), ["a-1", "a-2", "b-1"])
+
+    def test_an_id_the_manifest_lacks_fails_naming_it(self):
+        import common
+        with self.assertRaises(common.ToolError) as caught:
+            self.ids(ids=["a-1,zz-9"])
+        self.assertIn("zz-9", caught.exception.failed)
+
+    def test_a_filter_that_selects_nothing_fails(self):
+        import common
+        with self.assertRaises(common.ToolError):
+            self.ids(sets=["a"], ids=["b-1"])
+        with self.assertRaises(common.ToolError):
+            self.ids(sets=["c"])
+
+
 class SanitizerTest(unittest.TestCase):
     def test_a_report_on_a_finished_run_is_named_and_fails_the_run(self):
         rows, written = SummaryTest.rows_and_runs(None, outcome(write=write_part()))

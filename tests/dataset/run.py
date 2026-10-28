@@ -299,11 +299,37 @@ def write_markdown(summary: dict, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def split_names(values: list[str] | None) -> list[str]:
+    """The names of repeated options, each of which may also be a comma-separated list."""
+    return [n.strip() for v in values or [] for n in v.split(",") if n.strip()]
+
+
+def select_rows(rows: list[dict], sets: list[str] | None, ids: list[str] | None) -> list[dict]:
+    """The manifest rows --set and --id keep; a name the manifest lacks, or a filter that
+    keeps no row, fails rather than running nothing and passing."""
+    wanted_sets, wanted_ids = split_names(sets), split_names(ids)
+    for option, names, key in (("--set", wanted_sets, "set"), ("--id", wanted_ids, "id")):
+        unknown = sorted(set(names) - {r[key] for r in rows})
+        if unknown:
+            raise common.ToolError(f"{option} names {', '.join(unknown)}, which no manifest row carries",
+                                   f"the {key} column of a row of dataset/manifest.tsv",
+                                   f"check the spelling against dataset/manifest.tsv or leave {option} out")
+    if wanted_sets:
+        rows = [r for r in rows if r["set"] in wanted_sets]
+    if wanted_ids:
+        rows = [r for r in rows if r["id"] in wanted_ids]
+    if (wanted_sets or wanted_ids) and not rows:
+        raise common.ToolError("--set and --id together select no manifest row",
+                               "at least one row whose set and id are both named",
+                               "name ids that belong to the named sets, or pass only one of the two")
+    return rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run pdfkit dataset over the manifest and check expectations.")
     parser.add_argument("--pdfkit", help="the pdfkit executable (default: $PDFKIT_EXE, out/, PATH)")
-    parser.add_argument("--set", action="append", help="only these sets")
-    parser.add_argument("--id", action="append", help="only these ids")
+    parser.add_argument("--set", action="append", help="only these sets (repeat it or give a comma list)")
+    parser.add_argument("--id", action="append", help="only these ids (repeat it or give a comma list)")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 2),
                         help="files run at once (default: half the logical processors)")
     parser.add_argument("--checks", default=",".join(CHECKS),
@@ -341,11 +367,7 @@ def main() -> int:
               "`cmake --preset mingw-release && cmake --build --preset mingw-release`, "
               "or pass --pdfkit <path> or set PDFKIT_EXE.")
         return 0
-    rows = common.read_manifest()
-    if args.set:
-        rows = [r for r in rows if r["set"] in args.set]
-    if args.id:
-        rows = [r for r in rows if r["id"] in args.id]
+    rows = select_rows(common.read_manifest(), args.set, args.id)
     missing = [r["id"] for r in rows if not common.file_path(r).exists()]
     if missing:
         print(f"SKIPPED {len(missing)} rows whose files are absent (first {missing[0]}); "

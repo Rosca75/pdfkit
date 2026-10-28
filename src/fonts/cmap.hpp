@@ -67,11 +67,6 @@ class Cmap {
   // dropped; empty when the destination holds no character.
   [[nodiscard]] std::optional<std::string> unicode(std::uint32_t code) const;
 
-  [[nodiscard]] bool has_codespace() const noexcept { return !codespaces_.empty(); }
-  [[nodiscard]] bool has_cid_mappings() const noexcept { return !cid_ranges_.empty(); }
-  [[nodiscard]] bool has_unicode_mappings() const noexcept {
-    return !unicode_codes_.empty() || !unicode_ranges_.empty();
-  }
   // Entries the parser skipped as malformed.
   [[nodiscard]] std::size_t malformed() const noexcept { return malformed_; }
   void count_malformed(std::size_t count = 1) noexcept { malformed_ += count; }

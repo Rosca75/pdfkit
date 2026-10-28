@@ -90,14 +90,7 @@ function the verb did not run is `null`.
     "history": false
   },
   "channels": {"status": "ok", "code": null, "present": ["ch_annotation"]},
-  "redact": {
-    "status": "ok",
-    "code": null,
-    "stable": true,
-    "output": "<path of the redacted PDF under <dir>/outputs/>",
-    "rectangles": [[1, 72.0, 700.0, 180.0, 714.0]],
-    "strings": ["Jane Doe"]
-  },
+  "redact": null,
   "write": {
     "status": "ok",
     "code": null,
@@ -272,11 +265,10 @@ identical to their bytes, walks read only up to a fault, undamaged walks that
 differ (`failed`, which the reading gate holds at zero), and at most ten
 mismatches named. Its `status` is `skipped` when `open` did not succeed.
 
-`redact.output`, `redact.rectangles` (page, then the device rectangle in points,
-lower-left and upper-right) and `redact.strings` are what
-`tests/pdfium/compare.py --render` and `--leak` read; the redaction phases fill
-them, and `stable` is the verb's own verdict, which `compare.py --render`
-checks independently.
+`redact` is always `null`: the redactions are measured under `redact_text`
+and `redact_images`, whose outputs `tests/pdfium/compare.py --check redact`
+renders against their inputs and `tests/pdfium/leak.py` searches for the
+redacted strings.
 
 ### 2.1 The status of a function
 

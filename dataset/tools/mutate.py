@@ -373,9 +373,6 @@ def m_object_streams(data, rng):
 # -- encryption ---------------------------------------------------------------------
 
 
-STRING_RE = re.compile(rb"\(|<(?!<)")
-
-
 def encrypt_strings(text: bytes, encrypt) -> bytes:
     """Replaces every literal and hex string of an object's text by its encrypted hex form."""
     out = bytearray()

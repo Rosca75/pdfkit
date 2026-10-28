@@ -46,18 +46,3 @@ def single(content: bytes, resources: dict | None = None, title: str = "synth",
     pdf = pdf or Pdf()
     pdf.document([page(pdf, content, resources, **(page_extra or {}))], catalog_extra, info(title))
     return pdf.build(xref)
-
-
-def helv_resources(pdf: Pdf, extra_fonts: dict | None = None) -> dict:
-    fonts = {"F1": pdf.add(helvetica())}
-    fonts.update(extra_fonts or {})
-    return {"Font": fonts}
-
-
-def lines_content(lines, x=72, y=720, size=12, leading=16, font="F1") -> bytes:
-    out = [f"BT /{font} {size} Tf {leading} TL {x} {y} Td"]
-    parts = [o.encode("latin-1") for o in out]
-    for i, line in enumerate(lines):
-        parts.append((b"" if i == 0 else b"T* ") + show(line) + b" Tj")
-    parts.append(b"ET")
-    return ops(*parts)

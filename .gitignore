@@ -18,8 +18,6 @@ CMakeUserPresets.json
 __pycache__/
 *.pyc
 .venv/
-bin/
-obj/
 *.user
 .vs/
 .vscode/
