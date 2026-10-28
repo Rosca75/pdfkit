@@ -15,7 +15,8 @@
 # occurrence back, the measure is reported as not run and fails. A fed-back
 # occurrence removes exactly one when its page holds one place fewer of the
 # value, the copies drawn at one place counted once and the occurrences in a
-# switched-off layer, which every write removes, left out (places.py).
+# switched-off layer, which every write removes, left out (places.py); one
+# fed back from such a layer leaves the count of places as it was.
 
 from __future__ import annotations
 
@@ -88,7 +89,9 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
         for item in feedback["items"]:
             listed.add((item.get("value"), item.get("page")))
             before, after = places.place_count(item.get("before")), item.get("after")
-            if after is not None and before - places.place_count(after) == 1:
+            # An occurrence in a switched-off layer is none: every write removes it.
+            fewer = 0 if places.OFF in (item.get("hidden") or []) else 1
+            if after is not None and before - places.place_count(after) == fewer:
                 exact += 1
             else:
                 feedback_failures.append({"id": row_id, "value": item.get("value"), "page": item.get("page"),

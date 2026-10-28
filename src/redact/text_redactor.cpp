@@ -541,9 +541,9 @@ void note_walks(syntax::Document& document, const text::PageContent& content, st
     info.drawn_at = stream.drawn_at;
     const Object form = document.object({stream.form, 0});
     const syntax::Stream* object = form.stream();
-    info.resources = object != nullptr &&
-                     document.resolve_entry(object->dictionary(), "Resources").dictionary() !=
-                         nullptr;
+    info.resources =
+        object != nullptr &&
+        document.resolve_entry(object->dictionary(), "Resources").dictionary() != nullptr;
     work.walks[walk] = info;
     walk = stream.parent;
   }
@@ -672,8 +672,8 @@ void note_walks(syntax::Document& document, const text::PageContent& content, st
 // removed glyph's box, and the glyphs centred there of a string operator
 // whose codes there hold a removed code run.
 [[nodiscard]] std::vector<std::pair<std::size_t, std::size_t>> copies_at(
-    const PageText& page, MatchFinder& finder, const Layout& layout,
-    const TextPlan::Located& entry, const std::set<std::size_t>& removed) {
+    const PageText& page, MatchFinder& finder, const Layout& layout, const TextPlan::Located& entry,
+    const std::set<std::size_t>& removed) {
   std::vector<std::pair<std::size_t, std::size_t>> out;
   const std::vector<GlyphRecord>& glyphs = page.content.glyphs;
   if (entry.boxes.empty() || entry.text.empty()) {
@@ -804,10 +804,10 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
 // resources with faces named in its /Font, properties set in its
 // /Properties and the form copies of a split named in its /XObject (name to
 // object number), as a direct dictionary.
-[[nodiscard]] Object edited_resources(writer::ObjectGraph& graph, writer::PlaceholderFont& fonts,
-                                      const Object& resources, const std::set<Face>& faces,
-                                      const std::map<std::string, Dictionary>& properties,
-                                      const std::map<std::string, syntax::Object::Reference>& xobjects = {}) {
+[[nodiscard]] Object edited_resources(
+    writer::ObjectGraph& graph, writer::PlaceholderFont& fonts, const Object& resources,
+    const std::set<Face>& faces, const std::map<std::string, Dictionary>& properties,
+    const std::map<std::string, syntax::Object::Reference>& xobjects = {}) {
   const Object resolved = graph.resolve(resources);
   Dictionary out = resolved.dictionary() != nullptr ? *resolved.dictionary() : Dictionary();
   if (!xobjects.empty()) {
@@ -1160,8 +1160,9 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
   }
   // A form written again: its resources gain faces, property lists and the
   // names of form copies, and its bytes take target's changes.
-  const auto form_object = [&](std::uint32_t form, const TextPlan::Target* target,
-                               const std::map<std::string, syntax::Object::Reference>& names) -> Object {
+  const auto form_object =
+      [&](std::uint32_t form, const TextPlan::Target* target,
+          const std::map<std::string, syntax::Object::Reference>& names) -> Object {
     const Object value = graph.get(form);
     const syntax::Stream* stream = value.stream();
     if (stream == nullptr) {
@@ -1171,14 +1172,13 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     const auto faces = form_fonts.find(form);
     const auto properties = form_properties.find(form);
     if (faces != form_fonts.end() || properties != form_properties.end() || !names.empty()) {
-      dictionary.set(
-          "Resources",
-          edited_resources(
-              graph, fonts, dictionary.get("Resources"),
-              faces != form_fonts.end() ? faces->second : std::set<Face>(),
-              properties != form_properties.end() ? properties->second
-                                                  : std::map<std::string, Dictionary>(),
-              names));
+      dictionary.set("Resources",
+                     edited_resources(graph, fonts, dictionary.get("Resources"),
+                                      faces != form_fonts.end() ? faces->second : std::set<Face>(),
+                                      properties != form_properties.end()
+                                          ? properties->second
+                                          : std::map<std::string, Dictionary>(),
+                                      names));
     }
     if (target == nullptr || target->empty()) {
       return Object::make_stream(stream->with_dictionary(std::move(dictionary)));
@@ -1280,9 +1280,10 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
   for (const std::uint32_t form : touched) {
     const auto target = forms.find(form);
     const auto names = form_names.find(form);
-    Object object = form_object(form, target != forms.end() ? &target->second : nullptr,
-                                names != form_names.end() ? names->second
-                                                          : std::map<std::string, syntax::Object::Reference>());
+    Object object =
+        form_object(form, target != forms.end() ? &target->second : nullptr,
+                    names != form_names.end() ? names->second
+                                              : std::map<std::string, syntax::Object::Reference>());
     if (object.stream() != nullptr) {
       graph.set(form, std::move(object));
     }
@@ -1353,8 +1354,9 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     if (!faces.empty() || !properties.empty() || names != page_names.end()) {
       page.set("Resources",
                edited_resources(graph, fonts, page.get("Resources"), faces, properties,
-                                names != page_names.end() ? names->second
-                                                          : std::map<std::string, syntax::Object::Reference>()));
+                                names != page_names.end()
+                                    ? names->second
+                                    : std::map<std::string, syntax::Object::Reference>()));
     }
     graph.set(object, Object::make_dictionary(std::move(page)));
     writer::WriteReport::Rectangles changed;

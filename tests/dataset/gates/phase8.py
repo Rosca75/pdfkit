@@ -43,6 +43,15 @@ PIXELS = 0.99
 PLACEHOLDERS = 0.99
 DETERMINISM = 1.0
 
+# The files whose input PDFium reads otherwise than any one place, by cause,
+# counted apart from the PDFium count of the located job and named.
+PDFIUM_READINGS = {
+    "pdfminer-0013": "pdfium: forms 6 and 8 draw each other; PDFium follows the cycle ten levels deep "
+                     "and reads 'Hello' 21 times, pdfkit stops at the first repeat (docs/DESIGN.md "
+                     "section 6.1) and reads it twice, so the one draw of form 6 pdfkit edits is ten "
+                     "of PDFium's",
+}
+
 
 def population(rows: list[dict]) -> list[dict]:
     return [r for r in rows if r["expect_open"] in ("opens", "repaired")
@@ -60,7 +69,7 @@ def counted(part: dict) -> tuple:
 def extra(part: dict) -> int:
     """The copies PDFium may read beyond the redacted place's one: the other copies at the place
     and the occurrences in switched-off layers."""
-    return places.extra_copies(part.get("places_before"), part.get("box"))
+    return places.extra_copies(part.get("places_before"), part.get("box"), part.get("page"))
 
 
 def judge(run_dir: Path, rows: list[dict]) -> dict:
@@ -116,14 +125,17 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
     if leak and "located" not in leak:
         measures.add("located measures in the leak check", None, "not run", "run", False,
                      {"fix": "python tests/pdfium/leak.py --run " + run_dir.name})
-    read = {k: v for k, v in pdfium_located.items() if v.get("pdfium_before", 0) > 0}
+    read = {k: v for k, v in pdfium_located.items()
+            if v.get("pdfium_before", 0) > 0 and k not in PDFIUM_READINGS}
     pdfium_fewer = [k for k, v in read.items()
                     if 1 <= v["pdfium_before"] - v["pdfium_after"] <= 1 + extra(tried[k])]
     measures.share("located outputs holding exactly one occurrence fewer of the word (PDFium's text, "
                    "files where PDFium reads the word)", len(pdfium_fewer), len(read), LOCATED,
                    {"other": {k: [v["word"], v["pdfium_before"], v["pdfium_after"]]
                               for k, v in sorted(read.items()) if k not in pdfium_fewer},
-                    "not_read_by_pdfium": sorted(k for k in pdfium_located if k not in read)})
+                    "not_read_by_pdfium": sorted(k for k in pdfium_located
+                                                 if k not in read and k not in PDFIUM_READINGS),
+                    "pdfium_readings": {k: v for k, v in PDFIUM_READINGS.items() if k in pdfium_located}})
     at_location = {k: {"word": v["word"], "read": v.get("at_location")}
                    for k, v in sorted(pdfium_located.items()) if v.get("leak")}
     measures.zero("located redactions whose box holds the word in PDFium's text of the output page",

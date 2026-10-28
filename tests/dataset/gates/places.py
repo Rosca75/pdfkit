@@ -8,7 +8,7 @@
 # optional-content layer, so an occurrence there, or the text there, is not
 # counted against the output. Two copies are at one place when the centre of
 # either's box lies in the other's (the self-check's test of a glyph at a
-# located match's place, docs/DESIGN.md section 18). An occurrence is a word of
+# located match's place, docs/DESIGN.md section 18) on one page. An occurrence is a word of
 # pdfkit_text (its `box`) or an occurrence of pdfkit_find (its first
 # rectangle), each with its hidden classes.
 
@@ -55,6 +55,8 @@ def groups(occurrences: list[dict]) -> list[list[dict]]:
         box = box_of(occurrence)
         home = None
         for group in out:
+            if group[0].get("page") != occurrence.get("page"):
+                continue
             if box is not None and any(at_one_place(box, b) for b in (box_of(o) for o in group) if b):
                 home = group
                 break
@@ -70,14 +72,16 @@ def place_count(occurrences: list[dict] | None) -> int:
     return len(groups(occurrences or []))
 
 
-def extra_copies(occurrences: list[dict] | None, box: list[float] | None) -> int:
+def extra_copies(occurrences: list[dict] | None, box: list[float] | None, page=None) -> int:
     """The copies a reader of every glyph counts beyond one place's one: the other copies at the
-    place of box, and every occurrence in a switched-off layer."""
+    place of box on page, and every occurrence in a switched-off layer."""
     occurrences = occurrences or []
     off = sum(1 for o in occurrences if is_off(o))
     if box is None:
         return off
     for group in groups(occurrences):
+        if group[0].get("page") != page:
+            continue
         if any(b is not None and at_one_place(box, b) for b in (box_of(o) for o in group)):
             return off + len(group) - 1
     return off

@@ -88,6 +88,7 @@ struct Picked {
   std::size_t value = 0;
   std::uint64_t page = 0;
   std::string glyphs;
+  std::string hidden;
 };
 
 // One occurrence as the feedback lists it: its rectangles and hidden
@@ -197,8 +198,10 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
       }
       if (glyphs != nullptr && picked.size() < feedback_limit &&
           (picked.empty() || picked.back().value != v)) {
-        picked.push_back(
-            {v, number_of(answer->member(occurrence, "page")), std::string(glyphs->raw)});
+        const JsonText::Node* hidden = answer->member(occurrence, "hidden");
+        picked.push_back({v, number_of(answer->member(occurrence, "page")),
+                          std::string(glyphs->raw),
+                          hidden != nullptr ? std::string(hidden->raw) : std::string("[]")});
       }
     }
     std::ranges::sort(find_ranges[v]);
@@ -308,8 +311,9 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
     }
     items += (items.size() == 1 ? "" : ", ") + std::string(R"({"value": )") +
              json_quote(words[item.value]) + R"(, "page": )" + std::to_string(item.page) +
-             R"(, "glyphs": )" + item.glyphs + R"(, "before": )" + before_places +
-             R"(], "after": )" + (after ? after->second : std::string("null")) + "}";
+             R"(, "glyphs": )" + item.glyphs + R"(, "hidden": )" + item.hidden + R"(, "before": )" +
+             before_places + R"(], "after": )" + (after ? after->second : std::string("null")) +
+             "}";
     if (after && after->first + 1 == before) {
       ++exact;
     } else {

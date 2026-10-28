@@ -112,9 +112,9 @@ TextPlan::Range read_range(const JsonValue& value, std::size_t index) {
 
 MatchFinder::Folding read_folding(const JsonValue& value, std::size_t index) {
   if (value.kind() != JsonValue::Kind::object) {
-    refuse(where(index) + " gives \"folding\" as " +
-               std::string(JsonValue::kind_name(value.kind())),
-           "write the folding as an object of true or false flags");
+    refuse(
+        where(index) + " gives \"folding\" as " + std::string(JsonValue::kind_name(value.kind())),
+        "write the folding as an object of true or false flags");
   }
   MatchFinder::Folding folding;
   for (const auto& [key, setting] : value.as_object()) {
@@ -252,8 +252,9 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
   }
   const int forms = (search ? 1 : 0) + (glyphs ? 1 : 0) + (occurrence ? 1 : 0);
   if (forms != 1) {
-    refuse(where(index) + (forms == 0 ? R"( has none of "search", "glyphs" and "occurrence")"
-                                      : R"( has more than one of "search", "glyphs" and "occurrence")"),
+    refuse(where(index) + (forms == 0
+                               ? R"( has none of "search", "glyphs" and "occurrence")"
+                               : R"( has more than one of "search", "glyphs" and "occurrence")"),
            "give a match one of a search string, a glyph range or an occurrence");
   }
   if (occurrence && item.find("folding") != nullptr) {

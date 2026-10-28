@@ -45,6 +45,11 @@ class PlaceCountTest(unittest.TestCase):
     def test_a_copy_at_size_zero_inside_the_word_is_the_same_place(self):
         self.assertEqual(places.place_count([word([10, 10, 40, 20]), word([20, 15, 20, 15])]), 1)
 
+    def test_one_place_on_two_pages_is_two_occurrences(self):
+        footer = [word([10, 10, 40, 20]), dict(word([10, 10, 40, 20]), page=2)]
+        self.assertEqual(places.place_count(footer), 2)
+        self.assertEqual(places.extra_copies(footer, [10, 10, 40, 20], 1), 0)
+
     def test_an_occurrence_in_a_switched_off_layer_is_none(self):
         self.assertEqual(places.place_count([word([10, 10, 40, 20]), word([10, 50, 40, 60], [OFF])]), 1)
 
@@ -108,6 +113,15 @@ class LocatedRowsTest(unittest.TestCase):
         row = self.row(self.judge(leak), "located outputs holding exactly one occurrence fewer of the word (PDFium")
         self.assertTrue(row["pass"], row)
 
+    def test_a_named_pdfium_reading_is_counted_apart(self):
+        leak = {"leaks": {}, "located": {"files": {
+            "synth-0905": {"word": "MARK", "opens": True, "pdfium_before": 2, "pdfium_after": 0},
+            "synth-0097": {"word": "MARK", "opens": True, "pdfium_before": 21, "pdfium_after": 11}}}}
+        with mock.patch.dict(phase8.PDFIUM_READINGS, {"synth-0097": "pdfium: a form cycle"}, clear=True):
+            row = self.row(self.judge(leak), "located outputs holding exactly one occurrence fewer of the word (PDFium")
+        self.assertTrue(row["pass"], row)
+        self.assertEqual(row["detail"]["pdfium_readings"], {"synth-0097": "pdfium: a form cycle"})
+
     def test_occurrence_form_resolving_to_the_same_glyphs(self):
         row = self.row(self.judge(), "occurrence-form matches resolving to the glyphs")
         self.assertEqual(row["shown"].split(" ")[0:3], ["1", "/", "1"])
@@ -125,6 +139,18 @@ class FeedbackRowTest(unittest.TestCase):
         rows = [{"id": "synth-0251", "expect_find": "agree"}]
         with tempfile.TemporaryDirectory() as tmp:
             report = phase12.judge(run_folder(tmp, {"synth-0251": outcome}), rows)
+        row = next(r for r in report["rows"] if r["measure"].startswith("occurrences fed back"))
+        self.assertTrue(row["pass"], row)
+
+
+    def test_an_occurrence_fed_back_from_a_switched_off_layer_removes_no_place(self):
+        off = [{"rectangles": [[10, 10, 40, 20]], "hidden": [OFF]}]
+        outcome = {"find": {"status": "ok", "agree": True, "feedback": {
+            "status": "ok", "tried": 1, "exact": 0, "failures": [],
+            "items": [{"value": "ALPHA", "page": 1, "glyphs": [], "hidden": [OFF], "before": off, "after": []}]}}}
+        rows = [{"id": "synth-0145", "expect_find": "agree"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            report = phase12.judge(run_folder(tmp, {"synth-0145": outcome}), rows)
         row = next(r for r in report["rows"] if r["measure"].startswith("occurrences fed back"))
         self.assertTrue(row["pass"], row)
 

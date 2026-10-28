@@ -83,15 +83,15 @@ void check_page_two_alone(const pdfkit::test::Redaction& result) {
 TEST_CASE("a located match in a footer form drawn on three pages removes one draw") {
   pdfkit::test::TextDocument fixture;
   const std::string file = footer_pages(fixture, false);
-  check_page_two_alone(pdfkit::test::redact(
-      file, occurrence(R"("text": "Quarterfield", "page": 2, "index": 0)")));
+  check_page_two_alone(
+      pdfkit::test::redact(file, occurrence(R"("text": "Quarterfield", "page": 2, "index": 0)")));
 }
 
 TEST_CASE("a located match in a form nested in a shared form is copied along its path") {
   pdfkit::test::TextDocument fixture;
   const std::string file = footer_pages(fixture, true);
-  check_page_two_alone(pdfkit::test::redact(
-      file, occurrence(R"("text": "Quarterfield", "page": 2, "index": 0)")));
+  check_page_two_alone(
+      pdfkit::test::redact(file, occurrence(R"("text": "Quarterfield", "page": 2, "index": 0)")));
 }
 
 TEST_CASE("a located match in a form drawn twice on one page removes that draw") {
@@ -103,8 +103,8 @@ TEST_CASE("a located match in a form drawn twice on one page removes that draw")
       "BT /F1 10 Tf 10 50 Td (Signed Zebulon) Tj ET");
   fixture.page("q 1 0 0 1 72 600 cm /Fm1 Do Q q 1 0 0 1 72 300 cm /Fm1 Do Q",
                "/XObject << /Fm1 " + std::to_string(form) + " 0 R >>");
-  const pdfkit::test::Redaction result =
-      pdfkit::test::redact(fixture.bytes(), occurrence(R"("text": "Zebulon", "page": 1, "index": 1)"));
+  const pdfkit::test::Redaction result = pdfkit::test::redact(
+      fixture.bytes(), occurrence(R"("text": "Zebulon", "page": 1, "index": 1)"));
   REQUIRE(result.match_status == PDFKIT_OK);
   REQUIRE(result.write_status == PDFKIT_OK);
   const std::string text = pdfkit::test::page_text(result.pdf);

@@ -73,11 +73,11 @@ std::vector<TextPlan::Range> TextPlan::resolve(syntax::Document& document,
       "\"after\"} whose narrowings leave exactly one occurrence of the text on the page, in "
       "pdfkit_find's order";
   if (query.page < 1 || query.page > page_count) {
-    throw platform::Error(platform::ErrorCode::invalid_argument,
-                          "pdfkit_redact_text " + where + " names page " +
-                              std::to_string(query.page),
-                          "a page from 1 to " + std::to_string(page_count),
-                          "take the page number from this document's pdfkit_find answer");
+    throw platform::Error(
+        platform::ErrorCode::invalid_argument,
+        "pdfkit_redact_text " + where + " names page " + std::to_string(query.page),
+        "a page from 1 to " + std::to_string(page_count),
+        "take the page number from this document's pdfkit_find answer");
   }
   text::TextReader reader(document);
   const text::PageText page = reader.read(query.page);

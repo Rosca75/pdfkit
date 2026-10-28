@@ -58,6 +58,27 @@ narrowing. Nothing is recorded by a refused call. pdfkit applies no rule of its
 own beyond these: it does not decide that a match "stands as a word", and it
 does not widen or shorten what the caller named.
 
+**One place includes every copy drawn there** (added by the team lead from
+the owner's rule "one occurrence is that place on that page"). A located
+edit removes, with the picked glyphs, every glyph on that page that draws
+the same text at the same place: the `duplicate` hidden class (`CLAUDE.md`
+§4) and copies drawn at size 0, invisible or as a second layer over the
+same boxes, because a copy left there leaves the word readable at the
+location. "The same place" is the self-check's location test (`docs/DESIGN.md`
+§18): an occurrence of the text, in any reader's order, with a glyph whose
+box's centre lies in a removed glyph's box, and the glyphs centred there of
+a string operator whose codes hold a removed code run. The self-check's
+location check is unchanged and passes on these (synth-0097, synth-0251,
+tika-0012, pdfdiff-0017).
+
+**The measures count what the owner's rules define** (added likewise). The
+located rows of `tests/dataset/gates/phase8.py` and the feedback row of
+`phase12.py` count the copies at one place as one occurrence and leave out
+occurrences in switched-off optional-content layers, which every write
+removes (synth-0905); the text-unchanged rows of `phase7.py` and `phase9.py`
+compare the output with the input's text less its switched-off layers (the
+off-layer specimens synth-0904 to 0908, synth-0145 to 0147, pdfpig-0006).
+
 ## 1. What it reads from earlier phases
 
 | From | What | Why |

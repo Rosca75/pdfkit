@@ -31,8 +31,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <charconv>
+#include <cmath>
 #include <map>
 #include <optional>
 #include <set>
@@ -88,9 +88,27 @@ Call take(pdfkit_status status, pdfkit_buffer& out) {
   return value;
 }
 
+// The four numbers of a box written as [left, bottom, right, top].
+std::array<double, 4> box_of(std::string_view raw) {
+  std::array<double, 4> out{};
+  std::size_t at = 0;
+  for (double& value : out) {
+    while (at < raw.size() && (raw[at] == '[' || raw[at] == ',' || raw[at] == ' ')) {
+      ++at;
+    }
+    const auto [end, error] = std::from_chars(raw.data() + at, raw.data() + raw.size(), value);
+    if (error != std::errc()) {
+      return {};
+    }
+    at = static_cast<std::size_t>(end - raw.data());
+  }
+  return out;
+}
+
 // The words of a pdfkit_text answer: page, text, glyph range, box, hidden
 // classes, and whether the word is visible (in a visible block, no hidden
-// class, not hyphenated); a duplicate copy is marked, because it is no word
+// class, not hyphenated, a box of some width and height: a word drawn at
+// size 0 shows nothing); a duplicate copy is marked, because it is no word
 // of its own but is a copy at the word's place.
 struct Word {
   std::string page;
@@ -137,8 +155,10 @@ std::vector<Word> words_of(const JsonText& answer) {
             word.first = std::string(answer.node(glyphs->items[0]).raw);
             word.last = std::string(answer.node(glyphs->items[1]).raw);
             word.box = std::string(box->raw);
+            const std::array<double, 4> area = box_of(word.box);
             word.visible = key == "blocks" && hidden != nullptr && hidden->items.empty() &&
-                           hyphenated != nullptr && hyphenated->text == "false";
+                           area[2] > area[0] && area[3] > area[1] && hyphenated != nullptr &&
+                           hyphenated->text == "false";
             out.push_back(std::move(word));
           }
         }
@@ -192,23 +212,6 @@ std::string places_of(const std::vector<Word>& words, const std::string& text) {
   return out + "]";
 }
 
-// The four numbers of a box written as [left, bottom, right, top].
-std::array<double, 4> box_of(std::string_view raw) {
-  std::array<double, 4> out{};
-  std::size_t at = 0;
-  for (double& value : out) {
-    while (at < raw.size() && (raw[at] == '[' || raw[at] == ',' || raw[at] == ' ')) {
-      ++at;
-    }
-    const auto [end, error] = std::from_chars(raw.data() + at, raw.data() + raw.size(), value);
-    if (error != std::errc()) {
-      return {};
-    }
-    at = static_cast<std::size_t>(end - raw.data());
-  }
-  return out;
-}
-
 // Whether word is drawn at the same place (within a point) on another page,
 // among the words of its text (indices).
 bool repeated(const std::vector<Word>& words, const std::vector<std::size_t>& indices,
@@ -252,8 +255,7 @@ std::optional<std::size_t> find_index(pdfkit_document* document, const Word& wor
     const JsonText::Node& range = json->node(glyphs->items.front());
     const JsonText::Node* first = json->member(range, "first");
     const JsonText::Node* last = json->member(range, "last");
-    if (first != nullptr && last != nullptr && first->raw == word.first &&
-        last->raw == word.last) {
+    if (first != nullptr && last != nullptr && first->raw == word.first && last->raw == word.last) {
       return i;
     }
   }
@@ -322,16 +324,16 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
     index = find_index(document, word);
   }
   const std::string matches =
-      index ? R"({"matches": [{"occurrence": {"text": )" + json_quote(chosen) +
-                  R"(, "page": )" + word.page + R"(, "index": )" + std::to_string(*index) +
+      index ? R"({"matches": [{"occurrence": {"text": )" + json_quote(chosen) + R"(, "page": )" +
+                  word.page + R"(, "index": )" + std::to_string(*index) +
                   R"(}, "placeholder": "[REDACTED]"}]})"
-            : R"({"matches": [{"glyphs": {"page": )" + word.page + R"(, "first": )" +
-                  word.first + R"(, "last": )" + word.last + R"(}, "fingerprint": )" +
+            : R"({"matches": [{"glyphs": {"page": )" + word.page + R"(, "first": )" + word.first +
+                  R"(, "last": )" + word.last + R"(}, "fingerprint": )" +
                   json_quote(fingerprint->text) + R"(, "placeholder": "[REDACTED]"}]})";
   const std::string head = R"("word": )" + json_quote(chosen) + ", \"page\": " + word.page +
                            ", \"glyphs\": [" + word.first + ", " + word.last +
-                           "], \"box\": " + word.box + ", \"form\": " +
-                           (index ? "\"occurrence\"" : "\"glyphs\"") +
+                           "], \"box\": " + word.box +
+                           ", \"form\": " + (index ? "\"occurrence\"" : "\"glyphs\"") +
                            ", \"repeated\": " + (at_repeated.contains(chosen) ? "true" : "false") +
                            ", \"before\": " + std::to_string(before) +
                            ", \"places_before\": " + places_of(words, chosen);
@@ -349,9 +351,9 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
     std::size_t at = 0;
     if (const std::optional<JsonText> answer_json = JsonText::parse(call.text, at)) {
       const JsonText::Node* list = answer_json->member(answer_json->root(), "matches");
-      const JsonText::Node* first_match =
-          list != nullptr && !list->items.empty() ? &answer_json->node(list->items.front())
-                                                  : nullptr;
+      const JsonText::Node* first_match = list != nullptr && !list->items.empty()
+                                              ? &answer_json->node(list->items.front())
+                                              : nullptr;
       const JsonText::Node* found =
           first_match != nullptr ? answer_json->member(*first_match, "occurrences") : nullptr;
       const JsonText::Node* glyphs =
