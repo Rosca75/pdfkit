@@ -587,10 +587,10 @@ std::vector<std::uint32_t> page_objects(writer::ObjectGraph& graph) {
 }  // namespace
 
 OptionalContentRemover::Result OptionalContentRemover::apply(writer::ObjectGraph& graph) {
+  // A document without /OCProperties shows every group (ISO 32000-1 section
+  // 8.11, recalled), so its content stays and only its /OC marks and
+  // the groups its resources name go.
   const text::OptionalContent optional(graph.document());
-  if (!optional.any()) {
-    return {};
-  }
   Walker walker(graph, optional);
   const std::vector<std::uint32_t> pages = page_objects(graph);
   for (std::size_t i = 0; i < pages.size(); ++i) {

@@ -15,6 +15,7 @@
 #include "platform/json_reader.hpp"
 #include "platform/json_value.hpp"
 #include "support/document_summary.hpp"
+#include "support/pdf_builder.hpp"
 #include "support/pdf_builder_channels.hpp"
 #include "syntax/content_lexer.hpp"
 #include "text/text_reader.hpp"
@@ -197,6 +198,25 @@ TEST_CASE("the channels report counts the groups and those turned off") {
     CHECK(row_of(again, "ch_optional_content")->find("count")->as_int64() == 0);
     CHECK(row_of(again, "ch_optional_content")->find("off_groups")->as_int64() == 0);
   }
+}
+
+TEST_CASE("without /OCProperties every group is on: the content stays and the marks go") {
+  pdfkit::test::PdfBuilder builder;
+  builder.begin_document();
+  const std::uint32_t font = builder.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const std::uint32_t group = builder.add("<< /Type /OCG /Name " + std::string("(") +
+                                          marker(14, 1) + ") >>");
+  (void)builder.add_page("/OC /g BDC BT /F1 12 Tf 72 700 Td (" + marker(90, 1) + ") Tj ET EMC",
+                         "/Resources << /Font << /F1 " + std::to_string(font) +
+                             " 0 R >> /Properties << /g " + std::to_string(group) + " 0 R >> >>");
+  const std::string file = builder.build();
+  const std::string output = pdfkit::test::identity_write(file);
+  CHECK(pdfkit::test::contains_marker(output, marker(90, 1)));
+  CHECK_FALSE(pdfkit::test::contains_marker(output, marker(14, 1)));
+  CHECK_FALSE(names_oc(pdfkit::test::everything(output)));
+  const Balance kept = balance(output);
+  CHECK(kept.opened == 0);
+  CHECK(kept.closed == 0);
 }
 
 TEST_CASE("a page selection removes off content from the pages it keeps") {

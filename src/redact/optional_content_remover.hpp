@@ -45,8 +45,8 @@ class OptionalContentRemover {
     std::size_t streams_rewritten = 0;
   };
 
-  // Removes the off content from every page of graph's page tree; a document
-  // without /OCProperties is left as it is.
+  // Removes the off content from every page of graph's page tree; in a
+  // document without /OCProperties every group is on, so only the marks go.
   static Result apply(writer::ObjectGraph& graph);
 };
 
