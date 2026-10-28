@@ -7,8 +7,7 @@
 // of malformed values, and the rule the function exists for: its
 // occurrences are exactly the ones pdfkit_redact_text removes for the same
 // search, range for range. A range it reports, sent back as a located match,
-// removes that occurrence and keeps the others; that case needs the array
-// form of a located match and is skipped by name until the array form is in.
+// removes that occurrence and keeps the others.
 
 #include "pdfkit/pdfkit.h"
 
@@ -220,8 +219,7 @@ TEST_CASE("pdfkit_find's occurrences are the ones pdfkit_redact_text removes, ra
   }
 }
 
-TEST_CASE("a range pdfkit_find reports, sent back as a located match, removes that occurrence" *
-          doctest::skip(true)) {
+TEST_CASE("a range pdfkit_find reports, sent back as a located match, removes that occurrence") {
   const std::string file = two_pages();
   // "EU" on page 2 (one range, the reading order) and "Bravo Charlie" (two
   // ranges, the drawing order): each sent back alone leaves every other
