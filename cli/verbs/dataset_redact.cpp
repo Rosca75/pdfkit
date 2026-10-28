@@ -19,7 +19,7 @@
 // occurrences of the word on the page, half the files each); the output is
 // read back and the word's occurrences counted before and after, with each
 // copy's page, box and hidden classes, so the gate counts the copies at one
-// place once (tests/dataset/gates/phase8.py).
+// place once.
 
 #include "verbs/dataset_redact.hpp"
 

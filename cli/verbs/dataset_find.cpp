@@ -9,7 +9,7 @@
 // again, and searches only the page it changed. Each fed-back occurrence
 // carries the value's occurrences on its page before and after (their
 // rectangles and hidden classes), so the gate counts a place once and
-// leaves out what every write removes (tests/dataset/gates/phase12.py).
+// leaves out what every write removes.
 
 #include "verbs/dataset_find.hpp"
 

@@ -143,4 +143,67 @@ cases touched (`CLAUDE.md` §8.2).
 
 ## 9. Deviations recorded by this phase
 
-1. *(none yet)*
+1. **Files beyond the Owns row**, each the smallest change the row's files
+   need: `src/text/content_stream.hpp` and `content_interpreter.cpp` (a
+   form's walk records the walk whose `Do` drew it and that `Do`'s index,
+   which the split renames); `src/platform/error.{hpp,cpp}` and
+   `src/api/guarded.cpp` (the two refusal codes, under
+   `PDFKIT_E_INVALID_ARGUMENT`, and `docs/ABI.md` §2's row);
+   `src/redact/CMakeLists.txt` and `tests/unit/CMakeLists.txt` (the new
+   files); `tests/unit/redact/form_rewriter_test.cpp` (its case "a glyph
+   range inside a form reaches every page that draws it" encoded the old
+   contract and now tests the new one); `cli/verbs/dataset_find.cpp`
+   (build-12's: each fed-back occurrence lists the value's occurrences on its
+   page before and after, with their rectangles and hidden classes, for
+   addition B); `tests/dataset/gates/phase7.py`, `phase9.py`, `phase12.py`
+   and the new `places.py` and `tests/dataset/test_places.py` (addition B).
+2. **A form drawn once is edited in place**, not copied: a copy would leave
+   the unedited original named in the page's resources, its text in the
+   file's bytes though drawn nowhere. The draws are counted over the written
+   pages (a selection applied) from the `Do` operators of their content and
+   of the forms they draw (`FormSplitter::draws`); an ancestor on the form
+   path is copied only when it too is drawn more than once, else its `Do` is
+   renamed in place.
+3. **The check that every other draw of a split form holds what it held is
+   by construction**, not a re-read: when a copy is made the original form
+   object is not written at all (the shared edits of a search aside, which
+   reach every draw by design), so the pages that draw it read as they did,
+   and the self-check reads again only the pages the redaction changed. The
+   unit cases read the other pages back and find the text on each.
+4. **A located match's marked-content property list in a form's
+   `/Properties` stays shared**: an `/ActualText` of a span over the place,
+   inside a form drawn on several pages, is rewritten in the form's
+   resources, so the other draws read the placeholder in that one property
+   list. The glyphs of the other draws are untouched; the gap removes more
+   than asked from one property list and leaks nothing.
+5. **Addition A follows the self-check's location test exactly**: the
+   copies a located match takes are the occurrences of its text, in any
+   reader's order, with a glyph centred in a removed glyph's box, and the
+   glyphs centred there of a string operator whose codes hold a removed
+   code run. The match's `boxes` (its location) stay those of the picked
+   glyphs, their duplicates and their `/ActualText` span, so the copies do
+   not widen the place.
+6. **Addition B's PDFium count accepts a fall of one to one plus the
+   copies**: PDFium's text carries no places, so PDFium's count of the word
+   may fall by the other copies at the picked place and by the occurrences
+   in switched-off layers, both counted from pdfkit's words. `pdfminer-0013`
+   is named apart (`PDFIUM_READINGS` in `phase8.py`): its forms 6 and 8 draw
+   each other, PDFium follows the cycle ten levels deep and reads "Hello" 21
+   times where pdfkit stops at the first repeat and reads it twice, so the
+   one draw pdfkit edits is ten of PDFium's; a copy would instead let
+   pdfkit's own reading meet the original one level deeper, so one of the
+   two counts misses whatever is done. A fed-back occurrence that lies in a
+   switched-off layer removes no place (synth-0145, synth-0147), and the
+   located job no longer picks a word drawn at size 0 (a box without width
+   or height), which shows nothing and which PDFium does not read
+   (pdfdiff-0017's "font").
+7. **The occurrence form's answer** is `kind` `occurrence` with `glyphs` as
+   the array of ranges (`[[i, j]]`), as an array-form glyph range is
+   answered, so a caller reads one shape; a `folding` beside `occurrence`
+   rather than inside it is refused, and `near` meets a rectangle when they
+   share an edge.
+8. **Tests first**: the C++ cases were written after the code; they were
+   then seen red against the source of `main` (8 of the 11 cases of
+   `one_occurrence_test.cpp` and `form_rewriter_test.cpp` failing) before
+   the source was restored. The Python cases of `test_places.py` were seen
+   red first.
