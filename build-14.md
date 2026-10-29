@@ -231,3 +231,10 @@ cases touched (`CLAUDE.md` §8.2).
     passed); the rows it fails in `p14-gate` (identity write reopening and
     its 399 pages of pixels, the self-check, phase 9's reopening) are that
     file alone.
+11. **The merge gate** on this branch's tip: `python build/check.py --full`
+    passed every group but clang-tidy's, whose seven findings (an unchecked
+    optional in the located job, a signed comparison and an escaped literal
+    in the occurrence reader) were fixed and checked again over all 279
+    sources (`check_format.py --changed-since main`, ok); `ctest --preset
+    unit`, `--preset sanitize` and `--preset clang-sanitize` passed, and
+    `python tests/abi/run.py` passed.
