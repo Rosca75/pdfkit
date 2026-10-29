@@ -139,14 +139,14 @@ type and never a time, so two builds of one tree report the same text.
 | 3.1 | `pdfkit_images(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the image list JSON | `build-6.md` |
 | 3.2 | `pdfkit_image_data(pdfkit_document* doc, const char* identity, const char* options_json, pdfkit_buffer* out)` | `doc`, `identity`, `out` | PNG or JPEG bytes (not JSON) | `build-6.md` |
 | 4 | `pdfkit_metadata(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the metadata JSON | `build-10.md` |
-| 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `docs/archive/build/build-8.md` |
+| 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `docs/archive/build/build-8.md`, ABI 2 `docs/archive/build/build-15.md` |
 | 6 | `pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json, pdfkit_buffer* out)` | `edit`, `treatments_json`, `out` | the per-treatment JSON | `docs/archive/build/build-9.md` |
 | 7 | `pdfkit_set_metadata(pdfkit_edit* edit, const char* fields_json, pdfkit_buffer* out)` | `edit`, `fields_json`, `out` | the fields as they will be written | `build-10.md` |
 | 8 | `pdfkit_channels(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the channel report JSON | `docs/archive/build/build-7.md` |
 | 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `docs/archive/build/build-7.md` |
 | 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
-| 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md` |
-| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `docs/archive/build/build-12.md` |
+| 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md`, ABI 2 `docs/archive/build/build-15.md` |
+| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `docs/archive/build/build-12.md`, ABI 2 `docs/archive/build/build-15.md` |
 
 Every function returns `PDFKIT_E_INVALID_ARGUMENT` for a missing required
 argument or malformed JSON; each function's section below gives its JSON
