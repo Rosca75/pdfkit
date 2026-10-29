@@ -8,9 +8,12 @@
 // their device rectangles and how each placeholder is fitted (CLAUDE.md
 // section 2, the pdfkit_redact_text section of docs/ABI.md). A glyph range
 // is one range or an array of ranges on one page, read as one expression at
-// one place. Every match is checked before any is recorded, so a refused
-// call leaves the plan as it was. The text is removed when the plan is
-// written.
+// one place. An occurrence names one occurrence of a text on a page by its
+// index in pdfkit_find's order, a rectangle it meets, or the words before
+// or after it, and is resolved to the glyph ranges pdfkit_find reports for
+// it, then read as a glyph range. Every match is checked before any is
+// recorded, so a refused call leaves the plan as it was. The text is
+// removed when the plan is written.
 
 #include "pdfkit/pdfkit.h"
 
@@ -26,7 +29,10 @@
 #include "redact/text_plan.hpp"
 #include "redact/text_redactor.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,7 +46,7 @@ using pdfkit::redact::MatchFinder;
 using pdfkit::redact::TextPlan;
 
 constexpr std::string_view shape =
-    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"})";
+    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"})";
 constexpr std::string_view default_placeholder = "[REDACTED]";
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
@@ -104,10 +110,100 @@ TextPlan::Range read_range(const JsonValue& value, std::size_t index) {
   return range;
 }
 
-// A match, and the ranges of a glyph range given as an array (empty for one
-// range or a search).
+MatchFinder::Folding read_folding(const JsonValue& value, std::size_t index) {
+  if (value.kind() != JsonValue::Kind::object) {
+    refuse(
+        where(index) + " gives \"folding\" as " + std::string(JsonValue::kind_name(value.kind())),
+        "write the folding as an object of true or false flags");
+  }
+  MatchFinder::Folding folding;
+  for (const auto& [key, setting] : value.as_object()) {
+    if (key == "case") {
+      folding.text.case_fold = flag(setting, index, key);
+    } else if (key == "diacritics") {
+      folding.text.diacritics = flag(setting, index, key);
+    } else if (key == "whitespace") {
+      folding.text.whitespace = flag(setting, index, key);
+    } else if (key == "hyphenation") {
+      folding.hyphenation = flag(setting, index, key);
+    } else {
+      refuse(where(index) + " names the unknown folding \"" + key + "\"",
+             "use only case, diacritics, whitespace and hyphenation");
+    }
+  }
+  return folding;
+}
+
+// The "occurrence" object of a match.
+TextPlan::OccurrenceQuery read_occurrence(const JsonValue& value, std::size_t index) {
+  if (value.kind() != JsonValue::Kind::object) {
+    refuse(where(index) + " gives \"occurrence\" as " +
+               std::string(JsonValue::kind_name(value.kind())),
+           R"(write the occurrence as {"text": "EU", "page": 3, "index": 0})");
+  }
+  TextPlan::OccurrenceQuery query;
+  bool text = false;
+  bool page = false;
+  for (const auto& [key, item] : value.as_object()) {
+    if (key == "text") {
+      text = true;
+      query.text = text_member(item, index, key);
+    } else if (key == "page" || key == "index") {
+      const std::optional<std::int64_t> number =
+          item.kind() == JsonValue::Kind::number ? item.as_int64() : std::nullopt;
+      if (!number || *number < 0) {
+        refuse(where(index) + " gives the occurrence's \"" + key + "\" as no whole number",
+               R"(give "page" from 1 and "index" from 0 as whole numbers)");
+      }
+      if (key == "page") {
+        page = true;
+        query.page =
+            std::cmp_greater(*number, 0xFFFFFFFFU) ? 0U : static_cast<std::uint32_t>(*number);
+      } else {
+        query.index = static_cast<std::size_t>(*number);
+      }
+    } else if (key == "folding") {
+      query.folding = read_folding(item, index);
+    } else if (key == "near") {
+      const bool four = item.kind() == JsonValue::Kind::array && item.as_array().size() == 4 &&
+                        std::ranges::all_of(item.as_array(), [](const JsonValue& v) {
+                          return v.kind() == JsonValue::Kind::number;
+                        });
+      const JsonValue::Array* box = four ? &item.as_array() : nullptr;
+      if (box == nullptr || (*box)[0].as_number() > (*box)[2].as_number() ||
+          (*box)[1].as_number() > (*box)[3].as_number()) {
+        refuse(where(index) + " gives the occurrence's \"near\" as no rectangle",
+               "give near as [left, bottom, right, top] in points, left not past right and "
+               "bottom not above top");
+      }
+      query.near = pdfkit::text::Rect::of((*box)[0].as_number(), (*box)[1].as_number(),
+                                          (*box)[2].as_number(), (*box)[3].as_number());
+    } else if (key == "before") {
+      query.before = text_member(item, index, key);
+    } else if (key == "after") {
+      query.after = text_member(item, index, key);
+    } else {
+      refuse(where(index) + " names \"" + key + R"(" in "occurrence")",
+             "give only text, page, folding, index, near, before and after");
+    }
+  }
+  if (!text || query.text.empty() || !page) {
+    refuse(where(index) + R"( gives an occurrence without a non-empty "text" and a "page")",
+           "give the occurrence's text and its page");
+  }
+  if (!query.index && !query.near && !query.before && !query.after) {
+    refuse(where(index) + " gives an occurrence with no narrowing",
+           R"(give at least one of "index", "near", "before" and "after"; a search match )"
+           "removes every occurrence");
+  }
+  return query;
+}
+
+// A match, the ranges of a glyph range given as an array (empty for one
+// range or a search), and the occurrence it names when it is one.
 MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
-                              std::vector<TextPlan::Range>& ranges) {
+                              std::vector<TextPlan::Range>& ranges,
+                              std::optional<TextPlan::OccurrenceQuery>& query) {
   if (item.kind() != JsonValue::Kind::object) {
     refuse(where(index) + " is " + std::string(JsonValue::kind_name(item.kind())),
            "write each match as an object");
@@ -116,6 +212,7 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
   match.placeholder = std::string(default_placeholder);
   bool search = false;
   bool glyphs = false;
+  bool occurrence = false;
   for (const auto& [name, value] : item.as_object()) {
     if (name == "search") {
       search = true;
@@ -125,25 +222,11 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
     } else if (name == "fingerprint") {
       match.fingerprint = text_member(value, index, name);
     } else if (name == "folding") {
-      if (value.kind() != JsonValue::Kind::object) {
-        refuse(where(index) + " gives \"folding\" as " +
-                   std::string(JsonValue::kind_name(value.kind())),
-               "write the folding as an object of true or false flags");
-      }
-      for (const auto& [key, setting] : value.as_object()) {
-        if (key == "case") {
-          match.folding.text.case_fold = flag(setting, index, key);
-        } else if (key == "diacritics") {
-          match.folding.text.diacritics = flag(setting, index, key);
-        } else if (key == "whitespace") {
-          match.folding.text.whitespace = flag(setting, index, key);
-        } else if (key == "hyphenation") {
-          match.folding.hyphenation = flag(setting, index, key);
-        } else {
-          refuse(where(index) + " names the unknown folding \"" + key + "\"",
-                 "use only case, diacritics, whitespace and hyphenation");
-        }
-      }
+      match.folding = read_folding(value, index);
+    } else if (name == "occurrence") {
+      occurrence = true;
+      match.kind = MatchFinder::Match::Kind::glyphs;
+      query = read_occurrence(value, index);
     } else if (name == "glyphs") {
       glyphs = true;
       match.kind = MatchFinder::Match::Kind::glyphs;
@@ -165,13 +248,19 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
       }
     } else {
       refuse(where(index) + " names the unknown key \"" + name + "\"",
-             "use search, folding, glyphs, fingerprint and placeholder only");
+             "use search, folding, glyphs, occurrence, fingerprint and placeholder only");
     }
   }
-  if (search == glyphs) {
-    refuse(where(index) + (search ? R"( has both "search" and "glyphs")"
-                                  : R"( has neither "search" nor "glyphs")"),
-           "give a match either a search string or a glyph range");
+  const int forms = (search ? 1 : 0) + (glyphs ? 1 : 0) + (occurrence ? 1 : 0);
+  if (forms != 1) {
+    refuse(where(index) + (forms == 0
+                               ? R"( has none of "search", "glyphs" and "occurrence")"
+                               : R"( has more than one of "search", "glyphs" and "occurrence")"),
+           "give a match one of a search string, a glyph range or an occurrence");
+  }
+  if (occurrence && item.find("folding") != nullptr) {
+    refuse(where(index) + R"( gives "folding" beside "occurrence")",
+           R"(give the occurrence's folding inside "occurrence")");
   }
   return match;
 }
@@ -205,8 +294,19 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
     std::vector<MatchFinder::Match> matches;
     std::vector<std::vector<TextPlan::Range>> ranges(list->as_array().size());
     matches.reserve(list->as_array().size());
+    std::vector<std::optional<TextPlan::OccurrenceQuery>> queries(list->as_array().size());
     for (std::size_t i = 0; i < list->as_array().size(); ++i) {
-      matches.push_back(read_match(list->as_array()[i], i, ranges[i]));
+      matches.push_back(read_match(list->as_array()[i], i, ranges[i], queries[i]));
+    }
+    // Each occurrence resolved to its glyph ranges on this document, then
+    // read as a glyph range.
+    for (std::size_t i = 0; i < queries.size(); ++i) {
+      if (queries[i]) {
+        ranges[i] = TextPlan::resolve(handle.plan->document(), *queries[i], where(i));
+        if (matches[i].fingerprint.empty()) {
+          matches[i].fingerprint = handle.plan->fingerprint();
+        }
+      }
     }
     const std::vector<MatchFinder::Match> given = matches;
     const std::vector<std::vector<TextPlan::Range>> arrays = ranges;
@@ -222,7 +322,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       writer.begin_object();
       writer.key("match").unsigned_integer(i);
       const bool search = match.kind == MatchFinder::Match::Kind::search;
-      writer.key("kind").string(search ? "search" : "glyphs");
+      writer.key("kind").string(search ? "search" : queries[i] ? "occurrence" : "glyphs");
       if (search) {
         writer.key("search").string(match.search);
       }

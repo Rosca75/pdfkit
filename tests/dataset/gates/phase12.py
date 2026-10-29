@@ -12,7 +12,11 @@
 # row the manifest names a known gap is counted apart and named. The
 # feedback measure needs the array
 # form of a located match in pdfkit_redact_text: when no file could send its
-# occurrence back, the measure is reported as not run and fails.
+# occurrence back, the measure is reported as not run and fails. A fed-back
+# occurrence removes exactly one when its page holds one place fewer of the
+# value, the copies drawn at one place counted once and the occurrences in a
+# switched-off layer, which every write removes, left out (places.py); one
+# fed back from such a layer leaves the count of places as it was.
 
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ sys.path.insert(0, str(REPO / "dataset" / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import common  # noqa: E402
+import places  # noqa: E402
 from phase7 import Measures, read_json  # noqa: E402
 
 AGREEMENT = 1.0
@@ -75,9 +80,27 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
             unsupported.append(row_id)
             continue
         tried += feedback.get("tried", 0)
-        exact += feedback.get("exact", 0)
+        if feedback.get("items") is None:
+            exact += feedback.get("exact", 0)
+            for failure in feedback.get("failures") or []:
+                feedback_failures.append({"id": row_id, **failure})
+            continue
+        listed = set()
+        for item in feedback["items"]:
+            listed.add((item.get("value"), item.get("page")))
+            before, after = places.place_count(item.get("before")), item.get("after")
+            # An occurrence in a switched-off layer is none: every write removes it.
+            fewer = 0 if places.OFF in (item.get("hidden") or []) else 1
+            if after is not None and before - places.place_count(after) == fewer:
+                exact += 1
+            else:
+                feedback_failures.append({"id": row_id, "value": item.get("value"), "page": item.get("page"),
+                                          "why": f"the page held {before} places before and "
+                                                 f"{'?' if after is None else places.place_count(after)} after"})
+        # A write that failed lists no item; its failure stands.
         for failure in feedback.get("failures") or []:
-            feedback_failures.append({"id": row_id, **failure})
+            if (failure.get("value"), failure.get("page")) not in listed:
+                feedback_failures.append({"id": row_id, **failure})
     measures.share("files where find's occurrences equal pdfkit_redact_text's for the job's words "
                    "(same ranges)", len(agree), len(judged), AGREEMENT,
                    {"disagree": disagree, "failed": failed, "known_gaps": gaps})

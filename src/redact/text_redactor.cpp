@@ -17,6 +17,7 @@
 
 #include "platform/error.hpp"
 #include "redact/content_syntax.hpp"
+#include "redact/form_splitter.hpp"
 #include "redact/marked_content_rewriter.hpp"
 #include "redact/placeholder_drawing.hpp"
 #include "redact/text_surgery.hpp"
@@ -27,6 +28,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -525,29 +527,73 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
   }
 }
 
+// Records walk and every walk on its form path in work.walks.
+void note_walks(syntax::Document& document, const text::PageContent& content, std::size_t walk,
+                TextPlan::PageWork& work) {
+  while (walk != 0 && walk < content.streams.size() && content.streams[walk].form != 0) {
+    const text::ContentStream& stream = content.streams[walk];
+    if (work.walks.contains(walk)) {
+      return;
+    }
+    TextPlan::Walk info;
+    info.form = stream.form;
+    info.parent = stream.parent;
+    info.drawn_at = stream.drawn_at;
+    const Object form = document.object({stream.form, 0});
+    const syntax::Stream* object = form.stream();
+    info.resources =
+        object != nullptr &&
+        document.resolve_entry(object->dictionary(), "Resources").dictionary() != nullptr;
+    work.walks[walk] = info;
+    walk = stream.parent;
+  }
+}
+
+// The target a change of walk goes to: a located match's change inside a
+// form belongs to that draw alone (a split, FormSplitter), every other
+// change to the stream it is made in.
+[[nodiscard]] TextPlan::Target& change_target(syntax::Document& document, TextPlan::PageWork& work,
+                                              const text::PageContent& content, std::size_t walk,
+                                              bool located) {
+  if (located && walk < content.streams.size() && content.streams[walk].form != 0) {
+    note_walks(document, content, walk, work);
+    return work.splits[walk];
+  }
+  return target_of(work, content, walk);
+}
+
 // The page's work over its merged occurrences; needles are the values,
-// located the texts of the page's located matches.
+// located the texts of the page's located matches, and is_located whether a
+// match (by its index in the plan) is a located one.
 [[nodiscard]] TextPlan::PageWork build_work(syntax::Document& document, const PageText& page,
                                             const std::vector<MatchFinder::Occurrence>& merged,
                                             const std::vector<MatchFinder::Match>& needles,
-                                            const std::vector<MatchFinder::Match>& located) {
+                                            const std::vector<MatchFinder::Match>& located,
+                                            const std::function<bool(std::size_t)>& is_located) {
   TextPlan::PageWork work;
   const Layout layout = layout_of(page);
   const text::PageContent& content = page.content;
   std::set<std::size_t> page_removed;
   std::map<std::size_t, std::string> placeholder_of;
+  // The glyphs a value removes: in a form, every draw of it loses them.
+  std::set<std::size_t> shared;
   for (const MatchFinder::Occurrence& occurrence : merged) {
     const Geometry found = geometry(page, layout, occurrence, nullptr);
     for (const std::size_t draw : found.removed) {
       page_removed.insert(draw);
       placeholder_of.try_emplace(draw, occurrence.placeholder);
+      if (!is_located(occurrence.match)) {
+        shared.insert(draw);
+      }
     }
   }
   for (const MatchFinder::Occurrence& occurrence : merged) {
     const Geometry found = geometry(page, layout, occurrence, &page_removed);
+    const bool here = is_located(occurrence.match);
     for (const std::size_t draw : found.removed) {
       const GlyphRecord& record = content.glyphs[draw];
-      TextPlan::Target& target = target_of(work, content, record.stream);
+      TextPlan::Target& target =
+          change_target(document, work, content, record.stream, here && !shared.contains(draw));
       target.removed.insert({record.operation, record.code_start});
       note_operation(target, content, record);
     }
@@ -561,7 +607,7 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
     insertion.after = insertion_point(stream, anchor.operation);
     insertion.operators = PlaceholderDrawing::operators(
         anchor, occurrence.placeholder, found.fit.face, found.fit.scale, found.invisible);
-    target_of(work, content, anchor.stream)
+    change_target(document, work, content, anchor.stream, here)
         .insertions.try_emplace({anchor.operation, anchor.code_start}, std::move(insertion));
     const TextPlan::Holder holder = holder_of(document, content, anchor.stream);
     work.fonts.insert({holder, found.fit.face});
@@ -582,6 +628,9 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
       !work.form_fonts.empty()) {
     return false;
   }
+  if (std::ranges::any_of(work.splits, [](const auto& entry) { return !entry.second.empty(); })) {
+    return false;
+  }
   return std::ranges::all_of(work.forms, [](const auto& entry) { return entry.second.empty(); });
 }
 
@@ -592,6 +641,90 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
     const unsigned byte = (record.code >> (8U * (i - 1))) & 0xFFU;
     out += digits[byte >> 4U];
     out += digits[byte & 0x0FU];
+  }
+  return out;
+}
+
+// Whether the centre of a glyph's box lies in one of boxes: the self-check's
+// test of a glyph at a located match's place (docs/DESIGN.md section 18).
+[[nodiscard]] bool at_place(const GlyphRecord& record, const std::vector<Rect>& boxes) {
+  Rect box = record.box;
+  if (box.is_empty()) {
+    box.add(record.origin.x, record.origin.y);
+    box.add(record.advance_end.x, record.advance_end.y);
+  }
+  if (box.is_empty()) {
+    return false;
+  }
+  const double x = (box.left + box.right) / 2.0;
+  const double y = (box.bottom + box.top) / 2.0;
+  return std::ranges::any_of(boxes, [x, y](const Rect& hole) {
+    return x >= hole.left && x <= hole.right && y >= hole.bottom && y <= hole.top;
+  });
+}
+
+// The stretches [first, last) of the reading order that draw a located
+// match's text again at its place, beyond the glyphs removed: one place is
+// every copy drawn there (a second text layer, a copy at size 0 or
+// invisible), because a copy left there leaves the word readable at the
+// location. A copy is what the self-check's location test finds: an
+// occurrence of the text, in any reader's order, with a glyph centred in a
+// removed glyph's box, and the glyphs centred there of a string operator
+// whose codes there hold a removed code run.
+[[nodiscard]] std::vector<std::pair<std::size_t, std::size_t>> copies_at(
+    const PageText& page, MatchFinder& finder, const Layout& layout, const TextPlan::Located& entry,
+    const std::set<std::size_t>& removed) {
+  std::vector<std::pair<std::size_t, std::size_t>> out;
+  const std::vector<GlyphRecord>& glyphs = page.content.glyphs;
+  if (entry.boxes.empty() || entry.text.empty()) {
+    return out;
+  }
+  MatchFinder::Match needle;
+  needle.search = entry.text;
+  std::vector<MatchFinder::Occurrence> occurrences = finder.find(needle, 0);
+  for (MatchFinder::Occurrence& other : finder.find_orders(needle, 0, occurrences)) {
+    occurrences.push_back(std::move(other));
+  }
+  for (const MatchFinder::Occurrence& found : occurrences) {
+    bool there = false;
+    for (std::size_t p = found.first; p < found.last && p < page.order.size() && !there; ++p) {
+      const GlyphRecord& record = glyphs[page.order[p]];
+      there = !removed.contains(record.draw) && !record.text.empty() && !record.is_space() &&
+              at_place(record, entry.boxes);
+    }
+    if (there) {
+      out.emplace_back(found.first, std::min(found.last, page.order.size()));
+    }
+  }
+  // Per string operator, its kept glyphs at the place and their codes.
+  std::map<std::pair<std::size_t, std::size_t>, std::pair<std::string, std::vector<std::size_t>>>
+      drawn;
+  for (const GlyphRecord& record : glyphs) {
+    if (!removed.contains(record.draw) && at_place(record, entry.boxes)) {
+      auto& [codes, draws] = drawn[{record.stream, record.operation}];
+      codes += hex_of(record);
+      draws.push_back(record.draw);
+    }
+  }
+  for (const auto& [where, held] : drawn) {
+    const bool holds = std::ranges::any_of(entry.codes, [&held](const std::string& run) {
+      for (std::size_t at = held.first.find(run); !run.empty() && at != std::string::npos;
+           at = held.first.find(run, at + 1)) {
+        if (at % 2 == 0) {
+          return true;
+        }
+      }
+      return false;
+    });
+    if (!holds) {
+      continue;
+    }
+    for (const std::size_t draw : held.second) {
+      const std::size_t p = layout.position[draw];
+      if (p != none) {
+        out.emplace_back(p, p + 1);
+      }
+    }
   }
   return out;
 }
@@ -668,13 +801,23 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
   return scrubbed;
 }
 
-// resources with faces named in its /Font and properties set in its
-// /Properties, as a direct dictionary.
-[[nodiscard]] Object edited_resources(writer::ObjectGraph& graph, writer::PlaceholderFont& fonts,
-                                      const Object& resources, const std::set<Face>& faces,
-                                      const std::map<std::string, Dictionary>& properties) {
+// resources with faces named in its /Font, properties set in its
+// /Properties and the form copies of a split named in its /XObject (name to
+// object number), as a direct dictionary.
+[[nodiscard]] Object edited_resources(
+    writer::ObjectGraph& graph, writer::PlaceholderFont& fonts, const Object& resources,
+    const std::set<Face>& faces, const std::map<std::string, Dictionary>& properties,
+    const std::map<std::string, syntax::Object::Reference>& xobjects = {}) {
   const Object resolved = graph.resolve(resources);
   Dictionary out = resolved.dictionary() != nullptr ? *resolved.dictionary() : Dictionary();
+  if (!xobjects.empty()) {
+    const Object group = graph.resolve(out.get("XObject"));
+    Dictionary entries = group.dictionary() != nullptr ? *group.dictionary() : Dictionary();
+    for (const auto& [name, number] : xobjects) {
+      entries.set(name, Object::make_reference(number));
+    }
+    out.set("XObject", Object::make_dictionary(std::move(entries)));
+  }
   if (!faces.empty()) {
     const Object group = graph.resolve(out.get("Font"));
     Dictionary entries = group.dictionary() != nullptr ? *group.dictionary() : Dictionary();
@@ -831,8 +974,10 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
       removed_of.push_back(shape.removed);
     }
     // A located match is answered as one occurrence: its ranges, their text
-    // joined by a space, every rectangle and every code run.
+    // joined by a space, every rectangle and every code run. It also removes
+    // every copy drawn at its place (copies), unanswered.
     std::set<std::size_t> joined;
+    std::vector<MatchFinder::Occurrence> copies;
     for (const auto& [i, stretch] : here_located) {
       Found& first = entries[stretch.first];
       TextPlan::Located entry;
@@ -865,6 +1010,13 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
       }
       entry.text = first.text;
       entry.codes = first.codes;
+      std::set<std::size_t> removed;
+      for (std::size_t k = stretch.first; k < stretch.second; ++k) {
+        removed.insert(removed_of[k].begin(), removed_of[k].end());
+      }
+      for (const auto& [from, to] : copies_at(page, finder, layout, entry, removed)) {
+        copies.push_back({base + i, number, from, to, std::string()});
+      }
       located.push_back(std::move(entry));
     }
     for (std::size_t k = 0; k < entries.size(); ++k) {
@@ -890,13 +1042,20 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
         }
       }
     }
+    all.insert(all.end(), copies.begin(), copies.end());
+    const auto is_located = [&state, &matches, base](std::size_t match) {
+      const MatchFinder::Match& source =
+          match < base ? state.matches[match] : matches[match - base];
+      return source.kind == MatchFinder::Match::Kind::glyphs;
+    };
     TextPlan::PageWork work =
-        build_work(document, page, MatchFinder::merge(all), needles, located_texts);
+        build_work(document, page, MatchFinder::merge(all), needles, located_texts, is_located);
     if (!work_empty(work)) {
       works[number] = std::move(work);
     } else {
       works[number] = std::nullopt;
     }
+    found.insert(found.end(), copies.begin(), copies.end());
     if (!found.empty()) {
       found_pages[number] = std::move(found);
     }
@@ -999,6 +1158,136 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
       }
     }
   }
+  // A form written again: its resources gain faces, property lists and the
+  // names of form copies, and its bytes take target's changes.
+  const auto form_object =
+      [&](std::uint32_t form, const TextPlan::Target* target,
+          const std::map<std::string, syntax::Object::Reference>& names) -> Object {
+    const Object value = graph.get(form);
+    const syntax::Stream* stream = value.stream();
+    if (stream == nullptr) {
+      return {};
+    }
+    Dictionary dictionary = stream->dictionary();
+    const auto faces = form_fonts.find(form);
+    const auto properties = form_properties.find(form);
+    if (faces != form_fonts.end() || properties != form_properties.end() || !names.empty()) {
+      dictionary.set("Resources",
+                     edited_resources(graph, fonts, dictionary.get("Resources"),
+                                      faces != form_fonts.end() ? faces->second : std::set<Face>(),
+                                      properties != form_properties.end()
+                                          ? properties->second
+                                          : std::map<std::string, Dictionary>(),
+                                      names));
+    }
+    if (target == nullptr || target->empty()) {
+      return Object::make_stream(stream->with_dictionary(std::move(dictionary)));
+    }
+    const std::vector<std::vector<std::byte>> pieces{document.decode(*stream).bytes};
+    const text::ContentStream walk = lex(pieces, document, "form " + std::to_string(form));
+    const std::vector<std::byte> bytes = rewrite(walk, *target, state.needles, document);
+    for (const std::string_view key : {"Filter", "DecodeParms", "Length", "DL"}) {
+      dictionary.erase(key);
+    }
+    return Object::make_stream(writer::StreamCopier::compress(std::move(dictionary), bytes));
+  };
+  // Located edits inside forms (FormSplitter): a form drawn more than once
+  // in the written pages is copied for the draw the edit belongs to, along
+  // its form path; one drawn once takes the edit in place. The copies are
+  // written before the shared forms, which may name them.
+  std::map<std::uint32_t, TextPlan::Target> page_local;
+  std::map<std::uint32_t, std::map<std::string, syntax::Object::Reference>> page_names;
+  std::map<std::uint32_t, std::map<std::string, syntax::Object::Reference>> form_names;
+  const bool any_split = std::ranges::any_of(state.pages, [&kept](const auto& entry) {
+    return kept.contains(entry.first) &&
+           std::ranges::any_of(entry.second.splits,
+                               [](const auto& split) { return !split.second.empty(); });
+  });
+  if (any_split) {
+    std::set<std::uint32_t> written;
+    for (const auto& [source, where] : kept) {
+      written.insert(source);
+    }
+    const std::map<std::uint32_t, std::size_t> draws = FormSplitter::draws(document, written);
+    std::vector<std::pair<std::uint32_t, FormSplitter::Plan>> plans;
+    for (const auto& [number, work] : state.pages) {
+      if (!kept.contains(number) || work.splits.empty()) {
+        continue;
+      }
+      FormSplitter::Plan split = FormSplitter::plan(number, work, draws);
+      for (const auto& [walk, target] : split.local) {
+        if (walk == 0) {
+          page_local[number].merge(target);
+        } else if (!split.copied.contains(walk)) {
+          forms[work.walks.at(walk).form].merge(target);
+        }
+      }
+      plans.emplace_back(number, std::move(split));
+    }
+    for (const auto& [number, split] : plans) {
+      const TextPlan::PageWork& work = state.pages.at(number);
+      std::map<std::size_t, syntax::Object::Reference> copy_of;
+      const auto names_of = [&split, &copy_of](std::size_t holder) {
+        std::map<std::string, syntax::Object::Reference> out;
+        if (const auto found = split.names.find(holder); found != split.names.end()) {
+          for (const auto& [name, walk] : found->second) {
+            if (const auto copied = copy_of.find(walk); copied != copy_of.end()) {
+              out[name] = copied->second;
+            }
+          }
+        }
+        return out;
+      };
+      for (const FormSplitter::Copy& copy : split.copies) {
+        TextPlan::Target target = split.local.at(copy.walk);
+        if (const auto shared = forms.find(copy.form); shared != forms.end()) {
+          target.merge(shared->second);
+        }
+        Object object = form_object(copy.form, &target, names_of(copy.walk));
+        if (object.stream() == nullptr) {
+          continue;
+        }
+        copy_of[copy.walk] = graph.add(std::move(object));
+      }
+      for (const auto& [holder, names] : split.names) {
+        if (holder == 0) {
+          for (const auto& [name, number_of] : names_of(0)) {
+            page_names[number][name] = number_of;
+          }
+        } else if (!split.copied.contains(holder)) {
+          for (const auto& [name, number_of] : names_of(holder)) {
+            form_names[work.walks.at(holder).form][name] = number_of;
+          }
+        }
+      }
+    }
+  }
+  std::set<std::uint32_t> touched;
+  for (const auto& [form, target] : forms) {
+    if (!target.empty()) {
+      touched.insert(form);
+    }
+  }
+  for (const auto& entry : form_fonts) {
+    touched.insert(entry.first);
+  }
+  for (const auto& entry : form_properties) {
+    touched.insert(entry.first);
+  }
+  for (const auto& entry : form_names) {
+    touched.insert(entry.first);
+  }
+  for (const std::uint32_t form : touched) {
+    const auto target = forms.find(form);
+    const auto names = form_names.find(form);
+    Object object =
+        form_object(form, target != forms.end() ? &target->second : nullptr,
+                    names != form_names.end() ? names->second
+                                              : std::map<std::string, syntax::Object::Reference>());
+    if (object.stream() != nullptr) {
+      graph.set(form, std::move(object));
+    }
+  }
   std::set<std::uint32_t> pages_to_edit;
   for (const auto& [number, work] : state.pages) {
     pages_to_edit.insert(number);
@@ -1020,7 +1309,11 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
       continue;
     }
     Dictionary page = *value.dictionary();
-    if (!work.content.empty()) {
+    TextPlan::Target content = work.content;
+    if (const auto local = page_local.find(number); local != page_local.end()) {
+      content.merge(local->second);
+    }
+    if (!content.empty()) {
       const syntax::Page& source = document.pages().at(number - 1);
       std::vector<std::vector<std::byte>> pieces;
       const Object contents = document.resolve(source.contents);
@@ -1038,7 +1331,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
         add_piece(contents);
       }
       const text::ContentStream stream = lex(pieces, document, "page " + std::to_string(number));
-      const std::vector<std::byte> bytes = rewrite(stream, work.content, state.needles, document);
+      const std::vector<std::byte> bytes = rewrite(stream, content, state.needles, document);
       page.set("Contents", Object::make_reference(graph.add(Object::make_stream(
                                writer::StreamCopier::compress(Dictionary(), bytes)))));
     }
@@ -1057,9 +1350,13 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
         properties[where.second] = dictionary;
       }
     }
-    if (!faces.empty() || !properties.empty()) {
+    const auto names = page_names.find(number);
+    if (!faces.empty() || !properties.empty() || names != page_names.end()) {
       page.set("Resources",
-               edited_resources(graph, fonts, page.get("Resources"), faces, properties));
+               edited_resources(graph, fonts, page.get("Resources"), faces, properties,
+                                names != page_names.end()
+                                    ? names->second
+                                    : std::map<std::string, syntax::Object::Reference>()));
     }
     graph.set(object, Object::make_dictionary(std::move(page)));
     writer::WriteReport::Rectangles changed;
@@ -1072,49 +1369,6 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     if (listed != state.pages.end()) {
       report.rectangles.push_back(std::move(changed));
     }
-  }
-  std::set<std::uint32_t> touched;
-  for (const auto& [form, target] : forms) {
-    if (!target.empty()) {
-      touched.insert(form);
-    }
-  }
-  for (const auto& entry : form_fonts) {
-    touched.insert(entry.first);
-  }
-  for (const auto& entry : form_properties) {
-    touched.insert(entry.first);
-  }
-  for (const std::uint32_t form : touched) {
-    const Object value = graph.get(form);
-    const syntax::Stream* stream = value.stream();
-    if (stream == nullptr) {
-      continue;
-    }
-    Dictionary dictionary = stream->dictionary();
-    const auto faces = form_fonts.find(form);
-    const auto properties = form_properties.find(form);
-    if (faces != form_fonts.end() || properties != form_properties.end()) {
-      dictionary.set("Resources",
-                     edited_resources(graph, fonts, dictionary.get("Resources"),
-                                      faces != form_fonts.end() ? faces->second : std::set<Face>(),
-                                      properties != form_properties.end()
-                                          ? properties->second
-                                          : std::map<std::string, Dictionary>()));
-    }
-    const auto target = forms.find(form);
-    if (target == forms.end() || target->second.empty()) {
-      graph.set(form, Object::make_stream(stream->with_dictionary(std::move(dictionary))));
-      continue;
-    }
-    const std::vector<std::vector<std::byte>> pieces{document.decode(*stream).bytes};
-    const text::ContentStream walk = lex(pieces, document, "form " + std::to_string(form));
-    const std::vector<std::byte> bytes = rewrite(walk, target->second, state.needles, document);
-    for (const std::string_view key : {"Filter", "DecodeParms", "Length", "DL"}) {
-      dictionary.erase(key);
-    }
-    graph.set(form,
-              Object::make_stream(writer::StreamCopier::compress(std::move(dictionary), bytes)));
   }
   std::ranges::stable_sort(report.rectangles, {}, &writer::WriteReport::Rectangles::page);
 }

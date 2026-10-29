@@ -680,7 +680,8 @@ are not numbered.
 
 ## 11. Matching
 
-A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
+A match (CLAUDE.md §4) arrives in one of three forms, each with its
+placeholder:
 
 - **Glyph ranges** from an earlier extraction: page and half-open glyph-index
   range, with the document fingerprint (the SHA-256 of the file from its
@@ -693,7 +694,21 @@ A match (CLAUDE.md §4) arrives in one of two forms, each with its placeholder:
   the glyph list): the ranges are sorted, none may be empty or overlap
   another, the placeholder is drawn once at the first and the others are
   holes, and the answer is one occurrence whose text is the ranges' text
-  joined by a space.
+  joined by a space. One place includes every copy drawn there: with its
+  glyphs go those of every occurrence of its text, in any order of this
+  section, that has a glyph centred in a removed glyph's box, and the glyphs
+  centred there of a string operator whose codes there hold a removed code
+  run (a duplicate, a second text layer, a copy at size 0 or invisible),
+  because a copy left there leaves the word readable at the location; this
+  is the location test of §18, so the write passes it.
+- **An occurrence**: a text, its page and folding, and one or more
+  narrowings (its index in `pdfkit_find`'s order, a rectangle it meets, the
+  words before or after it, `docs/ABI.md` §4.11), resolved through the
+  search `pdfkit_find` runs (`MatchFinder::locate`) to the glyph ranges it
+  reports for that occurrence, then read as a glyph range. The narrowings
+  must leave exactly one occurrence (`occurrence_not_found` and
+  `occurrence_ambiguous` otherwise), because pdfkit applies no rule of its
+  own to choose among them (CLAUDE.md §5).
 - **Search strings** with the caller's folding options, matched over each page's
   reading-order text, hidden blocks included:
   - `case`: Unicode simple case folding (CaseFolding.txt status C and S);
@@ -806,11 +821,21 @@ position the original gave it (CLAUDE.md §5).
   is a leak and one removed by mistake is not.
 - Multi-byte codes are cut at code boundaries the font's codespace defines,
   never inside a code.
-- **Forms**: text inside a form XObject is rewritten inside the form, once, and
-  the rewrite reaches every page that draws the form, because the glyphs belong
-  to the form and a match is a property of those glyphs; MuPDF's
-  filtered-copy-per-use leaves the original form in the file, which the
-  reachable-object sweep exists to prevent.
+- **Forms**: a value's text inside a form XObject is rewritten inside the
+  form, once, and the rewrite reaches every page that draws the form,
+  because a value is removed wherever it occurs; MuPDF's filtered copy per
+  use leaves the original form in the file, which the reachable-object
+  sweep exists to prevent. A glyph range or an occurrence is one draw on
+  one page: when its glyphs lie in a form drawn more than once in the
+  written pages (a running header or footer on every page, or a form drawn
+  twice on one), that draw's `Do` is renamed to a copy of the form that
+  holds the edit (with the form's shared edits), a form nested in a form is
+  copied along its path with each copy's `Do` renamed to the copy below it,
+  and every other draw keeps the original, which still holds the text and is
+  drawn elsewhere (`FormSplitter`). A form drawn once is edited in place,
+  because a copy would leave the unedited original named in the resources.
+  The draws are counted over the written pages from their `Do` operators and
+  the forms' own.
 - **Marked content**: on a span whose glyphs are all removed the `/ActualText`
   goes with them (the placeholder drawn for them is then read once) and an
   `/Alt` or `/E` becomes the placeholder; on any other span every occurrence of
@@ -1080,7 +1105,7 @@ rewritten metadata field is verified in the metadata.
 | Request | Removed from | Verified on |
 |---|---|---|
 | a search string (a value) | every occurrence in every order of every page (§11) | every surface below, under the string's folding |
-| a glyph range (an expression at a location) | the glyphs of its ranges | that location: no occurrence of its text, in the reading order or any other order of §11, has a glyph (outside the placeholder font) whose box's centre lies in the box of a glyph the match removed; no string operator drawing a glyph there holds a code run the answer reported under `codes` (at a code boundary); no `/ActualText`, `/Alt` or `/E` of a span over the place (one whose `BDC` ... `EMC` encloses a glyph there, the placeholder included, or whose `/ActualText` a glyph there names) holds the text. Nothing elsewhere is searched for it |
+| a glyph range or an occurrence (an expression at a location) | the glyphs of its ranges and every copy of its text drawn at the place (§11); inside a form drawn elsewhere too, from a copy of the form that this draw alone reads (§12) | that location: no occurrence of its text, in the reading order or any other order of §11, has a glyph (outside the placeholder font) whose box's centre lies in the box of a glyph the match removed; no string operator drawing a glyph there holds a code run the answer reported under `codes` (at a code boundary); no `/ActualText`, `/Alt` or `/E` of a span over the place (one whose `BDC` ... `EMC` encloses a glyph there, the placeholder included, or whose `/ActualText` a glyph there names) holds the text. Nothing elsewhere is searched for it |
 | a rewritten metadata field | the Info entry and its paired XMP properties | each of its source values (the Info value, each paired XMP value and array item), of any length, under the default folding, in the Info dictionary, the XMP packet and every string object outside content streams; the page text is not searched for it, because the document may say it for another reason (an author "PC" in a page about a PC) |
 
 The location is the removed glyphs' own boxes and a glyph is there by its

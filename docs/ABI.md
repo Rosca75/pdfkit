@@ -44,7 +44,7 @@ function; the version of the library is 0.1.0 and of the ABI 1.
 | Value | Status | Meaning | Error codes it carries |
 |---|---|---|---|
 | 0 | `PDFKIT_OK` | the call succeeded; the buffer holds the result | none |
-| 1 | `PDFKIT_E_INVALID_ARGUMENT` | a null handle or required argument, or malformed JSON input | `invalid_argument` |
+| 1 | `PDFKIT_E_INVALID_ARGUMENT` | a null handle or required argument, or malformed JSON input | `invalid_argument`, and `occurrence_not_found` and `occurrence_ambiguous` for an occurrence of `pdfkit_redact_text` that names none or several (§4.11) |
 | 2 | `PDFKIT_E_REFUSED` | the input document is refused | `not_pdf`, `no_page`, `password_required`, `unsupported_security_handler`, `limit_exceeded`, `page_ceiling`, and `undecodable_image` for one image that does not decode (`docs/DESIGN.md` §19) |
 | 3 | `PDFKIT_E_SELF_CHECK` | the self-check found a redacted string in the output; no output is returned | `self_check` (`docs/DESIGN.md` §18) |
 | 4 | `PDFKIT_E_NOT_IMPLEMENTED` | the catalogue function is not part of this build | `not_implemented` |
@@ -509,6 +509,37 @@ written. `matches_json` is `{"matches": [...]}`, each match one of:
 |---|---|
 | search | `search` (the string, UTF-8), optional `folding` (`case`, `diacritics`, `whitespace`, `hyphenation`, each `true` by default: simple case folding, marks stripped after canonical decomposition, any run of white space or an inferred word gap as one space, a joined hyphenation read without its hyphen), optional `placeholder` |
 | glyph range | `glyphs` (`{"page": n, "first": i, "last": j}`, a half-open range of positions in the page's glyph list of `pdfkit_text`, or an array of such ranges on one page read as one expression, the form an occurrence found in a drawing or row order takes), `fingerprint` (the one `pdfkit_text` reported), optional `placeholder` |
+| occurrence | `occurrence`: `{"text", "page", optional "folding", and at least one of "index", "near", "before", "after"}`, optional `placeholder`: the one occurrence of `text` on `page`, in `pdfkit_find`'s order, that every narrowing given matches |
+
+The narrowings of an occurrence, each optional, all of them applying
+together:
+
+| Key | Narrows to |
+|---|---|
+| `index` | the occurrence with this index among the page's occurrences of `text`, from 0, in `pdfkit_find`'s order (page reading order, then first glyph) |
+| `near` | `[left, bottom, right, top]` in default user space, points: the occurrences one of whose rectangles (§4.16) meets it, an edge in common included |
+| `before` | the occurrences whose preceding words, read as `pdfkit_find` reads them (up to 50), end with this text under the occurrence's folding |
+| `after` | the occurrences whose following words start with this text under the occurrence's folding |
+
+The narrowings must leave exactly one occurrence, which is then read as the
+glyph range `pdfkit_find` reports for it (one range, or several for an
+occurrence found in another order): none left is `occurrence_not_found`,
+more than one `occurrence_ambiguous`, whose `failed` names how many remain
+and the `index` of each, so the caller can add a narrowing. pdfkit applies no
+rule of its own beyond these: it does not decide that a match stands as a
+word, and does not widen or shorten what the caller named.
+
+**One occurrence is one place on one page.** A glyph range or an occurrence
+removes the glyphs of one draw on one page. When they lie in a form XObject
+drawn more than once in the written pages (on other pages, or twice on one),
+that page's draw is pointed at a copy of the form holding the edit (a form
+nested in a form is copied along its path) and every other draw keeps the
+original; a form drawn once is edited in place. With the picked glyphs go
+every copy of the text drawn at the same place on that page (a `duplicate`,
+a second layer, a copy at size 0 or invisible: an occurrence of the text with
+a glyph centred in a removed glyph's box, `docs/DESIGN.md` §18), because a
+copy left there leaves the word readable at the location. A search still
+removes every draw of a form, because a value is removed wherever it occurs.
 
 The placeholder defaults to `[REDACTED]`, holds only the characters `[`, `]`,
 `_`, `0` to `9` and `A` to `Z`, and may be empty, which removes the text and
@@ -523,7 +554,8 @@ it removes its glyphs, is verified at that place by the self-check and is
 searched nowhere else; given as an array, its ranges are sorted, the
 placeholder is drawn once at the first and the others are holes, and it is
 answered as one occurrence whose `glyphs` holds the ranges (`[[i, j], ...]`)
-and whose `text` joins their text with a space. Every match is checked
+and whose `text` joins their text with a space; an occurrence is answered
+the same way, with `kind` `occurrence`. Every match is checked
 before any is recorded, so a refused call leaves the plan as it was. Calls add
 up; occurrences that overlap across matches follow the overlap rule of
 `docs/DESIGN.md` §11 when the plan is written.
@@ -541,12 +573,15 @@ up; occurrences that overlap across matches follow the overlap rule of
 | Key | Holds |
 |---|---|
 | `fingerprint` | the document fingerprint |
-| `match` | the match's index in this call; `kind` `search` (with `search`) or `glyphs` |
+| `match` | the match's index in this call; `kind` `search` (with `search`), `glyphs` or `occurrence` |
 | `count`, `occurrences` | per occurrence found (zero is an answer, not a failure): `page`, `glyphs` (its range in the page's glyph list), `text` (as the extraction reads it), `rectangles` (the device boxes it changes), `placeholder_drawn`, `fitting` (`natural`, `scaled` or `overflow`, `null` when nothing is drawn) and `scale` (the share of the run's horizontal scaling the placeholder is drawn at), `codes` (the removed codes per font run, hexadecimal) |
 
 | Failure | Status | `code` |
 |---|---|---|
-| a null `edit` or `out`, malformed JSON, no `matches` array, an unknown key, a match with both or neither of `search` and `glyphs`, a non-boolean folding | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a null `edit` or `out`, malformed JSON, no `matches` array, an unknown key, a match with more than one or none of `search`, `glyphs` and `occurrence`, a non-boolean folding | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| an occurrence without a non-empty `text` and a `page`, without a narrowing, with a page outside the document, a negative or fractional `index`, a `near` that is not four numbers with left not past right and bottom not above top, or a `folding` beside it rather than inside it | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| an occurrence whose narrowings leave no occurrence | `PDFKIT_E_INVALID_ARGUMENT` | `occurrence_not_found` |
+| an occurrence whose narrowings leave several (`failed` names how many and their indices) | `PDFKIT_E_INVALID_ARGUMENT` | `occurrence_ambiguous` |
 | a placeholder with a character outside the alphabet (the message names it) | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a glyph range whose fingerprint is not this document's, a page outside the document, a range empty or past the page's glyphs | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | an array of ranges that is empty, names two pages or holds overlapping ranges | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
@@ -752,7 +787,7 @@ whatever order `pages` lists them in.
 `pdfkit_text` (to show the text) and `pdfkit_find` (values and their spelling
 variants, counts and places), then `pdfkit_edit_new` and `pdfkit_redact_text`
 (each value as a `search`; each single expression the user picked as `glyphs`
-with the `fingerprint`), then `pdfkit_redact_images` and `pdfkit_set_metadata`
+with the `fingerprint`, or as an `occurrence` by its index, place or context), then `pdfkit_redact_images` and `pdfkit_set_metadata`
 as needed, then `pdfkit_write` (a refused output is status 3 with the surface
 named), optionally `pdfkit_check` on the bytes, and `pdfkit_buffer_free`,
 `pdfkit_edit_free` and `pdfkit_close`.

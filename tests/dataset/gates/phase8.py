@@ -14,8 +14,15 @@
 # occurrence of a repeated word redacted by its glyph range) is judged too:
 # its outputs pass the self-check, hold exactly one occurrence fewer of the
 # word in pdfkit's text and in PDFium's (over the files where PDFium reads
-# the word in the input at all), and PDFium reads no word inside the
-# redacted word's box.
+# the word in the input at all and reads it inside the picked word's box,
+# because a word PDFium reads otherwise there, joined to a neighbour or
+# spaced into letters, is not one of the occurrences it counts), and PDFium reads no word inside the
+# redacted word's box. One occurrence is one place on one page (places.py):
+# pdfkit's counts take the copies drawn at one place once and leave out the
+# occurrences in a switched-off layer, which every write removes; PDFium's
+# text carries no places, so its count may fall by those copies too. A
+# match sent as an occurrence must resolve to the glyphs of the word it
+# names.
 
 from __future__ import annotations
 
@@ -29,6 +36,7 @@ sys.path.insert(0, str(REPO / "dataset" / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import common  # noqa: E402
+import places  # noqa: E402
 from phase7 import Measures, read_json  # noqa: E402
 
 SELF_CHECK = 1.0
@@ -37,10 +45,33 @@ PIXELS = 0.99
 PLACEHOLDERS = 0.99
 DETERMINISM = 1.0
 
+# The files whose input PDFium reads otherwise than any one place, by cause,
+# counted apart from the PDFium count of the located job and named.
+PDFIUM_READINGS = {
+    "pdfminer-0013": "pdfium: forms 6 and 8 draw each other; PDFium follows the cycle ten levels deep "
+                     "and reads 'Hello' 21 times, pdfkit stops at the first repeat (docs/DESIGN.md "
+                     "section 6.1) and reads it twice, so the one draw of form 6 pdfkit edits is ten "
+                     "of PDFium's",
+}
+
 
 def population(rows: list[dict]) -> list[dict]:
     return [r for r in rows if r["expect_open"] in ("opens", "repaired")
             and r.get("expect_redact_text", "n/a") != "n/a"]
+
+
+def counted(part: dict) -> tuple:
+    """The word's occurrences before and after a located redaction, a place counted once and a
+    switched-off layer left out; the plain counts of an outcome that lists no places."""
+    if part.get("places_before") is not None and part.get("places_after") is not None:
+        return places.place_count(part["places_before"]), places.place_count(part["places_after"])
+    return part.get("before"), part.get("after")
+
+
+def extra(part: dict) -> int:
+    """The copies PDFium may read beyond the redacted place's one: the other copies at the place
+    and the occurrences in switched-off layers."""
+    return places.extra_copies(part.get("places_before"), part.get("box"), part.get("page"))
 
 
 def judge(run_dir: Path, rows: list[dict]) -> dict:
@@ -76,12 +107,19 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
                    {"refused": {k: {"status": v.get("status"), "code": v.get("code"),
                                     "message": (v.get("message") or "")[:300]}
                                 for k, v in sorted(tried.items()) if k not in located_passed}})
-    fewer = [k for k in located_passed if tried[k].get("before") is not None
-             and tried[k].get("after") is not None and tried[k]["before"] - tried[k]["after"] == 1]
+    counts = {k: counted(v) for k, v in tried.items()}
+    fewer = [k for k in located_passed if counts[k][0] is not None
+             and counts[k][1] is not None and counts[k][0] - counts[k][1] == 1]
     measures.share("located outputs holding exactly one occurrence fewer of the word (pdfkit's text)",
                    len(fewer), len(tried), LOCATED,
-                   {"other": {k: [tried[k].get("word"), tried[k].get("before"), tried[k].get("after")]
-                              for k in sorted(tried) if k not in fewer}})
+                   {"other": {k: [tried[k].get("word"), *counts[k]] for k in sorted(tried) if k not in fewer},
+                    "shared_place_cases": sorted(k for k, v in tried.items() if v.get("repeated"))})
+    by_occurrence = {k: v for k, v in tried.items() if v.get("form") == "occurrence"}
+    same = [k for k, v in by_occurrence.items() if v.get("same_glyphs") is True]
+    measures.share("occurrence-form matches resolving to the glyphs of the glyph range of the same occurrence",
+                   len(same), len(by_occurrence), LOCATED,
+                   {"other": {k: by_occurrence[k].get("same_glyphs") for k in sorted(by_occurrence)
+                              if k not in same}})
 
     leak = read_json(run_dir / "pdfium-leak.json") or {}
     pdfium_located = {k: v for k, v in ((leak.get("located") or {}).get("files") or {}).items()
@@ -89,13 +127,18 @@ def judge(run_dir: Path, rows: list[dict]) -> dict:
     if leak and "located" not in leak:
         measures.add("located measures in the leak check", None, "not run", "run", False,
                      {"fix": "python tests/pdfium/leak.py --run " + run_dir.name})
-    read = {k: v for k, v in pdfium_located.items() if v.get("pdfium_before", 0) > 0}
-    pdfium_fewer = [k for k, v in read.items() if v["pdfium_before"] - v["pdfium_after"] == 1]
+    read = {k: v for k, v in pdfium_located.items()
+            if v.get("pdfium_before", 0) > 0 and v.get("read_at_location") is not False
+            and k not in PDFIUM_READINGS}
+    pdfium_fewer = [k for k, v in read.items()
+                    if 1 <= v["pdfium_before"] - v["pdfium_after"] <= 1 + extra(tried[k])]
     measures.share("located outputs holding exactly one occurrence fewer of the word (PDFium's text, "
                    "files where PDFium reads the word)", len(pdfium_fewer), len(read), LOCATED,
                    {"other": {k: [v["word"], v["pdfium_before"], v["pdfium_after"]]
                               for k, v in sorted(read.items()) if k not in pdfium_fewer},
-                    "not_read_by_pdfium": sorted(k for k in pdfium_located if k not in read)})
+                    "not_read_by_pdfium": sorted(k for k in pdfium_located
+                                                 if k not in read and k not in PDFIUM_READINGS),
+                    "pdfium_readings": {k: v for k, v in PDFIUM_READINGS.items() if k in pdfium_located}})
     at_location = {k: {"word": v["word"], "read": v.get("at_location")}
                    for k, v in sorted(pdfium_located.items()) if v.get("leak")}
     measures.zero("located redactions whose box holds the word in PDFium's text of the output page",

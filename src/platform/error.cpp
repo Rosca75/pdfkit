@@ -30,6 +30,10 @@ std::string_view error_code_name(ErrorCode code) noexcept {
       return "self_check";
     case ErrorCode::invalid_argument:
       return "invalid_argument";
+    case ErrorCode::occurrence_not_found:
+      return "occurrence_not_found";
+    case ErrorCode::occurrence_ambiguous:
+      return "occurrence_ambiguous";
     case ErrorCode::not_implemented:
       return "not_implemented";
     case ErrorCode::internal:
@@ -50,6 +54,8 @@ bool is_refusal(ErrorCode code) noexcept {
       return true;
     case ErrorCode::self_check:
     case ErrorCode::invalid_argument:
+    case ErrorCode::occurrence_not_found:
+    case ErrorCode::occurrence_ambiguous:
     case ErrorCode::not_implemented:
     case ErrorCode::internal:
       return false;

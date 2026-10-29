@@ -32,6 +32,10 @@ class ContentStream {
   // The forms this walk was reached through, outermost first, ending with
   // this form; empty for the page's own content.
   std::vector<std::uint32_t> form_path;
+  // For a form's walk, the walk whose Do drew it and that Do's operation
+  // index there, so an edit can point one draw at another form.
+  std::size_t parent = 0;
+  std::size_t drawn_at = 0;
   // The CTM the walk started under (the form's /Matrix included).
   Matrix matrix;
   // The decoded bytes (for the page, its pieces joined with one newline).

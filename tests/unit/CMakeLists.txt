@@ -47,6 +47,7 @@ add_executable(pdfkit_tests
   redact/determinism_test.cpp
   redact/form_rewriter_test.cpp
   redact/marked_content_rewriter_test.cpp
+  redact/one_occurrence_test.cpp
   redact/optional_content_remover_test.cpp
   redact/match_finder_test.cpp
   redact/match_finder_locate_test.cpp

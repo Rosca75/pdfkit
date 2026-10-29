@@ -9,7 +9,8 @@
 # not `n/a`. It reads <run>/summary.json, the outcomes, pdfium-images.json,
 # pdfium-redact-images.json and pdfium-leak-images.json, measures PDFium's text
 # of each output against its text of the input (an image treatment changes no
-# text), and writes the table of every measure (measure, value, threshold,
+# text; the input's text of its switched-off optional-content layers, which
+# every write removes, is left out), and writes the table of every measure (measure, value, threshold,
 # pass or fail) with the files behind each failure into a markdown and a JSON
 # file named after this script in the run folder. A treated rectangle that
 # keeps an original sample, a removed or treated identity still drawn, or an
@@ -32,7 +33,8 @@ sys.path.insert(0, str(REPO / "tests" / "pdfium"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import common  # noqa: E402
-from phase7 import Measures, read_json  # noqa: E402
+import places  # noqa: E402
+from phase7 import Measures, dataset_run, read_json  # noqa: E402
 
 PIXELS = 0.99
 REOPEN = 1.0
@@ -45,11 +47,24 @@ def population(rows: list[dict]) -> list[dict]:
             and r.get("expect_redact_images", "n/a") != "n/a"]
 
 
+def score(before: str, after: str, off_text) -> float:
+    """PDFium's word-bag F1 of the output's text against the input's; when they differ, the
+    input's text of its switched-off optional-content layers (off_text(), read only then) is left
+    out, because every write removes it."""
+    import words
+    f1 = words.f1(before, after)
+    if f1 == 1.0:
+        return f1
+    off = off_text()
+    return places.f1_without_off(before, after, off) if off else f1
+
+
 def text_agreement(run_dir: Path, jobs: list[tuple[dict, dict]], workers: int) -> dict:
     """Per file, PDFium's word-bag F1 of the output's text against the input's."""
     import pdfium
     import results_cache
-    import words
+
+    command = dataset_run.find_pdfkit(None)
 
     def one(pool, row, part):
         # The input's text comes from the results cache; the output's is new each run.
@@ -59,8 +74,9 @@ def text_agreement(run_dir: Path, jobs: list[tuple[dict, dict]], workers: int) -
             return None
         if not after.get("ok"):
             return 0.0
-        return round(words.f1("\n".join(t or "" for t in before["text"]),
-                              "\n".join(t or "" for t in after["text"])), 6)
+        return round(score("\n".join(t or "" for t in before["text"]),
+                           "\n".join(t or "" for t in after["text"]),
+                           lambda: places.off_text_of(command, common.file_path(row))), 6)
 
     out = {}
     with pdfium.Pool(workers) as pool, concurrent.futures.ThreadPoolExecutor(workers) as threads:

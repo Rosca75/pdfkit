@@ -12,8 +12,14 @@
 // blocks made of letters alone, three or more, that occur twice or more in
 // the document (no part of the placeholder "[REDACTED]", read without case);
 // SplitMix64 seeded from "11:<id>" draws one word and one of its visible
-// occurrences (no hidden class, not hyphenated); the output is read back and
-// the word's occurrences counted before and after.
+// occurrences (no hidden class, not hyphenated), preferring a word drawn at
+// one place on two pages or more (a running header or footer, which is
+// often a form drawn on every page), then whether the match is sent as a
+// glyph range or as an occurrence (its index among pdfkit_find's
+// occurrences of the word on the page, half the files each); the output is
+// read back and the word's occurrences counted before and after, with each
+// copy's page, box and hidden classes, so the gate counts the copies at one
+// place once.
 
 #include "verbs/dataset_redact.hpp"
 
@@ -24,7 +30,9 @@
 #include "verbs/dataset_write.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
+#include <cmath>
 #include <map>
 #include <optional>
 #include <set>
@@ -80,16 +88,37 @@ Call take(pdfkit_status status, pdfkit_buffer& out) {
   return value;
 }
 
-// The words of a pdfkit_text answer: page, text, glyph range, box, and
-// whether the word is visible (in a visible block, no hidden class, not
-// hyphenated); a duplicate copy is not a word of its own.
+// The four numbers of a box written as [left, bottom, right, top].
+std::array<double, 4> box_of(std::string_view raw) {
+  std::array<double, 4> out{};
+  std::size_t at = 0;
+  for (double& value : out) {
+    while (at < raw.size() && (raw[at] == '[' || raw[at] == ',' || raw[at] == ' ')) {
+      ++at;
+    }
+    const auto [end, error] = std::from_chars(raw.data() + at, raw.data() + raw.size(), value);
+    if (error != std::errc()) {
+      return {};
+    }
+    at = static_cast<std::size_t>(end - raw.data());
+  }
+  return out;
+}
+
+// The words of a pdfkit_text answer: page, text, glyph range, box, hidden
+// classes, and whether the word is visible (in a visible block, no hidden
+// class, not hyphenated, a box of some width and height: a word drawn at
+// size 0 shows nothing); a duplicate copy is marked, because it is no word
+// of its own but is a copy at the word's place.
 struct Word {
   std::string page;
   std::string text;
   std::string first;
   std::string last;
   std::string box;
+  std::string hidden;
   bool visible = false;
+  bool duplicate = false;
 };
 
 std::vector<Word> words_of(const JsonText& answer) {
@@ -117,18 +146,19 @@ std::vector<Word> words_of(const JsonText& answer) {
             }
             // A word whose only hidden class is duplicate is a copy of a word
             // already read, as the page's text reads it, and goes with it.
-            if (hidden != nullptr && hidden->items.size() == 1 &&
-                answer.node(hidden->items.front()).text == "duplicate") {
-              continue;
-            }
             Word word;
+            word.duplicate = hidden != nullptr && hidden->items.size() == 1 &&
+                             answer.node(hidden->items.front()).text == "duplicate";
+            word.hidden = hidden != nullptr ? std::string(hidden->raw) : "[]";
             word.page = std::string(number->raw);
             word.text = text->text;
             word.first = std::string(answer.node(glyphs->items[0]).raw);
             word.last = std::string(answer.node(glyphs->items[1]).raw);
             word.box = std::string(box->raw);
+            const std::array<double, 4> area = box_of(word.box);
             word.visible = key == "blocks" && hidden != nullptr && hidden->items.empty() &&
-                           hyphenated != nullptr && hyphenated->text == "false";
+                           area[2] > area[0] && area[3] > area[1] && hyphenated != nullptr &&
+                           hyphenated->text == "false";
             out.push_back(std::move(word));
           }
         }
@@ -166,8 +196,74 @@ Call text_of(pdfkit_document* document) {
 }
 
 std::size_t occurrences_of(const std::vector<Word>& words, const std::string& text) {
-  return static_cast<std::size_t>(
-      std::ranges::count_if(words, [&text](const Word& word) { return word.text == text; }));
+  return static_cast<std::size_t>(std::ranges::count_if(
+      words, [&text](const Word& word) { return !word.duplicate && word.text == text; }));
+}
+
+// Every copy of text among words, duplicates included: page, box, hidden.
+std::string places_of(const std::vector<Word>& words, const std::string& text) {
+  std::string out = "[";
+  for (const Word& word : words) {
+    if (word.text == text) {
+      out += (out.size() == 1 ? "" : ", ") + std::string(R"({"page": )") + word.page +
+             R"(, "box": )" + word.box + R"(, "hidden": )" + word.hidden + "}";
+    }
+  }
+  return out + "]";
+}
+
+// Whether word is drawn at the same place (within a point) on another page,
+// among the words of its text (indices).
+bool repeated(const std::vector<Word>& words, const std::vector<std::size_t>& indices,
+              const Word& word) {
+  const std::array<double, 4> box = box_of(word.box);
+  return std::ranges::any_of(indices, [&](std::size_t i) {
+    const Word& other = words[i];
+    if (other.page == word.page) {
+      return false;
+    }
+    const std::array<double, 4> place = box_of(other.box);
+    for (std::size_t k = 0; k < box.size(); ++k) {
+      if (std::abs(box.at(k) - place.at(k)) > 1.0) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+// The index of the occurrence of text that pdfkit_find reports on page as
+// the one range [first, last), or no value.
+std::optional<std::size_t> find_index(pdfkit_document* document, const Word& word) {
+  pdfkit_buffer out{nullptr, 0, nullptr};
+  const std::string request = R"({"values": [{"text": )" + json_quote(word.text) +
+                              R"(}], "pages": [)" + word.page + R"(], "context": 0})";
+  const Call found = take(pdfkit_find(document, request.c_str(), &out), out);
+  std::size_t offset = 0;
+  const std::optional<JsonText> json =
+      found.status == PDFKIT_OK ? JsonText::parse(found.text, offset) : std::nullopt;
+  if (!json) {
+    return std::nullopt;
+  }
+  const JsonText& answer = *json;
+  const JsonText::Node* values = answer.member(answer.root(), "values");
+  if (values == nullptr || values->items.empty()) {
+    return std::nullopt;
+  }
+  const JsonText::Node* list = answer.member(answer.node(values->items.front()), "occurrences");
+  for (std::size_t i = 0; list != nullptr && i < list->items.size(); ++i) {
+    const JsonText::Node* glyphs = answer.member(answer.node(list->items[i]), "glyphs");
+    if (glyphs == nullptr || glyphs->items.size() != 1) {
+      continue;
+    }
+    const JsonText::Node& range = answer.node(glyphs->items.front());
+    const JsonText::Node* first = answer.member(range, "first");
+    const JsonText::Node* last = answer.member(range, "last");
+    if (first != nullptr && last != nullptr && first->raw == word.first && last->raw == word.last) {
+      return i;
+    }
+  }
+  return std::nullopt;
 }
 
 // The located member: one occurrence of a repeated word redacted by its
@@ -184,14 +280,25 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
   const std::vector<Word> words = words_of(*answer);
   std::map<std::string, std::vector<std::size_t>> by_text;
   for (std::size_t i = 0; i < words.size(); ++i) {
-    if (located_word(words[i].text)) {
+    if (!words[i].duplicate && located_word(words[i].text)) {
       by_text[words[i].text].push_back(i);
+    }
+  }
+  // The visible occurrences a word may be picked at: those drawn at one
+  // place on several pages when any word has one.
+  std::map<std::string, std::vector<std::size_t>> at_repeated;
+  for (const auto& [text, indices] : by_text) {
+    for (const std::size_t i : indices) {
+      if (indices.size() >= 2 && words[i].visible && repeated(words, indices, words[i])) {
+        at_repeated[text].push_back(i);
+      }
     }
   }
   std::vector<std::string> pool;
   for (const auto& [text, indices] : by_text) {
     if (indices.size() >= 2 &&
-        std::ranges::any_of(indices, [&words](std::size_t i) { return words[i].visible; })) {
+        std::ranges::any_of(indices, [&words](std::size_t i) { return words[i].visible; }) &&
+        (at_repeated.empty() || at_repeated.contains(text))) {
       pool.push_back(text);
     }
   }
@@ -210,21 +317,57 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
       visible.push_back(i);
     }
   }
+  if (const auto shared = at_repeated.find(chosen); shared != at_repeated.end()) {
+    visible = shared->second;
+  }
   const Word& word = words[visible[dataset_splitmix(state) % visible.size()]];
   const std::size_t before = by_text[chosen].size();
-  const std::string matches = R"({"matches": [{"glyphs": {"page": )" + word.page +
-                              R"(, "first": )" + word.first + R"(, "last": )" + word.last +
-                              R"(}, "fingerprint": )" + json_quote(fingerprint->text) +
-                              R"(, "placeholder": "[REDACTED]"}]})";
+  // Half the files name the occurrence by its index in pdfkit_find's order.
+  std::optional<std::size_t> index;
+  if (dataset_splitmix(state) % 2 == 0) {
+    index = find_index(document, word);
+  }
+  const std::string matches =
+      index ? R"({"matches": [{"occurrence": {"text": )" + json_quote(chosen) + R"(, "page": )" +
+                  word.page + R"(, "index": )" + std::to_string(*index) +
+                  R"(}, "placeholder": "[REDACTED]"}]})"
+            : R"({"matches": [{"glyphs": {"page": )" + word.page + R"(, "first": )" + word.first +
+                  R"(, "last": )" + word.last + R"(}, "fingerprint": )" +
+                  json_quote(fingerprint->text) + R"(, "placeholder": "[REDACTED]"}]})";
   const std::string head = R"("word": )" + json_quote(chosen) + ", \"page\": " + word.page +
                            ", \"glyphs\": [" + word.first + ", " + word.last +
-                           "], \"box\": " + word.box + ", \"before\": " + std::to_string(before);
+                           "], \"box\": " + word.box +
+                           ", \"form\": " + (index ? "\"occurrence\"" : "\"glyphs\"") +
+                           ", \"repeated\": " + (at_repeated.contains(chosen) ? "true" : "false") +
+                           ", \"before\": " + std::to_string(before) +
+                           ", \"places_before\": " + places_of(words, chosen);
 
   pdfkit_buffer out{nullptr, 0, nullptr};
   pdfkit_edit* edit = nullptr;
   Call call = take(pdfkit_edit_new(document, &edit, &out), out);
   if (call.status == PDFKIT_OK) {
     call = take(pdfkit_redact_text(edit, matches.c_str(), &out), out);
+  }
+  // Whether the occurrence resolved to the glyphs of the word it names.
+  std::string same = "null";
+  if (index && call.status == PDFKIT_OK) {
+    same = "false";
+    std::size_t at = 0;
+    if (const std::optional<JsonText> answer_json = JsonText::parse(call.text, at)) {
+      const JsonText::Node* list = answer_json->member(answer_json->root(), "matches");
+      const JsonText::Node* first_match = list != nullptr && !list->items.empty()
+                                              ? &answer_json->node(list->items.front())
+                                              : nullptr;
+      const JsonText::Node* found =
+          first_match != nullptr ? answer_json->member(*first_match, "occurrences") : nullptr;
+      const JsonText::Node* glyphs =
+          found != nullptr && found->items.size() == 1
+              ? answer_json->member(answer_json->node(found->items.front()), "glyphs")
+              : nullptr;
+      if (glyphs != nullptr && glyphs->raw == "[[" + word.first + "," + word.last + "]]") {
+        same = "true";
+      }
+    }
   }
   std::string pdf;
   if (call.status == PDFKIT_OK) {
@@ -235,7 +378,8 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
   }
   pdfkit_edit_free(edit);
   if (call.status != PDFKIT_OK) {
-    return "{" + dataset_failure(call.status, call.text) + ", " + head + "}";
+    return "{" + dataset_failure(call.status, call.text) + ", " + head +
+           ", \"same_glyphs\": " + same + "}";
   }
   std::string self_check = "null";
   if (const std::optional<JsonText> report = JsonText::parse(call.text, offset)) {
@@ -247,6 +391,7 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
   }
   // The word's occurrences in the output, read back the same way.
   std::string after = "null";
+  std::string places_after = "null";
   {
     pdfkit_document* written = nullptr;
     const Call opened = take(pdfkit_open(reinterpret_cast<const std::uint8_t*>(pdf.data()),
@@ -256,7 +401,9 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
       const Call again = text_of(written);
       if (const std::optional<JsonText> reread =
               again.status == PDFKIT_OK ? JsonText::parse(again.text, offset) : std::nullopt) {
-        after = std::to_string(occurrences_of(words_of(*reread), chosen));
+        const std::vector<Word> written_words = words_of(*reread);
+        after = std::to_string(occurrences_of(written_words, chosen));
+        places_after = places_of(written_words, chosen);
       }
     }
     pdfkit_close(written);
@@ -271,6 +418,7 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
     return R"({"status": "error", "code": "output_failed", "message": "the output could not be written"})";
   }
   return R"({"status": "ok", "code": null, )" + head + ", \"after\": " + after +
+         ", \"places_after\": " + places_after + ", \"same_glyphs\": " + same +
          ", \"self_check\": " + self_check + ", \"output\": " + json_quote(relative) +
          ", \"sha256\": " + json_quote(Sha256::hex(data, pdf.size())) + "}";
 }

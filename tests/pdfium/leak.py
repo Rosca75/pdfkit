@@ -35,7 +35,9 @@
 # text inside the redacted word's box on its page of the output
 # (FPDFText_GetBoundedText, the box narrowed by a tenth of its width at each
 # side, so a neighbour whose box touches it is not read), which must not hold
-# the word. A word is a maximal run of letters, compared with case.
+# the word; whether PDFium reads the word inside that box of the input is
+# reported too, since a word it reads otherwise there is not one it counts.
+# A word is a maximal run of letters, compared with case.
 # With --images it checks an image treatment run instead: for every outcome
 # whose redact_images output was written, the encoded bytes of every treated
 # and every removed image are taken from the input by PDFium (each image
@@ -318,7 +320,9 @@ def check_located(pool, row: dict, run_dir: Path, part: dict) -> dict:
     left, bottom, right, top = part["box"]
     inset = (right - left) / 10.0
     box = [left + inset, bottom, right - inset, top]
-    before = pool.probe(common.file_path(row), ["text"])
+    # The input is read in the whole box, so the word's own letters are all inside it.
+    before = pool.probe(common.file_path(row), ["text", "bounded"],
+                        bounded=[[int(part["page"]) - 1, left, bottom, right, top]])
     after = pool.probe(run_dir / part["output"], ["text", "bounded"],
                        bounded=[[int(part["page"]) - 1, *box]])
     entry = {"word": word, "page": part["page"], "pdfkit_before": part.get("before"),
@@ -327,6 +331,8 @@ def check_located(pool, row: dict, run_dir: Path, part: dict) -> dict:
         return entry
     entry["pdfium_before"] = whole_words(before.get("text") or [], word)
     entry["pdfium_after"] = whole_words(after.get("text") or [], word)
+    # Whether PDFium reads the word, whole, inside the box of the input.
+    entry["read_at_location"] = whole_words([(before.get("bounded") or [""])[0] or ""], word) > 0
     inside = ((after.get("bounded") or [""])[0]) or ""
     entry["at_location"] = inside
     entry["leak"] = bool(fold(word)) and fold(word) in fold(inside.replace(PLACEHOLDER, " "))

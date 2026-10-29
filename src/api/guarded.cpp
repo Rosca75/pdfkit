@@ -42,6 +42,8 @@ void write_internal(pdfkit_buffer* out, const char* failed) noexcept {
 pdfkit_status status_of(platform::ErrorCode code) noexcept {
   switch (code) {
     case platform::ErrorCode::invalid_argument:
+    case platform::ErrorCode::occurrence_not_found:
+    case platform::ErrorCode::occurrence_ambiguous:
       return PDFKIT_E_INVALID_ARGUMENT;
     case platform::ErrorCode::self_check:
       return PDFKIT_E_SELF_CHECK;
