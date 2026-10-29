@@ -536,8 +536,9 @@ written, and the flags after them, so `{"equivalents": [["'", "’"]]}` finds
 one, or in a class and in `ignore`), a member that is not exactly one code
 point, an empty class, or a class or `ignore` that is not an array is
 `invalid_argument`. The scans of a string operand's codes and of a stream's
-bytes (`docs/DESIGN.md` §11 and §18) try each spelling the classes allow, up
-to 64 per string, and do not skip ignored characters.
+bytes (`docs/DESIGN.md` §11 and §18) look for the value without its ignored
+characters, in each spelling the classes allow (up to 64 per string), and
+skip no ignored character in the bytes they scan.
 
 The narrowings of an occurrence, each optional, all of them applying
 together:

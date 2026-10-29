@@ -69,9 +69,10 @@ a search, and the marked-content strings a search rewrites. Refused as
 `invalid_argument`: a member that is not one code point, a character in two
 classes or in a class and in `ignore`, an empty class, and a class or
 `ignore` that is not an array of strings. The byte scans of the codes (a
-search's `find_codes`, the self-check's stream scan) try every spelling the
-classes allow, up to 64 spellings per string, and do not skip ignored
-characters, because they look for bytes a producer wrote in one piece.
+search's `find_codes`, the self-check's stream scan) look for the value
+without its ignored characters, in every spelling the classes allow (up to
+64 per string), and skip no ignored character in the bytes they scan,
+because they look for bytes a producer wrote in one piece.
 With `{"equivalents": [["'", "’"]]}`, `O'Brien` finds `O’Brien`.
 
 **4. The tie of the overlap rule.** Between overlapping occurrences with

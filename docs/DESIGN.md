@@ -754,9 +754,11 @@ placeholder:
   where the text does not read it (a code no rung reads, a font whose
   `/Differences` name other glyphs, letters spread out of reading order),
   because an extractor reading the codes and the self-check's byte scan both
-  find it there; these byte scans try every spelling the caller's classes
-  allow, up to 64 per string, and skip no ignored character, because a
-  producer writes the bytes of one spelling in one piece. For the same reason
+  find it there; these byte scans look for the string without its ignored
+  characters (absent on both sides, as above), in every spelling the
+  caller's classes allow, up to 64 per string, and skip no ignored character
+  in the bytes they scan, because a producer writes the bytes of one
+  spelling in one piece. For the same reason
   a text operator that shows no glyph (no
   font is current), an operator Annex A does not know, a comment and the bytes
   a lexer recovery skipped go from a content stream when they spell the

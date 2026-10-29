@@ -532,3 +532,20 @@ TEST_CASE("whether a named list is edited where it lives is decided over the wri
   CHECK(pdfkit::test::contains_marker(alone.pdf, "/P1 BDC"));
   CHECK_FALSE(pdfkit::test::contains_marker(alone.pdf, "Smith"));
 }
+
+TEST_CASE("a search removes a string a list names by reference, as find reports it") {
+  pdfkit::test::TextDocument fixture;
+  const std::uint32_t label = fixture.add("(Label of Smith)");
+  // A content stream holds no reference, so the list is named.
+  fixture.page("BT /F1 10 Tf 72 700 Td /Span /P1 BDC (shown) Tj EMC ET",
+               "/Properties << /P1 << /Label " + std::to_string(label) + " 0 R >> >>");
+  const std::string file = fixture.bytes();
+  REQUIRE(find_strings(file, "Smith").size() == 1);
+  const pdfkit::test::Redaction result =
+      pdfkit::test::redact(file, R"({"matches": [{"search": "Smith", "placeholder": "[X]"}]})");
+  INFO(result.matches, result.report);
+  REQUIRE(result.match_status == PDFKIT_OK);
+  REQUIRE(result.write_status == PDFKIT_OK);
+  CHECK(find_strings(result.pdf, "Smith").empty());
+  CHECK(find_strings(result.pdf, "[X]").size() == 1);
+}

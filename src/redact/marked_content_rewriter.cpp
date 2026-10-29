@@ -117,7 +117,7 @@ std::optional<syntax::Dictionary> MarkedContentRewriter::rewrite(
       continue;
     }
     bool any = false;
-    syntax::Object replaced = replace_strings(value, needles, 0, any);
+    syntax::Object replaced = replace_strings(value, needles, 0, any, resolve);
     if (any) {
       out.set(key, std::move(replaced));
       changed = true;
@@ -129,11 +129,22 @@ std::optional<syntax::Dictionary> MarkedContentRewriter::rewrite(
   return out;
 }
 
-syntax::Object MarkedContentRewriter::replace_strings(const syntax::Object& value,
-                                                      std::span<const MatchFinder::Match> needles,
-                                                      int depth, bool& changed) {
+syntax::Object MarkedContentRewriter::replace_strings(
+    const syntax::Object& value, std::span<const MatchFinder::Match> needles, int depth,
+    bool& changed, const std::function<syntax::Object(const syntax::Object&)>& resolve) {
   constexpr int max_depth = 32;
   if (depth > max_depth) {
+    return value;
+  }
+  // The strings behind a reference are the list's strings too (PropertyStrings
+  // reads them so); the depth bounds a cycle of references.
+  if (value.reference()) {
+    bool here = false;
+    syntax::Object replaced = replace_strings(resolve(value), needles, depth + 1, here, resolve);
+    if (here) {
+      changed = true;
+      return replaced;
+    }
     return value;
   }
   if (const syntax::Object::String* string = value.string()) {
@@ -147,7 +158,7 @@ syntax::Object MarkedContentRewriter::replace_strings(const syntax::Object& valu
     syntax::Object::Array out;
     bool any = false;
     for (const syntax::Object& item : *items) {
-      out.push_back(replace_strings(item, needles, depth + 1, any));
+      out.push_back(replace_strings(item, needles, depth + 1, any, resolve));
     }
     changed = changed || any;
     return any ? syntax::Object::make_array(std::move(out)) : value;
@@ -157,7 +168,7 @@ syntax::Object MarkedContentRewriter::replace_strings(const syntax::Object& valu
     bool any = false;
     for (const auto& [key, item] : dictionary->entries()) {
       bool here = false;
-      syntax::Object replaced = replace_strings(item, needles, depth + 1, here);
+      syntax::Object replaced = replace_strings(item, needles, depth + 1, here, resolve);
       if (here) {
         out.set(key, std::move(replaced));
         any = true;
