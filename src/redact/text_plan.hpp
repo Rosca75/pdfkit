@@ -23,12 +23,20 @@
 // holding the change when the form is drawn more than once, and every other
 // draw keeps the original (FormSplitter). An occurrence match names one
 // occurrence of a text on a page by the narrowings of docs/ABI.md section
-// 4.11 and resolves to the glyph ranges pdfkit_find reports for it.
+// 4.11 and resolves to the glyph ranges pdfkit_find reports for it. A
+// string match names one range of one string of a marked-content property
+// list (PropertyStrings) at one place: it is kept with the text it removes
+// and how often the page's marked-content strings held that text, which
+// the self-check compares with the output page. Its edit of a list named
+// through /Properties is held until the write, which decides over the
+// written pages whether the list is edited where it lives or written inline
+// in the operator.
 
 #ifndef PDFKIT_REDACT_TEXT_PLAN_HPP
 #define PDFKIT_REDACT_TEXT_PLAN_HPP
 
 #include "redact/match_finder.hpp"
+#include "redact/property_strings.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
 #include "text/glyph_record.hpp"
@@ -91,6 +99,20 @@ class TextPlan {
     bool resources = false;
   };
 
+  // A string edit of a list named through /Properties, on one operator:
+  // the list as written with the page's edits of it and the plan's
+  // searches applied, and the operator written with that list inline.
+  // TextRedactor::apply writes the list where it lives when every operator
+  // of the written pages naming it carries the same list, and inline in
+  // each operator otherwise, the named original kept for the others.
+  struct NamedEdit {
+    PropertyStrings::Identity identity;
+    std::size_t walk = 0;
+    std::size_t operation = 0;
+    syntax::Dictionary in_place;
+    std::string inline_operation;
+  };
+
   struct PageWork {
     Target content;
     std::map<std::uint32_t, Target> forms;
@@ -112,6 +134,8 @@ class TextPlan {
     // Every walk on the form path of a split, by walk index (the page's own
     // content, walk 0, is not listed).
     std::map<std::size_t, Walk> walks;
+    // The string edits of named lists, decided at the write.
+    std::vector<NamedEdit> named_edits;
   };
 
   // One stretch of a page's reading-order glyph list, [first, last).
@@ -151,6 +175,43 @@ class TextPlan {
     std::optional<std::string> after;
   };
 
+  // A string match as the caller gives it: the page, the list's page-wide
+  // index, the path to the string and the code-point range [first, last),
+  // with the other keys of a pdfkit_find entry the caller copied, each
+  // checked against the document (an object of 0 is null).
+  struct StringTarget {
+    std::uint32_t page = 0;
+    std::size_t list = 0;
+    PropertyStrings::Path path;
+    std::size_t first = 0;
+    std::size_t last = 0;
+    std::optional<std::string> surface;
+    std::optional<std::uint32_t> stream;
+    std::optional<std::size_t> operation;
+    std::optional<std::optional<std::string>> properties;
+    std::optional<std::uint32_t> object;
+    std::optional<std::string> string;
+    std::optional<std::string> text;
+    std::optional<std::string> glued_before;
+    std::optional<std::string> glued_after;
+  };
+
+  // A string match recorded: the match, its place, the text it removes, the
+  // surface of the string and how many times the input page's marked-content
+  // strings held the text.
+  struct StringEdit {
+    std::size_t match = 0;
+    std::uint32_t page = 0;
+    std::size_t list = 0;
+    PropertyStrings::Path path;
+    std::size_t first = 0;
+    std::size_t last = 0;
+    std::string text;
+    std::string surface;
+    std::string placeholder;
+    std::size_t before = 0;
+  };
+
   // The glyph ranges of the one occurrence query names on its page, in
   // pdfkit_find's order (page reading order, then first glyph), every
   // narrowing applying. Throws platform::Error: invalid_argument for a page
@@ -176,6 +237,8 @@ class TextPlan {
   std::vector<MatchFinder::Match> needles;
   // The glyph-range matches, verified at their location.
   std::vector<Located> located;
+  // The string matches, verified on their page.
+  std::vector<StringEdit> strings;
   std::map<std::uint32_t, PageWork> pages;
   // The forms each page read draws, by object number.
   std::map<std::uint32_t, std::set<std::uint32_t>> forms_drawn;

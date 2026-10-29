@@ -54,6 +54,7 @@ add_executable(pdfkit_tests
   redact/match_finder_locate_test.cpp
   redact/placeholder_fitting_test.cpp
   redact/placeholder_font_test.cpp
+  redact/property_strings_test.cpp
   redact/reader_order_test.cpp
   redact/redact_text_test.cpp
   redact/api_redact_images_test.cpp

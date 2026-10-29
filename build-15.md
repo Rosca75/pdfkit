@@ -244,6 +244,12 @@ documentation sweep. 7. The merge checks once.
   `office` rows, made on the laptop, are absent, and the Liberation archive
   came from Fedora's lookaside cache, whose copy has the pinned SHA-256,
   because the proxy refuses GitHub's attachment URL.
+- Item 6 as built: a `string` match accepts the find entry's `occurrence`
+  key without checking it (it indexes one value's answer, which the document
+  does not hold); references inside a property list are followed when its
+  strings are read (32 deep, 65,536 items per list); an `/ActualText` is left
+  out only when a glyph names its span, so an inner `/ActualText` under an
+  outer one is reported.
 - The branch merges through a pull request rather than a local merge
   (`CLAUDE.md` §11), because the session may push only its designated
   branch; the tag `v0.2.0-preview` is pushed on the merged tip, which

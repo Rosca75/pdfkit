@@ -378,22 +378,25 @@ internal sealed class Session
                     throw new AbiFailure(_file, "pdfkit_find", "a value lacks its strings");
                 }
             }
-            // ABI 2 folds only what is asked: the marker in lower case is found
-            // with case folding and not without it.
-            int[] counts = new int[2];
-            string[] foldings = { "{}", "{\"case\": true}" };
-            for (int i = 0; i < 2; ++i)
+            // ABI 2 folds only what is asked: an upper-case E finds the page's
+            // lower-case ones only with case folding.
+            string[] requests =
             {
-                status = Native.pdfkit_find(document,
-                    "{\"values\": [{\"text\": \"zebulon quarterfield\", \"folding\": " + foldings[i] +
-                    "}], \"pages\": [1]}", ref buffer);
-                using JsonDocument lower = Json("pdfkit_find", Take("pdfkit_find", status, ref buffer, Status.Ok));
-                counts[i] = lower.RootElement.GetProperty("values")[0].GetProperty("count").GetInt32();
+                "{\"values\": [{\"text\": \"e\"}], \"pages\": [1]}",
+                "{\"values\": [{\"text\": \"E\"}], \"pages\": [1]}",
+                "{\"values\": [{\"text\": \"E\", \"folding\": {\"case\": true}}], \"pages\": [1]}",
+            };
+            int[] counts = new int[3];
+            for (int i = 0; i < 3; ++i)
+            {
+                status = Native.pdfkit_find(document, requests[i], ref buffer);
+                using JsonDocument cased = Json("pdfkit_find", Take("pdfkit_find", status, ref buffer, Status.Ok));
+                counts[i] = cased.RootElement.GetProperty("values")[0].GetProperty("count").GetInt32();
             }
-            if (counts[0] != 0 || counts[1] == 0)
+            if (counts[2] < counts[0] || counts[2] < counts[1] || (counts[0] > 0 && counts[2] <= counts[1]))
             {
                 throw new AbiFailure(_file, "pdfkit_find",
-                    $"the lower-case marker counts {counts[0]} and {counts[1]}, expected 0 unfolded and more with case folding");
+                    $"e, E and folded E count {counts[0]}, {counts[1]} and {counts[2]}: case folding is not applied only when asked");
             }
         }
         status = Native.pdfkit_find(document, "{\"values\": [{\"text\": \"\"}]}", ref buffer);

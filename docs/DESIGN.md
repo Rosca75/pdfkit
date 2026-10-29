@@ -709,6 +709,13 @@ placeholder:
   must leave exactly one occurrence (`occurrence_not_found` and
   `occurrence_ambiguous` otherwise), because pdfkit applies no rule of its
   own to choose among them (CLAUDE.md §5).
+- **A string occurrence**: one range of code points of one string of a
+  marked-content property list that `pdfkit_find` reported (below), named by
+  its page, the list's index on the page, the path from the list to the
+  string and the range, with the document fingerprint; every other key of the
+  report it carries must agree with the document. It is an expression at a
+  location, as a glyph range is: it replaces that range by the placeholder in
+  that string at that operator (§12) and is verified on its page (§18).
 - **Search strings** with the caller's folding options, matched over each page's
   reading-order text, hidden blocks included. pdfkit folds only what the
   caller asks for (CLAUDE.md §5): every option below is off unless the caller
@@ -830,6 +837,25 @@ after it; in another order, the glyphs that order reads next to it up to a
 word gap or a white-space glyph on each side. pdfkit decides nothing with
 them: whether an occurrence stands as a word is the caller's rule.
 
+**Strings outside the page text.** A search also rewrites the strings of the
+marked-content property lists (§12), which the write keeps and an extractor
+copies, so `pdfkit_find` reports a value's occurrences in them apart from
+the glyph occurrences (`strings`, `docs/ABI.md` §4.16), each a string
+occurrence a caller can send back. The lists are those of every `BDC` and
+`DP` of the page's walks (the page's content and every draw of a form),
+inline or named through the walk's `/Properties`, numbered on the page in
+walk order then operator order; an `/OC` list is left out, because every
+write removes it (§15). Every string of a list at any depth (dictionaries and
+arrays, references followed, at most 32 deep) is read as a text string; its
+surface is `alt` for a top-level `/Alt`, `expansion` for `/E`, `actual_text`
+for `/ActualText` and `property` for any other. An `/ActualText` that a
+glyph reads as its text (the outermost one over a glyph, §6.1) is left out,
+because the page text holds it and the glyph occurrences report it. The
+occurrences are found by the search of a string that is no page text
+(`MatchFinder::ranges_in`) under the value's folding, their offsets in code
+points, and their glued letters are the string's characters next to the range
+up to white space on each side.
+
 ## 12. Text surgery
 
 The matched glyphs leave the content stream and every other glyph keeps the
@@ -875,6 +901,21 @@ position the original gave it (CLAUDE.md §5).
   artifact's `/Contents`, a producer's own key) has the redacted strings
   replaced too. The property list is rewritten inline in its operator or in
   the `/Properties` resource that names it.
+- **A string occurrence** (§11) replaces its range by its placeholder in that
+  string, before the values are replaced in the same list, so its offsets
+  read the original; on a span whose glyphs are all removed the rule above
+  still wins. Ranges on one string follow the overlap rule of §11, and two
+  identical ones are one. Where the list lives decides how the edit stays at
+  its place: a list inline in the page's content is rewritten in its
+  operator; one inline in a form is rewritten in that draw's copy of the form
+  when the form is drawn more than once (`FormSplitter`, as a located glyph
+  edit is) and in the form itself otherwise; a list named through
+  `/Properties` is rewritten where it lives (its object, or its entry in the
+  resources) when every operator naming it in the written pages carries the
+  same edit, and otherwise is written inline, with the edit and its values
+  resolved, into the operators the edit names, the named original kept for
+  the others. The draws are counted over the written pages when the plan is
+  written, because a page selection changes them.
 - Type 3 glyphs, render-mode-3 text and every hidden class are removed the same
   way; a duplicate's both operators are edited.
 - **Clip text (render mode 7, and the clip half of modes 4 to 6)**: a glyph
@@ -1161,6 +1202,7 @@ rewritten metadata field is verified in the metadata.
 |---|---|---|
 | a search string (a value) | every occurrence in every order of every page (§11) | every surface below, under the string's folding |
 | a glyph range or an occurrence (an expression at a location) | the glyphs of its ranges and every copy of its text drawn at the place (§11); inside a form drawn elsewhere too, from a copy of the form that this draw alone reads (§12) | that location: no occurrence of its text, in the reading order or any other order of §11, has a glyph (outside the placeholder font) whose box's centre lies in the box of a glyph the match removed; no string operator drawing a glyph there holds a code run the answer reported under `codes` (at a code boundary); no `/ActualText`, `/Alt` or `/E` of a span over the place (one whose `BDC` ... `EMC` encloses a glyph there, the placeholder included, or whose `/ActualText` a glyph there names) holds the text. Nothing elsewhere is searched for it |
+| a string occurrence (an expression in one marked-content string) | its code points in that string, at that operator alone (§12) | that page: its marked-content strings (§11), read with no folding and the placeholders cut out, hold its text fewer times than the input page's did by at least the number of distinct string occurrences of that text removed there. Nothing elsewhere is searched for it |
 | a rewritten metadata field | the Info entry and its paired XMP properties | each of its source values (the Info value, each paired XMP value and array item), of any length, with every folding on, in the Info dictionary, the XMP packet and every string object outside content streams; the page text is not searched for it, because the document may say it for another reason (an author "PC" in a page about a PC) |
 
 The location is the removed glyphs' own boxes and a glyph is there by its

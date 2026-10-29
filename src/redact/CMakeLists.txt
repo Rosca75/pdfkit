@@ -16,6 +16,7 @@ target_sources(pdfkit_core PRIVATE
   optional_content_remover.cpp
   placeholder_drawing.cpp
   placeholder_fitting.cpp
+  property_strings.cpp
   self_check.cpp
   text_plan.cpp
   text_redactor.cpp

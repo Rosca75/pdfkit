@@ -11,7 +11,10 @@
 // one place. An occurrence names one occurrence of a text on a page by its
 // index in pdfkit_find's order, a rectangle it meets, or the words before
 // or after it, and is resolved to the glyph ranges pdfkit_find reports for
-// it, then read as a glyph range. Every match is checked before any is
+// it, then read as a glyph range. A string match names one range of one
+// string of a marked-content property list as pdfkit_find reports it (the
+// page, the list, the path and the range, with any other key of the entry
+// checked against the document). Every match is checked before any is
 // recorded, so a refused call leaves the plan as it was. The text is
 // removed when the plan is written.
 
@@ -27,6 +30,7 @@
 #include "platform/json_writer.hpp"
 #include "redact/match_finder.hpp"
 #include "redact/placeholder_fitting.hpp"
+#include "redact/property_strings.hpp"
 #include "redact/text_plan.hpp"
 #include "redact/text_redactor.hpp"
 
@@ -36,6 +40,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -47,7 +52,7 @@ using pdfkit::redact::MatchFinder;
 using pdfkit::redact::TextPlan;
 
 constexpr std::string_view shape =
-    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"})";
+    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"} or {"string": {"page": <n>, "list": <n>, "path": [<keys and indices>], "first": <n>, "last": <n>, and any other key of the pdfkit_find entry}, "fingerprint": "<from pdfkit_find>", "placeholder": "<text>"})";
 constexpr std::string_view default_placeholder = "[REDACTED]";
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
@@ -173,11 +178,111 @@ TextPlan::OccurrenceQuery read_occurrence(const JsonValue& value, std::size_t in
   return query;
 }
 
+// A whole number at least 0 of the "string" object.
+std::size_t whole_member(const JsonValue& value, std::size_t index, const std::string& key) {
+  const std::optional<std::int64_t> number =
+      value.kind() == JsonValue::Kind::number ? value.as_int64() : std::nullopt;
+  if (!number || *number < 0) {
+    refuse(where(index) + " gives the string's \"" + key + "\" as no whole number",
+           R"(copy "page", "list", "first", "last" and the other numbers of the pdfkit_find )"
+           "entry unchanged");
+  }
+  return static_cast<std::size_t>(*number);
+}
+
+// The "string" object of a match: a pdfkit_find string entry.
+TextPlan::StringTarget read_string(const JsonValue& value, std::size_t index) {
+  if (value.kind() != JsonValue::Kind::object) {
+    refuse(where(index) + " gives \"string\" as " + std::string(JsonValue::kind_name(value.kind())),
+           R"(give the string as {"page": 1, "list": 0, "path": ["Alt"], "first": 9, "last": 14})");
+  }
+  TextPlan::StringTarget target;
+  bool page = false;
+  bool list = false;
+  bool path = false;
+  bool first = false;
+  bool last = false;
+  const auto narrow = [](std::size_t number) {
+    return number > 0xFFFFFFFFU ? 0xFFFFFFFFU : static_cast<std::uint32_t>(number);
+  };
+  for (const auto& [key, item] : value.as_object()) {
+    if (key == "page") {
+      page = true;
+      target.page = narrow(whole_member(item, index, key));
+    } else if (key == "list") {
+      list = true;
+      target.list = whole_member(item, index, key);
+    } else if (key == "first") {
+      first = true;
+      target.first = whole_member(item, index, key);
+    } else if (key == "last") {
+      last = true;
+      target.last = whole_member(item, index, key);
+    } else if (key == "occurrence") {
+      // Its index among the value's strings: it names nothing in the
+      // document, so it is read and not checked.
+      (void)whole_member(item, index, key);
+    } else if (key == "stream") {
+      target.stream = narrow(whole_member(item, index, key));
+    } else if (key == "operator") {
+      target.operation = whole_member(item, index, key);
+    } else if (key == "object") {
+      target.object =
+          item.kind() == JsonValue::Kind::null ? 0U : narrow(whole_member(item, index, key));
+    } else if (key == "properties") {
+      target.properties = item.kind() == JsonValue::Kind::null
+                              ? std::optional<std::string>()
+                              : std::optional<std::string>(text_member(item, index, key));
+    } else if (key == "surface") {
+      target.surface = text_member(item, index, key);
+    } else if (key == "string") {
+      target.string = text_member(item, index, key);
+    } else if (key == "text") {
+      target.text = text_member(item, index, key);
+    } else if (key == "glued_before") {
+      target.glued_before = text_member(item, index, key);
+    } else if (key == "glued_after") {
+      target.glued_after = text_member(item, index, key);
+    } else if (key == "path") {
+      path = true;
+      const bool steps =
+          item.kind() == JsonValue::Kind::array && !item.as_array().empty() &&
+          item.as_array().front().kind() == JsonValue::Kind::string &&
+          std::ranges::all_of(item.as_array(), [](const JsonValue& step) {
+            return step.kind() == JsonValue::Kind::string ||
+                   (step.kind() == JsonValue::Kind::number && step.as_int64().value_or(-1) >= 0);
+          });
+      if (!steps) {
+        refuse(where(index) + " gives the string's \"path\" as no path",
+               R"(give the path as pdfkit_find reports it: keys and array indices from the list, )"
+               R"(a key first, such as ["Alt"])");
+      }
+      for (const JsonValue& step : item.as_array()) {
+        if (step.kind() == JsonValue::Kind::string) {
+          target.path.emplace_back(step.as_string());
+        } else {
+          target.path.emplace_back(static_cast<std::size_t>(*step.as_int64()));
+        }
+      }
+    } else {
+      refuse(where(index) + " names \"" + key + R"(" in "string")",
+             "give only the keys of a pdfkit_find string entry");
+    }
+  }
+  if (!page || !list || !path || !first || !last) {
+    refuse(where(index) + R"( gives a string without "page", "list", "path", "first" and "last")",
+           "copy the string entry of pdfkit_find unchanged");
+  }
+  return target;
+}
+
 // A match, the ranges of a glyph range given as an array (empty for one
-// range or a search), and the occurrence it names when it is one.
+// range or a search), the occurrence it names when it is one, and the
+// string it names when it is a string match.
 MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
                               std::vector<TextPlan::Range>& ranges,
-                              std::optional<TextPlan::OccurrenceQuery>& query) {
+                              std::optional<TextPlan::OccurrenceQuery>& query,
+                              std::optional<TextPlan::StringTarget>& target) {
   if (item.kind() != JsonValue::Kind::object) {
     refuse(where(index) + " is " + std::string(JsonValue::kind_name(item.kind())),
            "write each match as an object");
@@ -188,6 +293,7 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
   bool search = false;
   bool glyphs = false;
   bool occurrence = false;
+  bool string = false;
   for (const auto& [name, value] : item.as_object()) {
     if (name == "search") {
       search = true;
@@ -202,6 +308,11 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
       occurrence = true;
       match.kind = MatchFinder::Match::Kind::glyphs;
       query = read_occurrence(value, index);
+    } else if (name == "string") {
+      string = true;
+      match.kind = MatchFinder::Match::Kind::string;
+      target = read_string(value, index);
+      match.page = target->page;
     } else if (name == "glyphs") {
       glyphs = true;
       match.kind = MatchFinder::Match::Kind::glyphs;
@@ -223,19 +334,24 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
       }
     } else {
       refuse(where(index) + " names the unknown key \"" + name + "\"",
-             "use search, folding, glyphs, occurrence, fingerprint and placeholder only");
+             "use search, folding, glyphs, occurrence, string, fingerprint and placeholder only");
     }
   }
-  const int forms = (search ? 1 : 0) + (glyphs ? 1 : 0) + (occurrence ? 1 : 0);
+  const int forms = (search ? 1 : 0) + (glyphs ? 1 : 0) + (occurrence ? 1 : 0) + (string ? 1 : 0);
   if (forms != 1) {
-    refuse(where(index) + (forms == 0
-                               ? R"( has none of "search", "glyphs" and "occurrence")"
-                               : R"( has more than one of "search", "glyphs" and "occurrence")"),
-           "give a match one of a search string, a glyph range or an occurrence");
+    refuse(
+        where(index) +
+            (forms == 0 ? R"( has none of "search", "glyphs", "occurrence" and "string")"
+                        : R"( has more than one of "search", "glyphs", "occurrence" and "string")"),
+        "give a match one of a search string, a glyph range, an occurrence or a string");
   }
   if (occurrence && item.find("folding") != nullptr) {
     refuse(where(index) + R"( gives "folding" beside "occurrence")",
            R"(give the occurrence's folding inside "occurrence")");
+  }
+  if (string && item.find("folding") != nullptr) {
+    refuse(where(index) + R"( gives "folding" beside "string")",
+           "give a string match without a folding: it names one range of one string");
   }
   return match;
 }
@@ -246,6 +362,27 @@ void write_box(pdfkit::platform::JsonWriter& writer, const pdfkit::text::Rect& b
     writer.number(std::round(value * 100.0) / 100.0);
   }
   writer.end_array();
+}
+
+// A string match's occurrence: its place and the text it replaces.
+void write_string_found(pdfkit::platform::JsonWriter& writer,
+                        const pdfkit::redact::TextRedactor::Found& found) {
+  writer.begin_object();
+  writer.key("page").unsigned_integer(found.page);
+  writer.key("list").unsigned_integer(found.list);
+  writer.key("path").begin_array();
+  for (const pdfkit::redact::PropertyStrings::Step& step : found.path) {
+    if (const std::string* key = std::get_if<std::string>(&step)) {
+      writer.string(*key);
+    } else {
+      writer.unsigned_integer(std::get<std::size_t>(step));
+    }
+  }
+  writer.end_array();
+  writer.key("first").unsigned_integer(found.first);
+  writer.key("last").unsigned_integer(found.last);
+  writer.key("text").string(found.text);
+  writer.end_object();
 }
 
 }  // namespace
@@ -270,8 +407,9 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
     std::vector<std::vector<TextPlan::Range>> ranges(list->as_array().size());
     matches.reserve(list->as_array().size());
     std::vector<std::optional<TextPlan::OccurrenceQuery>> queries(list->as_array().size());
+    std::vector<std::optional<TextPlan::StringTarget>> targets(list->as_array().size());
     for (std::size_t i = 0; i < list->as_array().size(); ++i) {
-      matches.push_back(read_match(list->as_array()[i], i, ranges[i], queries[i]));
+      matches.push_back(read_match(list->as_array()[i], i, ranges[i], queries[i], targets[i]));
     }
     // Each occurrence resolved to its glyph ranges on this document, then
     // read as a glyph range.
@@ -286,7 +424,8 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
     const std::vector<MatchFinder::Match> given = matches;
     const std::vector<std::vector<TextPlan::Range>> arrays = ranges;
     const std::vector<pdfkit::redact::TextRedactor::MatchReport> reports =
-        pdfkit::redact::TextRedactor::add(*handle.plan, std::move(matches), std::move(ranges));
+        pdfkit::redact::TextRedactor::add(*handle.plan, std::move(matches), std::move(ranges),
+                                          std::move(targets));
 
     pdfkit::platform::JsonWriter writer;
     writer.begin_object();
@@ -297,7 +436,11 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       writer.begin_object();
       writer.key("match").unsigned_integer(i);
       const bool search = match.kind == MatchFinder::Match::Kind::search;
-      writer.key("kind").string(search ? "search" : queries[i] ? "occurrence" : "glyphs");
+      const bool string = match.kind == MatchFinder::Match::Kind::string;
+      writer.key("kind").string(search       ? "search"
+                                : string     ? "string"
+                                : queries[i] ? "occurrence"
+                                             : "glyphs");
       if (search) {
         writer.key("search").string(match.search);
       }
@@ -305,6 +448,10 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       writer.key("count").unsigned_integer(reports[i].occurrences.size());
       writer.key("occurrences").begin_array();
       for (const pdfkit::redact::TextRedactor::Found& found : reports[i].occurrences) {
+        if (string) {
+          write_string_found(writer, found);
+          continue;
+        }
         writer.begin_object();
         writer.key("page").unsigned_integer(found.page);
         // A glyph range given as an array is answered with its ranges.

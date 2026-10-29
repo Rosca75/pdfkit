@@ -69,7 +69,9 @@ class MatchFinder {
   };
 
   struct Match {
-    enum class Kind : std::uint8_t { search, glyphs };
+    // A string match (a range of a marked-content string) is found by
+    // PropertyStrings, not here; its kind keeps it out of every search.
+    enum class Kind : std::uint8_t { search, glyphs, string };
     Kind kind = Kind::search;
     // A search: the string, as UTF-8, and its folding.
     std::string search;

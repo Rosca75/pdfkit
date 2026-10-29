@@ -13,6 +13,12 @@
 //     holds the codes the match removed; no /ActualText, /Alt or /E of a
 //     marked-content span drawing a glyph there holds its text. Nothing
 //     elsewhere is searched for it;
+//   - a string match (one range of one marked-content string) is verified on
+//     its output page: the page's marked-content strings (PropertyStrings)
+//     hold its text, code point for code point, fewer times than the input
+//     page's did by at least the number of string matches of that text on
+//     that page, because the edit removes one occurrence where it was and
+//     the strings elsewhere may say the text for another reason;
 //   - an original value of a rewritten metadata field is searched for in the
 //     Info dictionary, the XMP packet and the string objects, whatever its
 //     length, and not in the page text, where the document may say it for
@@ -88,21 +94,34 @@ class SelfCheck {
     std::vector<std::string> codes;
   };
 
+  // The string matches of one text on an output page: the input page's
+  // marked-content strings held the text before times, and edits of those
+  // occurrences were replaced; surface names the first edit's string.
+  struct StringCheck {
+    std::string text;
+    std::uint32_t page = 0;
+    std::string surface;
+    std::size_t before = 0;
+    std::size_t edits = 0;
+  };
+
   // What one check verifies, by kind of request.
   struct Needles {
     std::span<const MatchFinder::Match> values;
     std::span<const Located> located;
-    // Searched under the default folding.
+    // Searched with every folding on.
     std::span<const std::string> metadata;
     // The values the caller wrote into the metadata fields, cut out of the
     // metadata surfaces before the originals are searched, as placeholders
     // are.
     std::span<const std::string> written;
+    std::span<const StringCheck> strings{};
   };
 
   struct Result {
     std::vector<Survivor> survivors;
-    // Every request verified: values, located matches and metadata values.
+    // Every request verified: values, located matches, string matches (one
+    // per text and page) and metadata values.
     std::size_t strings = 0;
     std::size_t located = 0;
     std::size_t metadata_values = 0;
@@ -122,8 +141,8 @@ class SelfCheck {
                                   std::span<const MatchFinder::Match> needles,
                                   std::span<const std::string> placeholders,
                                   const std::set<std::uint32_t>* pages = nullptr);
-  // The same with every kind of request; the pages of the located matches
-  // are read whatever pages names.
+  // The same with every kind of request; the pages of the located and the
+  // string matches are read whatever pages names.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                   const Needles& needles, std::span<const std::string> placeholders,
                                   const std::set<std::uint32_t>* pages = nullptr);

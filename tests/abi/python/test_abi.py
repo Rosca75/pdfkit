@@ -211,17 +211,17 @@ class Session:
                         self.fail("pdfkit_find", "an occurrence lacks glued_before or glued_after")
                 if not isinstance(value.get("strings"), list):
                     self.fail("pdfkit_find", "a value lacks its strings")
-            # ABI 2 folds only what is asked: the marker in lower case is found
-            # with case folding and not without it.
-            folded = []
-            for folding in ({}, {"case": True}):
-                lower = utf8(json.dumps({"values": [{"text": MARKER.lower(), "folding": folding}],
-                                         "pages": [1]}))
-                folded.append(self.json("pdfkit_find", self.call("pdfkit_find", document, lower))
+            # ABI 2 folds only what is asked: an upper-case E finds the page's
+            # lower-case ones only with case folding.
+            counts = []
+            for text, folding in (("e", {}), ("E", {}), ("E", {"case": True})):
+                request = utf8(json.dumps({"values": [{"text": text, "folding": folding}], "pages": [1]}))
+                counts.append(self.json("pdfkit_find", self.call("pdfkit_find", document, request))
                               ["values"][0]["count"])
-            if folded[0] != 0 or folded[1] == 0:
-                self.fail("pdfkit_find", f"the lower-case marker counts {folded}, expected 0 unfolded "
-                                         "and more than 0 with case folding")
+            lower, upper, folded = counts
+            if folded < lower or folded < upper or (lower > 0 and folded <= upper):
+                self.fail("pdfkit_find", f"e, E and folded E count {counts}: case folding is not "
+                                         "applied only when asked")
         self.call("pdfkit_find", document, b'{"values": [{"text": ""}]}',
                   allowed=(INVALID_ARGUMENT, NOT_IMPLEMENTED))
 
