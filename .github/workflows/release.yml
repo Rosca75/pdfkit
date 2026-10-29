@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# Builds the release package of a tag on a hosted Windows runner and attaches
+# it to the tag's GitHub release, creating the release when the tag has none.
+# Uploads from the laptop fail through the corporate proxy (uploads.github.com
+# answers 503), so the package is built where the upload works. The build is
+# build/package.py with the pinned WinLibs GCC and GNU ld, the toolchain the
+# laptop releases with; the job prints the zip's SHA-256 so it can be compared
+# with the laptop's package of the same tag. Started by pushing a tag v*, or by
+# hand for an existing tag.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The existing tag to package, e.g. v0.1.0-preview"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      # WinLibs GCC 16.1.0 (UCRT, POSIX threads, SEH), release r2, as on the laptop.
+      WINLIBS_URL: https://github.com/brechtsanders/winlibs_mingw/releases/download/16.1.0posix-14.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-16.1.0-mingw-w64ucrt-14.0.0-r2.zip
+      WINLIBS_SHA256: 78eff1e2e804b6a6320c713f084b8f820c662104a24cea6a3bfcab82032bdd60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the pinned WinLibs toolchain
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\winlibs.zip"
+          Invoke-WebRequest -Uri $env:WINLIBS_URL -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($hash -ne $env:WINLIBS_SHA256) { throw "WinLibs archive hash $hash, expected $env:WINLIBS_SHA256" }
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\winlibs"
+          "$env:RUNNER_TEMP\winlibs\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Build and package the release preset
+        run: python build/package.py
+
+      - name: Attach the package to the tag's release
+        shell: pwsh
+        run: |
+          $zips = @(Get-ChildItem dist -Filter "pdfkit-*-windows-x64.zip")
+          if ($zips.Count -ne 1) { throw "expected one package in dist/, found $($zips.Count)" }
+          $zip = $zips[0].FullName
+          "SHA-256 $((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower())  $($zips[0].Name)"
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            # A tag with a label (v0.1.0-preview) is a pre-release, a bare version a release.
+            $kind = if ($env:TAG.Contains("-")) { "--prerelease" } else { "--latest" }
+            gh release create $env:TAG $kind --verify-tag --title "pdfkit $($env:TAG.TrimStart('v'))" --notes "Built from $env:TAG by the release workflow."
+            if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          }
+          gh release upload $env:TAG $zip --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
