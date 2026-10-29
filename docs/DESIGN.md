@@ -668,7 +668,7 @@ are not numbered.
   pairs with (`xmp:MetadataDate`, `dc:rights`, a custom namespace's) and the
   packet's toolkit attribute `x:xmptk` are removed when one of the redacted
   strings (the original values of the rewritten fields, the strings the text
-  redaction removes) occurs in them under the default folding, because no
+  redaction removes) occurs in them with every folding on, because no
   function can rewrite them and the self-check would refuse the output. On
   every write, whatever the plan, the packet loses every property of the
   media-management namespace, whatever its prefix, but `xmpMM:DocumentID` and
@@ -710,7 +710,17 @@ placeholder:
   `occurrence_ambiguous` otherwise), because pdfkit applies no rule of its
   own to choose among them (CLAUDE.md §5).
 - **Search strings** with the caller's folding options, matched over each page's
-  reading-order text, hidden blocks included:
+  reading-order text, hidden blocks included. pdfkit folds only what the
+  caller asks for (CLAUDE.md §5): every option below is off unless the caller
+  turns it on, and with none on a string matches the text code point for code
+  point. First, the caller's own rules, character by character, because
+  which characters are the same text is the caller's decision:
+  - `ignore`: the characters the caller lists read as absent, on both sides;
+  - `equivalents`: each character of one of the caller's classes reads as the
+    class's first character (an apostrophe class makes `O'Brien` match
+    `O’Brien`); a character named twice, in two classes or in a class and in
+    `ignore`, is refused, because it would read as two texts.
+  Then the four options:
   - `case`: Unicode simple case folding (CaseFolding.txt status C and S);
   - `diacritics`: canonical decomposition (NFD) with combining marks removed;
   - `whitespace`: any run of white space, and every inferred word gap, equals one
@@ -726,15 +736,21 @@ placeholder:
     compatibility forms (a full-width letter, `ß`, a superscript digit) stay
     what they are.
   Folding builds a folded string with a map back to glyph indices, so a match in
-  folded text is a glyph range. Every folding is on unless the caller turns it
-  off. A search matches inside words ("Smith" is found in "Smithson"), because
+  folded text is a glyph range. The ligature decomposition and the positional
+  forms are no option: they are how the extraction reads the glyphs. pdfkit's
+  own searches (the location test of a located match, the self-check's
+  metadata originals, §18) fold everything, because they verify a removal
+  rather than choose one. A search matches inside words ("Smith" is found in "Smithson"), because
   a redaction that misses a string inside a longer word leaks it; each page is
   searched on its own. A search also finds the glyphs whose code bytes spell
   the string (its UTF-8, Latin-1 or UTF-16BE form) inside one string operand
   where the text does not read it (a code no rung reads, a font whose
   `/Differences` name other glyphs, letters spread out of reading order),
   because an extractor reading the codes and the self-check's byte scan both
-  find it there. For the same reason a text operator that shows no glyph (no
+  find it there; these byte scans try every spelling the caller's classes
+  allow, up to 64 per string, and skip no ignored character, because a
+  producer writes the bytes of one spelling in one piece. For the same reason
+  a text operator that shows no glyph (no
   font is current), an operator Annex A does not know, a comment and the bytes
   a lexer recovery skipped go from a content stream when they spell the
   string.
@@ -781,7 +797,15 @@ A match spans operators, fonts, `TJ` adjustments, lines and a hyphen, and is one
 match. It removes its glyphs, every duplicate folded into one of them (§7), and
 every glyph of an `/ActualText` span one of them belongs to, because the span's
 text is read as one unit. Overlapping or adjacent matches with the same placeholder are merged;
-with different placeholders, the earlier-starting one wins the overlap.
+with different placeholders, the earlier-starting one wins the overlap. Of
+two that start on the same glyph, the one that ends later wins: it covers the
+other whole, so the shorter draws nothing (the searches `Contoso` and
+`Contoso Group` over "Contoso Group" draw the placeholder of `Contoso Group`
+in either order). Of two that cover the same glyphs, the match recorded first
+wins: a match of an earlier `pdfkit_redact_text` call before one of a later
+call, and within a call the earlier entry of `matches`. The rule is fixed
+rather than chosen per call, because a caller that resolves its own overlaps
+first needs a determined outcome, not a particular one.
 A string that matches nothing is reported with a count of zero, never as a
 failure.
 
@@ -798,7 +822,13 @@ found it (the codes of one operand are drawn in their order, so they report
 the drawing order); the redaction takes the same stretches one by one, the
 first drawing the placeholder. Its rectangles are its glyphs' boxes united per
 reading line, and its context the page's reading-order words wholly before its
-first glyph and wholly after its last.
+first glyph and wholly after its last. Its glued letters are the characters
+of the words it lies inside that precede its first glyph and follow its last:
+in the reading order, the glyphs of the word of `pdfkit_text` holding its
+first glyph that come before it and of the word holding its last that come
+after it; in another order, the glyphs that order reads next to it up to a
+word gap or a white-space glyph on each side. pdfkit decides nothing with
+them: whether an occurrence stands as a word is the caller's rule.
 
 ## 12. Text surgery
 
@@ -847,6 +877,31 @@ position the original gave it (CLAUDE.md §5).
   the `/Properties` resource that names it.
 - Type 3 glyphs, render-mode-3 text and every hidden class are removed the same
   way; a duplicate's both operators are edited.
+- **Clip text (render mode 7, and the clip half of modes 4 to 6)**: a glyph
+  shown in a clipping mode adds its outline to the clip the text object sets
+  at `ET` (ISO 32000-1 section 9.3.6, recalled: the outlines of a text object's
+  clipping glyphs accumulate and are intersected with the clip at its end).
+  Removing such a glyph removes its code like any other's and keeps its
+  advance, so the outline leaves the clip; the placeholder over glyphs that
+  are all invisible is drawn in mode 3 and adds nothing to it; nothing else
+  in the stream changes. What that does to the page:
+  - **Some clip glyphs of a text object removed**: the clip at `ET` is the
+    union of the kept glyphs' outlines, so whatever is painted after `ET`
+    until the `Q` that restores the clip (an image or a shading seen through
+    the letters) is no longer painted inside a removed glyph's outline: the
+    letter's shape disappears and what lies under it shows there.
+  - **Every clip glyph of a text object removed**: each operator that showed
+    them becomes the `TJ` of one number, so the text object shows no glyph in
+    a clipping mode. PDFium (`CPDF_StreamContentParser::AddTextObject` and
+    `Handle_EndText`, which adds a text clip only when a clipping glyph was
+    shown) and pdf.js (`CanvasGraphics.endText`, which clips only when it
+    collected a glyph path), both read in source, then leave the clip as it
+    was before `BT`, so what is painted afterwards is painted in full over
+    the area the letters restricted it to: an image seen only through a word
+    shows whole. The page can show more than the original showed; pdfkit
+    does not change this today (`OPEN-QUESTIONS.md` §1.2 asks the owner
+    whether to close such a text object with an empty clip).
+  `tests/unit/redact/clip_text_test.cpp` writes both cases.
 - **Width side channel**: the following glyphs keep their positions, which
   leaks the removed span's width (CLAUDE.md §5); re-anchoring the rest of the
   line would be an opt-in switch and is never the default.
@@ -1106,14 +1161,14 @@ rewritten metadata field is verified in the metadata.
 |---|---|---|
 | a search string (a value) | every occurrence in every order of every page (§11) | every surface below, under the string's folding |
 | a glyph range or an occurrence (an expression at a location) | the glyphs of its ranges and every copy of its text drawn at the place (§11); inside a form drawn elsewhere too, from a copy of the form that this draw alone reads (§12) | that location: no occurrence of its text, in the reading order or any other order of §11, has a glyph (outside the placeholder font) whose box's centre lies in the box of a glyph the match removed; no string operator drawing a glyph there holds a code run the answer reported under `codes` (at a code boundary); no `/ActualText`, `/Alt` or `/E` of a span over the place (one whose `BDC` ... `EMC` encloses a glyph there, the placeholder included, or whose `/ActualText` a glyph there names) holds the text. Nothing elsewhere is searched for it |
-| a rewritten metadata field | the Info entry and its paired XMP properties | each of its source values (the Info value, each paired XMP value and array item), of any length, under the default folding, in the Info dictionary, the XMP packet and every string object outside content streams; the page text is not searched for it, because the document may say it for another reason (an author "PC" in a page about a PC) |
+| a rewritten metadata field | the Info entry and its paired XMP properties | each of its source values (the Info value, each paired XMP value and array item), of any length, with every folding on, in the Info dictionary, the XMP packet and every string object outside content streams; the page text is not searched for it, because the document may say it for another reason (an author "PC" in a page about a PC) |
 
 The location is the removed glyphs' own boxes and a glyph is there by its
 centre, because a kept neighbour's box touches a removed one while its centre
 lies outside, and a second text layer drawn over the word lies inside; the
 answer's `rectangles` run over the rest of the line and the placeholder, so a
 second occurrence on the same line would lie in them. A value whose search
-the caller also adds (with the default folding) is verified everywhere as a
+the caller also adds with every folding on is verified everywhere as a
 value, whatever else the plan holds. The values the caller writes into the
 metadata fields are cut out of the metadata surfaces before the originals are
 searched, as the placeholders are, because a written value holding an

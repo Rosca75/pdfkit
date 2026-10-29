@@ -10,7 +10,7 @@
 // keyword (split at semicolons, and for keywords also at commas), every other
 // property its text. A removed attribute takes the white space before it. A
 // value "repeats" an original when the original, folded as the self-check
-// folds a search string by default, occurs in it folded alike.
+// folds a metadata original (every folding on), occurs in it folded alike.
 
 #include "writer/metadata_writer.hpp"
 
@@ -176,7 +176,7 @@ void set_catalog_packet(ObjectGraph& graph, const Object& entry, const Dictionar
   graph.set(graph.root(), Object::make_dictionary(std::move(updated)));
 }
 
-// The originals folded as the self-check folds a search string by default.
+// The originals folded as the self-check folds a metadata original.
 std::vector<std::u32string> fold_all(std::span<const std::string> originals) {
   std::vector<std::u32string> out;
   for (const std::string& original : originals) {

@@ -188,6 +188,9 @@ to find it.
 | Liberation 2.x is SIL OFL 1.1 | https://metadata.ftp-master.debian.org/changelogs//main/f/fonts-liberation2/fonts-liberation2_2.00.5-1_copyright | read |
 | PdfPig's TrueType subsetter and CID font writer, as references for the build-time subset | https://raw.githubusercontent.com/UglyToad/PdfPig/master/src/UglyToad.PdfPig.Fonts/TrueType/Subsetting/TrueTypeSubsetter.cs; https://raw.githubusercontent.com/UglyToad/PdfPig/master/src/UglyToad.PdfPig/Writer/Fonts/CompositeTrueTypeWritingFont.cs | read |
 | `Tz` horizontal scaling | ISO 32000-1 §9.3.4 | read |
+| A text object's clipping glyphs (render modes 4 to 7) accumulate and are intersected with the clip at `ET` | ISO 32000-1 (PDF 1.7) §9.3.6, https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf | recalled; `tests/unit/redact/clip_text_test.cpp` writes what pdfkit does with it |
+| PDFium adds a text clip at `ET` only when a glyph was shown in a clipping mode (`AddTextObject` returns before it for a `TJ` of numbers alone; `Handle_EndText` returns when the list is empty) | https://raw.githubusercontent.com/chromium/pdfium/a84323421e94f484faca52dd9d027934eba42ab8/core/fpdfapi/page/cpdf_streamcontentparser.cpp | read on 2026-10-29 |
+| pdf.js clips at `ET` only when it collected a glyph path in a clipping mode (`CanvasGraphics.endText`) | https://raw.githubusercontent.com/mozilla/pdf.js/22f5df1269b3ac950f80dd9fc25523ab4836c124/src/display/canvas.js | read on 2026-10-29 |
 
 ## 8. DESIGN.md §15 to §18: channels, page selection, the writer, the self-check
 

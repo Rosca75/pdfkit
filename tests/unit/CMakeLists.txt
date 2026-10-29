@@ -44,6 +44,7 @@ add_executable(pdfkit_tests
   platform/json_reader_test.cpp
   platform/json_writer_test.cpp
   unicode/folding_test.cpp
+  redact/clip_text_test.cpp
   redact/determinism_test.cpp
   redact/form_rewriter_test.cpp
   redact/marked_content_rewriter_test.cpp

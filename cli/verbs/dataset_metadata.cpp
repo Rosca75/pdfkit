@@ -4,7 +4,7 @@
 // The metadata members of a dataset outcome. The rewrite job sets each field
 // the file holds to "[_n_]" (n its place in the field list), and adds every
 // original value of those fields, of any length, as a text search with the
-// default folding and the placeholder [REDACTED], as a caller removing the
+// every folding on and the placeholder [REDACTED], as a caller removing the
 // value from the whole document does, so the leak measures read every
 // surface for it;
 // its result is read back through pdfkit_metadata, field by field, in both

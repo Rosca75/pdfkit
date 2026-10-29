@@ -171,7 +171,8 @@ function the verb did not run is `null`.
     "occurrences": 3,
     "agree": true,
     "disagreements": [],
-    "feedback": {"status": "ok", "tried": 2, "exact": 2, "failures": []}
+    "feedback": {"status": "ok", "tried": 2, "exact": 2, "failures": []},
+    "glued": {"checked": 3, "not_words": 0, "named": []}
   }
 }
 ```
@@ -198,7 +199,7 @@ text, each once and sorted by their UTF-8 bytes, five of them drawn without
 replacement by a SplitMix64 generator seeded with the first eight bytes of the
 SHA-256 of `8:<id>` (each draw the next number modulo the words left), then
 the marker `Zebulon Quarterfield` the synthesised redaction traps draw; each is
-a search with the default folding and the placeholder `[REDACTED]`, given in
+a search with every folding on (all four flags sent) and the placeholder `[REDACTED]`, given in
 one `pdfkit_redact_text` call and written with `pdfkit_write` to
 `<dir>/outputs/<id>.redact.pdf`. `counts` holds the occurrences found per
 string, `rectangles` the write report's boxes as `[page, left, bottom, right,
@@ -246,7 +247,7 @@ UTF-16LE, the namespaces of the packet's properties and whether it holds an
 <FIELD>` with `pdfkit_set_metadata`, adds every original value of those fields
 of any length that is not white space alone (each Info value, paired XMP value
 and array item, each once, sorted by their bytes), as a search of one
-`pdfkit_redact_text` call with the default folding and the placeholder
+`pdfkit_redact_text` call with every folding on and the placeholder
 `[REDACTED]`, as a caller removing the values from the whole document does, so
 the leak measures read every surface for them, writes `<dir>/outputs/<id>.metadata.pdf`
 and opens it again: `mismatches` names every rewritten field whose Info value is
@@ -283,8 +284,8 @@ from it: no survivor, at least one treatment, and the output opens again
 without repair with the input's pages.
 
 `find` searches the redaction job's words (the five seeded words and the
-marker, without the metadata originals) with `pdfkit_find` at the default
-folding, then the same words as `search` matches of `pdfkit_redact_text` on a
+marker, without the metadata originals) with `pdfkit_find` with every
+folding on, then the same words as `search` matches of `pdfkit_redact_text` on a
 fresh edit that is never written: `agree` is true when, value by value, the
 sorted `[page, first, last]` ranges of every occurrence `pdfkit_find` reports
 equal those of every occurrence the redaction answers, and `disagreements`
@@ -295,7 +296,11 @@ placeholder) on a fresh edit each, writes it and searches the output's page
 again: `exact` counts those whose page holds one occurrence fewer, `failures`
 names the others with the reason; `status` is `none` when nothing was found
 and `unsupported` when `pdfkit_redact_text` refuses the array form of
-`glyphs`. The times of the `pdfkit_find` call and of the `text` member go to
+`glyphs`. `glued` judges the glued letters: of every reading-order
+occurrence whose `glued_before`, `text` and `glued_after` joined hold no
+space or line feed (`checked`), `not_words` counts those whose join is not a
+word of the `text` member's text (split at spaces and line feeds), and
+`named` lists the first five. The times of the `pdfkit_find` call and of the `text` member go to
 `<dir>/outputs/<id>.find-time.json` (`{"text": <s>, "find": <s>}`), never into
 the outcome, which holds no time. `tests/dataset/run.py` judges `expect_find`
 from the status; `tests/dataset/gates/phase12.py` judges agreement, feedback,

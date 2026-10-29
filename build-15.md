@@ -117,10 +117,13 @@ of `string` glued to the occurrence up to white space on each side.
 "list", "path", "first", "last"} (the other keys of the find entry accepted
 and checked against the document), "fingerprint", optional "placeholder"}`.
 It replaces exactly that range of that string by the placeholder, at that
-place alone: an inline list is rewritten in its operator, a named one is
-written as a copy under a fresh `/Properties` name that only this operator
-names, and a list inside a form drawn more than once is changed in a copy of
-the form for this draw (`FormSplitter`), as a located glyph edit is. The
+place alone: an inline list is rewritten in its operator; a named list that
+no other operator of the written pages names is rewritten where it lives (its
+object, or its entry in the `/Properties` that names it), and one that other
+operators name too is written inline in this operator with the edit, the
+named original kept for the others; a list inside a form drawn more than
+once is changed in a copy of the form for this draw (`FormSplitter`), as a
+located glyph edit is. The
 self-check verifies it on its page: the output page holds the text in its
 marked-content strings fewer times than the input page by at least the
 number of such edits. Refusals (`invalid_argument`): a fingerprint of

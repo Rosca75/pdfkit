@@ -205,6 +205,23 @@ class Session:
             for value in answer["values"]:
                 if value["count"] != len(value["occurrences"]):
                     self.fail("pdfkit_find", "a count differs from its occurrences")
+                for occurrence in value["occurrences"]:
+                    if not isinstance(occurrence.get("glued_before"), str) or \
+                            not isinstance(occurrence.get("glued_after"), str):
+                        self.fail("pdfkit_find", "an occurrence lacks glued_before or glued_after")
+                if not isinstance(value.get("strings"), list):
+                    self.fail("pdfkit_find", "a value lacks its strings")
+            # ABI 2 folds only what is asked: the marker in lower case is found
+            # with case folding and not without it.
+            folded = []
+            for folding in ({}, {"case": True}):
+                lower = utf8(json.dumps({"values": [{"text": MARKER.lower(), "folding": folding}],
+                                         "pages": [1]}))
+                folded.append(self.json("pdfkit_find", self.call("pdfkit_find", document, lower))
+                              ["values"][0]["count"])
+            if folded[0] != 0 or folded[1] == 0:
+                self.fail("pdfkit_find", f"the lower-case marker counts {folded}, expected 0 unfolded "
+                                         "and more than 0 with case folding")
         self.call("pdfkit_find", document, b'{"values": [{"text": ""}]}',
                   allowed=(INVALID_ARGUMENT, NOT_IMPLEMENTED))
 

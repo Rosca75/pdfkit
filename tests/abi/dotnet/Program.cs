@@ -365,6 +365,35 @@ internal sealed class Session
                 {
                     throw new AbiFailure(_file, "pdfkit_find", "a count differs from its occurrences");
                 }
+                foreach (JsonElement occurrence in value.GetProperty("occurrences").EnumerateArray())
+                {
+                    if (occurrence.GetProperty("glued_before").ValueKind != JsonValueKind.String ||
+                        occurrence.GetProperty("glued_after").ValueKind != JsonValueKind.String)
+                    {
+                        throw new AbiFailure(_file, "pdfkit_find", "an occurrence lacks its glued letters");
+                    }
+                }
+                if (value.GetProperty("strings").ValueKind != JsonValueKind.Array)
+                {
+                    throw new AbiFailure(_file, "pdfkit_find", "a value lacks its strings");
+                }
+            }
+            // ABI 2 folds only what is asked: the marker in lower case is found
+            // with case folding and not without it.
+            int[] counts = new int[2];
+            string[] foldings = { "{}", "{\"case\": true}" };
+            for (int i = 0; i < 2; ++i)
+            {
+                status = Native.pdfkit_find(document,
+                    "{\"values\": [{\"text\": \"zebulon quarterfield\", \"folding\": " + foldings[i] +
+                    "}], \"pages\": [1]}", ref buffer);
+                using JsonDocument lower = Json("pdfkit_find", Take("pdfkit_find", status, ref buffer, Status.Ok));
+                counts[i] = lower.RootElement.GetProperty("values")[0].GetProperty("count").GetInt32();
+            }
+            if (counts[0] != 0 || counts[1] == 0)
+            {
+                throw new AbiFailure(_file, "pdfkit_find",
+                    $"the lower-case marker counts {counts[0]} and {counts[1]}, expected 0 unfolded and more with case folding");
             }
         }
         status = Native.pdfkit_find(document, "{\"values\": [{\"text\": \"\"}]}", ref buffer);
