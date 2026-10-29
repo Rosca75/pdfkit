@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "dataset" / "tools"))
 
 import common  # noqa: E402
 
-EXPECTED_ABI = 1
+EXPECTED_ABI = 2
 # One case per tag: the smallest manifest file that opens and carries it.
 CASE_TAGS = (
     "gen_word", "gen_libreoffice", "gen_pdftex", "object_streams", "xref_stream", "incremental_update",

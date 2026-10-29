@@ -23,8 +23,9 @@ namespace pdfkit::api {
 
 namespace {
 
-// Raised on every addition to include/pdfkit/pdfkit.h (docs/ABI.md).
-constexpr std::uint32_t abi_version = 1;
+// Raised on every addition to the ABI and on a change of meaning the owner
+// orders (docs/ABI.md, Versioning).
+constexpr std::uint32_t abi_version = 2;
 
 std::string version_json() {
   platform::JsonWriter writer;

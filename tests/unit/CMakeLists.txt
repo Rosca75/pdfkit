@@ -44,6 +44,7 @@ add_executable(pdfkit_tests
   platform/json_reader_test.cpp
   platform/json_writer_test.cpp
   unicode/folding_test.cpp
+  redact/clip_text_test.cpp
   redact/determinism_test.cpp
   redact/form_rewriter_test.cpp
   redact/marked_content_rewriter_test.cpp
@@ -53,6 +54,7 @@ add_executable(pdfkit_tests
   redact/match_finder_locate_test.cpp
   redact/placeholder_fitting_test.cpp
   redact/placeholder_font_test.cpp
+  redact/property_strings_test.cpp
   redact/reader_order_test.cpp
   redact/redact_text_test.cpp
   redact/api_redact_images_test.cpp
@@ -95,6 +97,7 @@ add_executable(pdfkit_tests
   writer/xref_stream_writer_test.cpp
   api/abi_test.cpp
   api/find_test.cpp
+  api/literal_matching_test.cpp
   api/open_inspect_test.cpp
   fonts/support/font_builder.cpp
   fonts/support/font_document.cpp

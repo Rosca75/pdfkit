@@ -19,7 +19,7 @@ namespace {
 using pdfkit::platform::unicode::Folding;
 
 std::string fold(const std::string& text, bool case_fold, bool diacritics, bool whitespace) {
-  return Folding::fold_utf8(text, {case_fold, diacritics, whitespace});
+  return Folding::fold_utf8(text, {case_fold, diacritics, whitespace, {}, {}});
 }
 
 }  // namespace
@@ -75,7 +75,7 @@ TEST_CASE("a positional presentation form reads as its letters under every foldi
   CHECK(fold(shaped, false, false, false) == letters);
   // The lam-alef ligature's final form is two letters, both naming it.
   const Folding::Mapped mapped =
-      Folding::fold(Folding::decode("x\xEF\xBB\xBC"), {false, false, false});
+      Folding::fold(Folding::decode("x\xEF\xBB\xBC"), {false, false, false, {}, {}});
   CHECK(Folding::encode(mapped.text) == "x\xD9\x84\xD8\xA7");
   REQUIRE(mapped.source.size() == 3);
   CHECK(mapped.source[1] == 1);
@@ -85,7 +85,8 @@ TEST_CASE("a positional presentation form reads as its letters under every foldi
 }
 
 TEST_CASE("each folded code point names its source") {
-  const Folding::Mapped mapped = Folding::fold(Folding::decode("A\xC3\x89  b"), {true, true, true});
+  const Folding::Mapped mapped =
+      Folding::fold(Folding::decode("A\xC3\x89  b"), {true, true, true, {}, {}});
   CHECK(Folding::encode(mapped.text) == "ae b");
   REQUIRE(mapped.source.size() == 4);
   CHECK(mapped.source[0] == 0);

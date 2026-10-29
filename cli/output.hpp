@@ -31,6 +31,12 @@ inline constexpr int exit_internal = 4;
 // A JSON string literal for text, escaped per RFC 8259.
 [[nodiscard]] std::string json_quote(std::string_view text);
 
+// The folding member the dataset jobs send with every value, search and
+// occurrence: every flag on, as a caller that folds names it, because the
+// C ABI folds nothing it is not asked to.
+inline constexpr std::string_view every_folding =
+    R"("folding": {"case": true, "diacritics": true, "whitespace": true, "hyphenation": true})";
+
 // Prints one JSON document and a newline to standard output.
 void print_json(std::string_view json);
 

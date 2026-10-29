@@ -12,6 +12,10 @@
 //     which has no decomposition, stays;
 //   - whitespace: every run of white space (General_Category Zs, Zl, Zp and
 //     the controls of the White_Space property) reads as one space.
+// Before these, two steps the caller names character by character: an
+// ignored code point reads as absent, and a code point of one of the
+// caller's classes reads as the class's first member, so the classes say
+// which characters are the same text and pdfkit decides none of it.
 // Under every option a positional presentation form (a decomposition of
 // UnicodeData.txt tagged <initial>, <medial>, <final> or <isolated>: the
 // Arabic presentation forms and their ligatures) reads as its letters,
@@ -27,7 +31,11 @@
 #ifndef PDFKIT_PLATFORM_UNICODE_FOLDING_HPP
 #define PDFKIT_PLATFORM_UNICODE_FOLDING_HPP
 
+#include <compare>
 #include <cstddef>
+#include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -36,10 +44,18 @@ namespace pdfkit::platform::unicode {
 
 class Folding {
  public:
+  // The defaults fold everything: the folding of pdfkit's own searches.
+  // The C ABI starts from none (docs/ABI.md).
   struct Options {
     bool case_fold = true;
     bool diacritics = true;
     bool whitespace = true;
+    // A code point of a class to the class's first member.
+    std::map<char32_t, char32_t> equivalent;
+    // The code points read as absent.
+    std::set<char32_t> ignored;
+
+    auto operator<=>(const Options&) const = default;
   };
 
   // A folded text and, per code point of it, the index of the source code
@@ -64,6 +80,11 @@ class Folding {
   [[nodiscard]] static std::u32string decompose(char32_t code_point);
   // The letters of a positional presentation form; itself when it is none.
   [[nodiscard]] static std::u32string unshape(char32_t code_point);
+
+  // The caller's step for one code point: no value when it is ignored, the
+  // first member of its class when it has one, itself otherwise.
+  [[nodiscard]] static std::optional<char32_t> substitute(char32_t code_point,
+                                                          const Options& options);
 
   // The case and diacritic folding of one code point, appended to out (zero
   // code points for a removed mark, several for a decomposition).

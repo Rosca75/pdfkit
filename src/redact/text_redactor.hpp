@@ -12,7 +12,8 @@
 // them belongs to), the placeholder of each occurrence fitted into its hole
 // (PlaceholderFitting) and drawn at its first line (PlaceholderDrawing), the
 // text operators rebuilt (TextSurgery), the marked-content properties
-// rewritten (MarkedContentRewriter), the forms touched (once per form,
+// rewritten (MarkedContentRewriter) and the string matches' ranges replaced
+// in them (PropertyStrings), the forms touched (once per form,
 // whatever draws it) and the device rectangles changed. apply() is the text
 // surgery stage of the write pipeline: it writes each page's content and
 // each touched form again through the object graph, embeds the placeholder
@@ -25,6 +26,7 @@
 #include "redact/edit_plan.hpp"
 #include "redact/match_finder.hpp"
 #include "redact/placeholder_fitting.hpp"
+#include "redact/property_strings.hpp"
 #include "redact/text_plan.hpp"
 #include "text/rect.hpp"
 #include "writer/object_graph.hpp"
@@ -32,6 +34,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -53,6 +56,10 @@ class TextRedactor {
     std::vector<std::string> codes;
     // A located match's ranges, sorted; empty for a search's occurrence.
     std::vector<TextPlan::Range> ranges;
+    // A string match's list and path (first, last and text are its range in
+    // the string's code points and the text there).
+    std::size_t list = 0;
+    PropertyStrings::Path path;
   };
 
   struct MatchReport {
@@ -71,6 +78,14 @@ class TextRedactor {
   [[nodiscard]] static std::vector<MatchReport> add(
       EditPlan& plan, std::vector<MatchFinder::Match> matches,
       std::vector<std::vector<TextPlan::Range>> ranges);
+  // The same, strings[i] holding the target of string match i (a match of
+  // kind string): checked against the page's marked-content strings
+  // (PropertyStrings), every key the caller gave agreeing with the
+  // document, and answered as one occurrence.
+  [[nodiscard]] static std::vector<MatchReport> add(
+      EditPlan& plan, std::vector<MatchFinder::Match> matches,
+      std::vector<std::vector<TextPlan::Range>> ranges,
+      std::vector<std::optional<TextPlan::StringTarget>> strings);
 
   // The text surgery stage: applies the plan's page work to graph, whose
   // pages are report.pages, and records the rectangles in report.

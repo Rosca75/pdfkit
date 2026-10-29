@@ -42,11 +42,6 @@ constexpr std::size_t none = std::numeric_limits<std::size_t>::max();
   return value == U'-' || value == 0xAD;
 }
 
-[[nodiscard]] unsigned key(const MatchFinder::Folding& folding) noexcept {
-  return (folding.text.case_fold ? 1U : 0U) | (folding.text.diacritics ? 2U : 0U) |
-         (folding.text.whitespace ? 4U : 0U) | (folding.hyphenation ? 8U : 0U);
-}
-
 }  // namespace
 
 MatchFinder::MatchFinder(const text::PageText& page, std::set<std::string> left_out)
@@ -108,8 +103,7 @@ void MatchFinder::build(bool hyphenation, std::vector<Unit>& units) const {
 }
 
 const MatchFinder::Haystack& MatchFinder::haystack(const Folding& folding) {
-  const unsigned index = key(folding);
-  if (const auto found = folded_.find(index); found != folded_.end()) {
+  if (const auto found = folded_.find(folding); found != folded_.end()) {
     return found->second;
   }
   if (folding.hyphenation && joined_.empty()) {
@@ -123,7 +117,7 @@ const MatchFinder::Haystack& MatchFinder::haystack(const Folding& folding) {
   }
   TextFolding::Mapped mapped = TextFolding::fold(text, folding.text);
   Haystack built{std::move(mapped.text), std::move(mapped.source)};
-  return folded_.emplace(index, std::move(built)).first->second;
+  return folded_.emplace(folding, std::move(built)).first->second;
 }
 
 namespace {
@@ -436,8 +430,7 @@ void MatchFinder::build_orders() {
 const std::vector<MatchFinder::OrderHaystack>& MatchFinder::order_haystacks(
     const Folding& folding) {
   // The hyphenation join plays no part in these orders.
-  const unsigned index = key(folding) & 7U;
-  if (const auto found = order_folded_.find(index); found != order_folded_.end()) {
+  if (const auto found = order_folded_.find(folding.text); found != order_folded_.end()) {
     return found->second;
   }
   build_orders();
@@ -455,11 +448,12 @@ const std::vector<MatchFinder::OrderHaystack>& MatchFinder::order_haystacks(
     std::size_t at = 0;
     while (at < text.size()) {
       const platform::Utf8Sequence sequence = platform::next_utf8_sequence(text, at);
-      const char32_t value = sequence.valid ? sequence.code_point : U'�';
-      if (folding.text.whitespace && TextFolding::is_white_space(value)) {
+      const std::optional<char32_t> value =
+          TextFolding::substitute(sequence.valid ? sequence.code_point : U'�', folding.text);
+      if (value && folding.text.whitespace && TextFolding::is_white_space(*value)) {
         folded.push_back(U' ');
-      } else {
-        TextFolding::fold_code_point(value, folding.text, folded);
+      } else if (value) {
+        TextFolding::fold_code_point(*value, folding.text, folded);
       }
       at += std::max<std::size_t>(sequence.length, 1);
     }
@@ -490,7 +484,7 @@ const std::vector<MatchFinder::OrderHaystack>& MatchFinder::order_haystacks(
       }
     }
   }
-  return order_folded_.emplace(index, std::move(built)).first->second;
+  return order_folded_.emplace(folding.text, std::move(built)).first->second;
 }
 
 std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match,
@@ -601,7 +595,12 @@ std::string MatchFinder::lower_ascii(std::string bytes) {
 }
 
 std::vector<std::string> MatchFinder::byte_forms(const Match& match) {
-  std::u32string text = TextFolding::decode(match.search);
+  std::u32string text;
+  for (const char32_t value : TextFolding::decode(match.search)) {
+    if (!match.folding.text.ignored.contains(value)) {
+      text.push_back(value);
+    }
+  }
   if (match.folding.text.whitespace) {
     std::u32string collapsed;
     for (const char32_t value : text) {
@@ -622,33 +621,72 @@ std::vector<std::string> MatchFinder::byte_forms(const Match& match) {
   if (text.empty()) {
     return out;
   }
-  out.push_back(TextFolding::encode(text));
-  std::string latin;
-  bool fits = true;
-  std::string utf16;
-  const auto unit = [&utf16](char32_t value) {
-    utf16.push_back(static_cast<char>((value >> 8U) & 0xFFU));
-    utf16.push_back(static_cast<char>(value & 0xFFU));
+  // Every spelling the classes allow, while their number stays within
+  // max_spellings: a class member at a place multiplies the spellings by the
+  // class's size.
+  std::map<char32_t, std::vector<char32_t>> members;
+  for (const auto& [member, first] : match.folding.text.equivalent) {
+    members[first].push_back(member);
+  }
+  std::vector<std::u32string> spellings{text};
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const auto first = match.folding.text.equivalent.find(text[i]);
+    if (first == match.folding.text.equivalent.end()) {
+      continue;
+    }
+    const std::vector<char32_t>& choices = members[first->second];
+    if (choices.size() < 2 || spellings.size() * choices.size() > max_spellings) {
+      continue;
+    }
+    std::vector<std::u32string> grown;
+    for (const std::u32string& spelling : spellings) {
+      for (const char32_t choice : choices) {
+        std::u32string next = spelling;
+        next[i] = choice;
+        grown.push_back(std::move(next));
+      }
+    }
+    spellings = std::move(grown);
+  }
+  const auto add = [&out](std::string form) {
+    if (std::ranges::find(out, form) == out.end()) {
+      out.push_back(std::move(form));
+    }
   };
-  for (const char32_t value : text) {
-    fits = fits && value < 0x100;
-    latin.push_back(static_cast<char>(value & 0xFFU));
-    if (value >= 0x10000) {
-      const char32_t offset = value - 0x10000;
-      unit(0xD800 + (offset >> 10U));
-      unit(0xDC00 + (offset & 0x3FFU));
-    } else {
-      unit(value);
+  for (const std::u32string& spelling : spellings) {
+    add(TextFolding::encode(spelling));
+    std::string latin;
+    bool fits = true;
+    std::string utf16;
+    const auto unit = [&utf16](char32_t value) {
+      utf16.push_back(static_cast<char>((value >> 8U) & 0xFFU));
+      utf16.push_back(static_cast<char>(value & 0xFFU));
+    };
+    for (const char32_t value : spelling) {
+      fits = fits && value < 0x100;
+      latin.push_back(static_cast<char>(value & 0xFFU));
+      if (value >= 0x10000) {
+        const char32_t offset = value - 0x10000;
+        unit(0xD800 + (offset >> 10U));
+        unit(0xDC00 + (offset & 0x3FFU));
+      } else {
+        unit(value);
+      }
     }
+    if (fits) {
+      add(std::move(latin));
+    }
+    add(std::move(utf16));
   }
-  if (fits && latin != out.front()) {
-    out.push_back(latin);
-  }
-  out.push_back(utf16);
   if (match.folding.text.case_fold) {
+    std::vector<std::string> lowered;
     for (std::string& form : out) {
-      form = lower_ascii(std::move(form));
+      std::string low = lower_ascii(std::move(form));
+      if (std::ranges::find(lowered, low) == lowered.end()) {
+        lowered.push_back(std::move(low));
+      }
     }
+    out = std::move(lowered);
   }
   return out;
 }
@@ -789,8 +827,7 @@ std::string MatchFinder::run_text(const std::vector<std::size_t>& draws,
 }
 
 const std::set<char32_t>& MatchFinder::order_characters(const Folding& folding) {
-  const unsigned index = key(folding) & 7U;
-  if (const auto found = order_shown_.find(index); found != order_shown_.end()) {
+  if (const auto found = order_shown_.find(folding.text); found != order_shown_.end()) {
     return found->second;
   }
   index_positions();
@@ -812,7 +849,7 @@ const std::set<char32_t>& MatchFinder::order_characters(const Folding& folding) 
       at += std::max<std::size_t>(sequence.length, 1);
     }
   }
-  return order_shown_.emplace(index, std::move(shown)).first->second;
+  return order_shown_.emplace(folding.text, std::move(shown)).first->second;
 }
 
 std::vector<MatchFinder::Located> MatchFinder::locate(const Match& match) {
@@ -940,21 +977,7 @@ std::uint16_t MatchFinder::hidden(const Located& located) const {
 
 std::pair<std::string, std::string> MatchFinder::context(const Located& located,
                                                          std::size_t words) {
-  if (words_.empty()) {
-    const auto duplicate_only = text::hidden_bit(text::HiddenClass::duplicate);
-    for (const std::vector<text::TextLayout::Block>* blocks :
-         {&page_->blocks, &page_->hidden_blocks}) {
-      for (const text::TextLayout::Block& block : *blocks) {
-        for (const text::TextLayout::Line& line : block.lines) {
-          for (const text::TextLayout::Word& word : line.words) {
-            if (!word.text.empty() && word.hidden != duplicate_only) {
-              words_.push_back({word.first, word.last, word.text});
-            }
-          }
-        }
-      }
-    }
-  }
+  index_words();
   std::pair<std::string, std::string> out;
   if (located.ranges.empty() || words == 0) {
     return out;
@@ -976,6 +999,100 @@ std::pair<std::string, std::string> MatchFinder::context(const Located& located,
   const std::size_t from = before.size() > words ? before.size() - words : 0;
   for (std::size_t i = from; i < before.size(); ++i) {
     out.first += (i == from ? "" : " ") + *before[i];
+  }
+  return out;
+}
+
+void MatchFinder::index_words() {
+  if (!words_.empty() || !word_of_.empty()) {
+    return;
+  }
+  const auto duplicate_only = text::hidden_bit(text::HiddenClass::duplicate);
+  for (const std::vector<text::TextLayout::Block>* blocks :
+       {&page_->blocks, &page_->hidden_blocks}) {
+    for (const text::TextLayout::Block& block : *blocks) {
+      for (const text::TextLayout::Line& line : block.lines) {
+        for (const text::TextLayout::Word& word : line.words) {
+          if (!word.text.empty() && word.hidden != duplicate_only) {
+            words_.push_back({word.first, word.last, word.text});
+          }
+        }
+      }
+    }
+  }
+  word_of_.assign(page_->order.size(), none);
+  for (std::size_t w = 0; w < words_.size(); ++w) {
+    for (std::size_t p = words_[w].first; p < words_[w].last && p < word_of_.size(); ++p) {
+      word_of_[p] = w;
+    }
+  }
+}
+
+std::pair<std::string, std::string> MatchFinder::glued(const Located& located) {
+  std::pair<std::string, std::string> out;
+  if (located.ranges.empty()) {
+    return out;
+  }
+  const std::vector<text::GlyphRecord>& glyphs = page_->content.glyphs;
+  const auto glyph_text = [this, &glyphs](std::size_t p) -> const std::string& {
+    return glyphs[page_->order[p]].text;
+  };
+  if (located.order == Order::reading) {
+    index_words();
+    const std::size_t first = located.ranges.front().first;
+    const std::size_t last = located.ranges.back().second;
+    if (first < word_of_.size() && word_of_[first] != none) {
+      for (std::size_t p = words_[word_of_[first]].first; p < first; ++p) {
+        out.first += glyph_text(p);
+      }
+    }
+    if (last > 0 && last - 1 < word_of_.size() && word_of_[last - 1] != none) {
+      for (std::size_t p = last; p < words_[word_of_[last - 1]].last && p < word_of_.size(); ++p) {
+        out.second += glyph_text(p);
+      }
+    }
+    return out;
+  }
+  // The codes of one operand are drawn in their order: the drawing order's
+  // neighbours.
+  const std::size_t order = located.order == Order::rows_ltr   ? 1
+                            : located.order == Order::rows_rtl ? 2
+                                                               : 0;
+  build_orders();
+  if (step_of_.empty()) {
+    step_of_.assign(orders_.size(), std::vector<std::size_t>(glyphs.size(), none));
+    for (std::size_t o = 0; o < orders_.size(); ++o) {
+      for (std::size_t s = 0; s < orders_[o].size(); ++s) {
+        step_of_[o][orders_[o][s].draw] = s;
+      }
+    }
+  }
+  const std::vector<Step>& steps = orders_[order];
+  std::size_t from = none;
+  std::size_t to = 0;
+  for (const auto& [first, last] : located.ranges) {
+    for (std::size_t p = first; p < last && p < page_->order.size(); ++p) {
+      const std::size_t s = step_of_[order][page_->order[p]];
+      if (s != none) {
+        from = std::min(from, s);
+        to = std::max(to, s);
+      }
+    }
+  }
+  if (from == none) {
+    return out;
+  }
+  const auto white = [&glyphs](std::size_t draw) {
+    return std::ranges::all_of(TextFolding::decode(glyphs[draw].text),
+                               [](char32_t value) { return TextFolding::is_white_space(value); });
+  };
+  std::string before;
+  for (std::size_t s = from; s > 0 && !steps[s].gap && !white(steps[s - 1].draw); --s) {
+    before.insert(0, glyphs[steps[s - 1].draw].text);
+  }
+  out.first = std::move(before);
+  for (std::size_t s = to + 1; s < steps.size() && !steps[s].gap && !white(steps[s].draw); ++s) {
+    out.second += glyphs[steps[s].draw].text;
   }
   return out;
 }

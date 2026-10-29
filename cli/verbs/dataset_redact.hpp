@@ -5,7 +5,7 @@
 // 10.1: a seeded redaction job per file (tests/dataset/outcome.md), five
 // words of four or more letters drawn from pdfkit's own text of the file
 // (hidden text included) and the marker every synthesised redaction trap
-// carries, each searched with the default folding and replaced by
+// carries, each searched with every folding on and replaced by
 // [REDACTED]; the output written to <dir>/outputs/<id>.redact.pdf with the
 // rectangles, the placeholders drawn per page, the removed codes and the
 // output opened again; and its located member, one occurrence of a word that

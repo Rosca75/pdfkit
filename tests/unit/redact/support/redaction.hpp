@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace pdfkit::test {
@@ -40,7 +41,12 @@ struct Redaction {
 // Every page of output read through the text layer.
 [[nodiscard]] std::vector<text::PageText> read_pages(const std::string& output);
 
-// A search match of text with the default folding and placeholder.
+// The folding member with every flag on, which the C ABI folds only when
+// asked.
+inline constexpr std::string_view every_folding =
+    R"("folding": {"case": true, "diacritics": true, "whitespace": true, "hyphenation": true})";
+
+// A search match of text with every folding on and the placeholder.
 [[nodiscard]] std::string search(const std::string& text,
                                  const std::string& placeholder = "[REDACTED]");
 

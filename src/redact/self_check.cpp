@@ -12,12 +12,15 @@
 // whose box centre lies in the box of a glyph the match removed, because a
 // kept neighbour's box touches a removed glyph's but its centre lies
 // outside, and a glyph drawn over the removed one (a second text layer)
-// lies inside.
+// lies inside. A string match is verified by counting its text in the
+// output page's marked-content strings, with no folding, because it named
+// a range code point for code point.
 
 #include "redact/self_check.hpp"
 
 #include "platform/unicode/folding.hpp"
 #include "redact/content_syntax.hpp"
+#include "redact/property_strings.hpp"
 #include "syntax/content_lexer.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
@@ -34,6 +37,7 @@
 #include <optional>
 #include <set>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 namespace pdfkit::redact {
@@ -453,6 +457,33 @@ void check_located(const text::PageText& page, MatchFinder& finder,
   }
 }
 
+// The string-match check of docs/DESIGN.md section 18 over one output page:
+// each text held by the page's marked-content strings (placeholders cut
+// out) more often than its input count less its edits survives.
+void check_strings(syntax::Document& document, const text::PageText& page,
+                   std::span<const SelfCheck::StringCheck* const> checks,
+                   std::span<const std::string> placeholders, Search& search) {
+  const std::vector<PropertyStrings::List> lists = PropertyStrings::lists(document, page.content);
+  const std::vector<PropertyStrings::String> strings = PropertyStrings::strings(document, lists);
+  std::vector<std::u32string> texts;
+  texts.reserve(strings.size());
+  for (const PropertyStrings::String& string : strings) {
+    texts.push_back(TextFolding::decode(without(string.text, placeholders)));
+  }
+  for (const SelfCheck::StringCheck* check : checks) {
+    MatchFinder::Match literal;
+    literal.search = check->text;
+    literal.folding = MatchFinder::Folding::literal();
+    std::size_t held = 0;
+    for (const std::u32string& text : texts) {
+      held += MatchFinder::ranges_in(text, literal).size();
+    }
+    if (held + check->edits > check->before) {
+      search.add(check->text, page.content.page, check->surface, 0);
+    }
+  }
+}
+
 }  // namespace
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
@@ -475,7 +506,8 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   }
   result.located = requests.located.size();
   result.metadata_values = originals.size();
-  result.strings = needles.size() + result.located + result.metadata_values;
+  result.strings =
+      needles.size() + result.located + requests.strings.size() + result.metadata_values;
   std::unique_ptr<syntax::Document> document = syntax::Document::open(pdf, limits);
   Search search(needles, originals, placeholders, requests.written, result);
   if (result.strings == 0) {
@@ -484,6 +516,10 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   std::map<std::uint32_t, std::vector<const Located*>> located_on;
   for (const Located& entry : requests.located) {
     located_on[entry.page].push_back(&entry);
+  }
+  std::map<std::uint32_t, std::vector<const StringCheck*>> strings_on;
+  for (const StringCheck& entry : requests.strings) {
+    strings_on[entry.page].push_back(&entry);
   }
   const std::set<std::string_view> placeholder_fonts{
       writer::PlaceholderFont::metrics(writer::PlaceholderFont::Face::regular).base_font,
@@ -494,8 +530,9 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   result.pages = document->pages().size();
   for (const syntax::Page& source : document->pages()) {
     const auto here = located_on.find(source.number);
+    const auto strings_here = strings_on.find(source.number);
     const bool values = !needles.empty() && (pages == nullptr || pages->contains(source.number));
-    if (!values && here == located_on.end()) {
+    if (!values && here == located_on.end() && strings_here == strings_on.end()) {
       continue;
     }
     ++result.pages_read;
@@ -503,6 +540,9 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     MatchFinder finder(page, {placeholder_fonts.begin(), placeholder_fonts.end()});
     if (here != located_on.end()) {
       check_located(page, finder, here->second, placeholders, placeholder_fonts, search);
+    }
+    if (strings_here != strings_on.end()) {
+      check_strings(*document, page, strings_here->second, placeholders, search);
     }
     if (!values) {
       continue;
@@ -729,7 +769,7 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
     unique.insert(match.placeholder);
   }
   const std::vector<std::string> placeholders(unique.begin(), unique.end());
-  // An original the plan also searches for with the default folding is
+  // An original the plan also searches for with every folding on is
   // verified everywhere as a value already.
   const auto searched = [&text](const std::string& original) {
     return std::ranges::any_of(text.needles, [&original](const MatchFinder::Match& match) {
@@ -766,6 +806,29 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
       located.push_back({entry.text, kept->second, entry.boxes, entry.codes});
     }
   }
+  // The string matches by output page and text: an edit counted once
+  // however often it was given.
+  std::map<std::pair<std::uint32_t, std::string>,
+           std::pair<StringCheck,
+                     std::set<std::tuple<std::size_t, std::string, std::size_t, std::size_t>>>>
+      by_text;
+  for (const TextPlan::StringEdit& edit : text.strings) {
+    const auto kept = output_page.find(edit.page);
+    if (kept == output_page.end()) {
+      continue;
+    }
+    auto& [check, edits] = by_text[{kept->second, edit.text}];
+    if (edits.empty()) {
+      check = {edit.text, kept->second, edit.surface, edit.before, 0};
+    }
+    edits.insert({edit.list, PropertyStrings::path_key(edit.path), edit.first, edit.last});
+    check.edits = edits.size();
+  }
+  std::vector<StringCheck> strings;
+  strings.reserve(by_text.size());
+  for (const auto& [key, entry] : by_text) {
+    strings.push_back(entry.first);
+  }
   // Every value was searched on every source page when its match was added,
   // so a page the redaction left as it was (no edit, no edited form drawn)
   // reads as it did then and holds no occurrence; its text is not read
@@ -796,7 +859,7 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
   }
   const Result result =
       run(platform::as_bytes(pdf), plan.document().limits(),
-          Needles{text.needles, located, metadata, written}, placeholders, &changed);
+          Needles{text.needles, located, metadata, written, strings}, placeholders, &changed);
   report.self_check_strings = result.strings;
   report.self_check_located = result.located;
   report.self_check_metadata_values = result.metadata_values;

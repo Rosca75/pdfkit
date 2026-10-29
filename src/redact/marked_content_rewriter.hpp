@@ -65,11 +65,13 @@ class MarkedContentRewriter {
                                              std::string_view op = "BDC");
 
   // value with every occurrence of a needle in its strings (inside arrays
-  // and dictionaries too, at most 32 deep) replaced; changed says whether one
-  // was.
-  [[nodiscard]] static syntax::Object replace_strings(const syntax::Object& value,
-                                                      std::span<const MatchFinder::Match> needles,
-                                                      int depth, bool& changed);
+  // and dictionaries too, and behind references, which resolve reads, at most
+  // 32 deep) replaced; changed says whether one was. A reference whose value
+  // changes is replaced by the changed value, and the object that holds the
+  // string stays as it was for anything else that names it.
+  [[nodiscard]] static syntax::Object replace_strings(
+      const syntax::Object& value, std::span<const MatchFinder::Match> needles, int depth,
+      bool& changed, const std::function<syntax::Object(const syntax::Object&)>& resolve);
 
   // utf8 as a PDF text string object.
   [[nodiscard]] static syntax::Object text_string(std::string_view utf8);

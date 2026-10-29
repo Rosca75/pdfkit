@@ -14,6 +14,7 @@
 #include "pdfkit/pdfkit.h"
 
 #include "api/arguments.hpp"
+#include "api/folding_argument.hpp"
 #include "api/guarded.hpp"
 #include "api/handles.hpp"
 #include "platform/crypto/sha2.hpp"
@@ -21,7 +22,9 @@
 #include "platform/export.hpp"
 #include "platform/json_value.hpp"
 #include "platform/json_writer.hpp"
+#include "platform/unicode/folding.hpp"
 #include "redact/match_finder.hpp"
+#include "redact/property_strings.hpp"
 #include "text/hidden_class.hpp"
 #include "text/page_text.hpp"
 #include "text/rect.hpp"
@@ -37,6 +40,7 @@
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -45,9 +49,10 @@ using pdfkit::platform::Error;
 using pdfkit::platform::ErrorCode;
 using pdfkit::platform::JsonValue;
 using pdfkit::redact::MatchFinder;
+using pdfkit::redact::PropertyStrings;
 
 constexpr std::string_view shape =
-    R"({"values": [{"text": "<non-empty text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}}], "pages": [<page numbers from 1>], "context": <0 to 50>})";
+    R"({"values": [{"text": "<non-empty text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}}], "pages": [<page numbers from 1>], "context": <0 to 50>})";
 constexpr std::int64_t default_context = 5;
 constexpr std::int64_t most_context = 50;
 
@@ -60,21 +65,13 @@ std::string where(std::size_t index) {
   return "value " + std::to_string(index);
 }
 
-bool flag(const JsonValue& value, std::size_t index, const std::string& name) {
-  if (value.kind() != JsonValue::Kind::boolean) {
-    refuse(where(index) + " gives the folding \"" + name + "\" as " +
-               std::string(JsonValue::kind_name(value.kind())),
-           "write \"" + name + "\": true or false");
-  }
-  return value.as_bool();
-}
-
 MatchFinder::Match read_value(const JsonValue& item, std::size_t index) {
   if (item.kind() != JsonValue::Kind::object) {
     refuse(where(index) + " is " + std::string(JsonValue::kind_name(item.kind())),
            R"(write each value as an object such as {"text": "Jane Doe"})");
   }
   MatchFinder::Match match;
+  match.folding = MatchFinder::Folding::literal();
   bool text = false;
   for (const auto& [name, value] : item.as_object()) {
     if (name == "text") {
@@ -86,25 +83,8 @@ MatchFinder::Match read_value(const JsonValue& item, std::size_t index) {
       text = true;
       match.search = value.as_string();
     } else if (name == "folding") {
-      if (value.kind() != JsonValue::Kind::object) {
-        refuse(where(index) + " gives \"folding\" as " +
-                   std::string(JsonValue::kind_name(value.kind())),
-               "write the folding as an object of true or false flags");
-      }
-      for (const auto& [key, setting] : value.as_object()) {
-        if (key == "case") {
-          match.folding.text.case_fold = flag(setting, index, key);
-        } else if (key == "diacritics") {
-          match.folding.text.diacritics = flag(setting, index, key);
-        } else if (key == "whitespace") {
-          match.folding.text.whitespace = flag(setting, index, key);
-        } else if (key == "hyphenation") {
-          match.folding.hyphenation = flag(setting, index, key);
-        } else {
-          refuse(where(index) + " names the unknown folding \"" + key + "\"",
-                 "use only case, diacritics, whitespace and hyphenation");
-        }
-      }
+      match.folding = pdfkit::api::FoldingArgument::read(
+          value, "pdfkit_find values_json " + where(index), std::string(shape));
     } else {
       refuse(where(index) + " names the unknown key \"" + name + "\"", "use text and folding only");
     }
@@ -187,6 +167,8 @@ struct Found {
   std::uint16_t hidden = 0;
   std::string before;
   std::string after;
+  std::string glued_before;
+  std::string glued_after;
 };
 
 void write_found(pdfkit::platform::JsonWriter& writer, const Found& found, std::size_t index) {
@@ -223,6 +205,59 @@ void write_found(pdfkit::platform::JsonWriter& writer, const Found& found, std::
   writer.end_array();
   writer.key("before").string(found.before);
   writer.key("after").string(found.after);
+  writer.key("glued_before").string(found.glued_before);
+  writer.key("glued_after").string(found.glued_after);
+  writer.end_object();
+}
+
+// One occurrence in a marked-content string.
+struct InString {
+  std::uint32_t page = 0;
+  PropertyStrings::List list;
+  PropertyStrings::String string;
+  std::size_t first = 0;
+  std::size_t last = 0;
+  std::string text;
+  std::string glued_before;
+  std::string glued_after;
+};
+
+void write_in_string(pdfkit::platform::JsonWriter& writer, const InString& found,
+                     std::size_t index) {
+  writer.begin_object();
+  writer.key("occurrence").unsigned_integer(index);
+  writer.key("page").unsigned_integer(found.page);
+  writer.key("list").unsigned_integer(found.list.index);
+  writer.key("surface").string(PropertyStrings::surface_name(found.string.surface));
+  writer.key("path").begin_array();
+  for (const PropertyStrings::Step& step : found.string.path) {
+    if (const std::string* key = std::get_if<std::string>(&step)) {
+      writer.string(*key);
+    } else {
+      writer.unsigned_integer(std::get<std::size_t>(step));
+    }
+  }
+  writer.end_array();
+  writer.key("stream").unsigned_integer(found.list.stream);
+  writer.key("operator").unsigned_integer(found.list.operation);
+  writer.key("properties");
+  if (found.list.name) {
+    writer.string(*found.list.name);
+  } else {
+    writer.null();
+  }
+  writer.key("object");
+  if (found.list.identity.object != 0) {
+    writer.unsigned_integer(found.list.identity.object);
+  } else {
+    writer.null();
+  }
+  writer.key("string").string(found.string.text);
+  writer.key("first").unsigned_integer(found.first);
+  writer.key("last").unsigned_integer(found.last);
+  writer.key("text").string(found.text);
+  writer.key("glued_before").string(found.glued_before);
+  writer.key("glued_after").string(found.glued_after);
   writer.end_object();
 }
 
@@ -257,10 +292,33 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
     // Per value, its occurrences page by page, each page's in the order of
     // their first glyph.
     std::vector<std::vector<Found>> found(values.size());
+    std::vector<std::vector<InString>> in_strings(values.size());
     pdfkit::text::TextReader reader(document);
     for (const std::uint32_t number : pages) {
       const pdfkit::text::PageText page = reader.read(number);
       MatchFinder finder(page);
+      const std::vector<PropertyStrings::List> lists =
+          PropertyStrings::lists(document, page.content);
+      const std::vector<PropertyStrings::String> strings =
+          PropertyStrings::strings(document, lists);
+      for (const PropertyStrings::String& string : strings) {
+        const std::u32string decoded = pdfkit::platform::unicode::Folding::decode(string.text);
+        for (std::size_t v = 0; v < values.size(); ++v) {
+          for (const auto& [first, last] : MatchFinder::ranges_in(decoded, values[v])) {
+            InString entry;
+            entry.page = number;
+            entry.list = lists[string.list];
+            entry.string = string;
+            entry.first = first;
+            entry.last = last;
+            entry.text = pdfkit::platform::unicode::Folding::encode(
+                std::u32string_view(decoded).substr(first, last - first));
+            std::tie(entry.glued_before, entry.glued_after) =
+                PropertyStrings::glued(decoded, first, last);
+            in_strings[v].push_back(std::move(entry));
+          }
+        }
+      }
       for (std::size_t v = 0; v < values.size(); ++v) {
         std::vector<MatchFinder::Located> located = finder.locate(values[v]);
         std::ranges::stable_sort(located, {}, [](const MatchFinder::Located& item) {
@@ -271,6 +329,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
           entry.rectangles = finder.rectangles(item);
           entry.hidden = finder.hidden(item);
           std::tie(entry.before, entry.after) = finder.context(item, context);
+          std::tie(entry.glued_before, entry.glued_after) = finder.glued(item);
           entry.located = std::move(item);
           found[v].push_back(std::move(entry));
         }
@@ -289,6 +348,11 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
       writer.key("occurrences").begin_array();
       for (std::size_t i = 0; i < found[v].size(); ++i) {
         write_found(writer, found[v][i], i);
+      }
+      writer.end_array();
+      writer.key("strings").begin_array();
+      for (std::size_t i = 0; i < in_strings[v].size(); ++i) {
+        write_in_string(writer, in_strings[v][i], i);
       }
       writer.end_array();
       writer.end_object();

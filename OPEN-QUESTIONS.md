@@ -20,6 +20,23 @@ owner runs the script once at the laptop**:
 answering whatever Word or Edge shows (about 10 minutes); a session then
 checks and commits the four rows (about 0.5 hour, $5 to $10).
 
+### 1.2 Removing every clip glyph of a text object shows what the letters hid
+
+Asked by doc-anonymiser (2026-10-29), answered without a change in
+`docs/DESIGN.md` §12 (Clip text): when a redaction removes every glyph a text
+object shows in render mode 7 (or the clip half of modes 4 to 6), the text
+object adds no outline to the clip, and PDFium and pdf.js then leave the clip
+as it was before `BT`, so an image or shading painted through the letters
+shows whole, more than the original page showed. Removing some of the glyphs
+is faithful (the removed letters' shapes go blank).
+
+**Recommended: close such a text object with an empty clip** (`0 0 m h W n`
+after its `ET`, inside the same `q`), so nothing painted through the removed
+letters shows, as the union of no outlines; a test per case, about 1 to 2
+hours and $20 to $40. **Alternative: leave it** and keep doc-anonymiser's
+rule of never removing a mode-7 glyph as hidden text; no cost, and a page
+whose clip text is redacted may show an image in full.
+
 ## 2. Answered on 2026-10-28
 
 The section numbers are those of the file before this date; its full text is

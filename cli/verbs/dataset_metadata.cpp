@@ -4,7 +4,7 @@
 // The metadata members of a dataset outcome. The rewrite job sets each field
 // the file holds to "[_n_]" (n its place in the field list), and adds every
 // original value of those fields, of any length, as a text search with the
-// default folding and the placeholder [REDACTED], as a caller removing the
+// every folding on and the placeholder [REDACTED], as a caller removing the
 // value from the whole document does, so the leak measures read every
 // surface for it;
 // its result is read back through pdfkit_metadata, field by field, in both
@@ -248,7 +248,7 @@ std::string dataset_set_metadata(pdfkit_document* document, std::string_view id,
   std::string matches = R"({"matches": [)";
   for (std::size_t i = 0; i < searched.size(); ++i) {
     matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(searched[i]) +
-               R"(, "placeholder": "[REDACTED]"})";
+               ", " + std::string(every_folding) + R"(, "placeholder": "[REDACTED]"})";
   }
   matches += "]}";
 

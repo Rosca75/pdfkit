@@ -2,7 +2,8 @@
 // Copyright 2026 The pdfkit authors
 //
 // The folding steps over the generated tables. Every table is sorted, so a
-// lookup is a binary search. A positional presentation form is first
+// lookup is a binary search. The caller's ignored code points and classes
+// apply first, to the code point as written. A positional presentation form is first
 // replaced by its letters, each then folded on its own. A code point is
 // folded as decomposition, mark removal, case folding, then decomposition and
 // mark removal again, because a case folding can produce a decomposable
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <optional>
 
 namespace pdfkit::platform::unicode {
 
@@ -114,7 +116,20 @@ std::u32string Folding::unshape(char32_t code_point) {
           positional_data.begin() + found->offset + found->length};
 }
 
+std::optional<char32_t> Folding::substitute(char32_t code_point, const Options& options) {
+  if (options.ignored.contains(code_point)) {
+    return std::nullopt;
+  }
+  const auto found = options.equivalent.find(code_point);
+  return found != options.equivalent.end() ? found->second : code_point;
+}
+
 void Folding::fold_code_point(char32_t code_point, const Options& options, std::u32string& out) {
+  const std::optional<char32_t> given = substitute(code_point, options);
+  if (!given) {
+    return;
+  }
+  code_point = *given;
   if (const std::u32string letters = unshape(code_point);
       letters.size() != 1 || letters.front() != code_point) {
     for (const char32_t letter : letters) {
@@ -144,7 +159,11 @@ Folding::Mapped Folding::fold(std::u32string_view text, const Options& options) 
   std::u32string piece;
   bool in_space = false;
   for (std::size_t i = 0; i < text.size(); ++i) {
-    const char32_t value = text[i];
+    const std::optional<char32_t> given = substitute(text[i], options);
+    if (!given) {
+      continue;
+    }
+    const char32_t value = *given;
     if (options.whitespace && is_white_space(value)) {
       if (!in_space) {
         mapped.text.push_back(U' ');

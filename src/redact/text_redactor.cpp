@@ -16,6 +16,7 @@
 #include "redact/text_redactor.hpp"
 
 #include "platform/error.hpp"
+#include "platform/unicode/folding.hpp"
 #include "redact/content_syntax.hpp"
 #include "redact/form_splitter.hpp"
 #include "redact/marked_content_rewriter.hpp"
@@ -295,19 +296,64 @@ std::vector<std::size_t> closings(const text::ContentStream& stream) {
   return out;
 }
 
+// Records walk and every walk on its form path in work.walks.
+void note_walks(syntax::Document& document, const text::PageContent& content, std::size_t walk,
+                TextPlan::PageWork& work) {
+  while (walk != 0 && walk < content.streams.size() && content.streams[walk].form != 0) {
+    const text::ContentStream& stream = content.streams[walk];
+    if (work.walks.contains(walk)) {
+      return;
+    }
+    TextPlan::Walk info;
+    info.form = stream.form;
+    info.parent = stream.parent;
+    info.drawn_at = stream.drawn_at;
+    const Object form = document.object({stream.form, 0});
+    const syntax::Stream* object = form.stream();
+    info.resources =
+        object != nullptr &&
+        document.resolve_entry(object->dictionary(), "Resources").dictionary() != nullptr;
+    work.walks[walk] = info;
+    walk = stream.parent;
+  }
+}
+
+// The target a change of walk goes to: a located match's change inside a
+// form belongs to that draw alone (a split, FormSplitter), every other
+// change to the stream it is made in.
+[[nodiscard]] TextPlan::Target& change_target(syntax::Document& document, TextPlan::PageWork& work,
+                                              const text::PageContent& content, std::size_t walk,
+                                              bool located) {
+  if (located && walk < content.streams.size() && content.streams[walk].form != 0) {
+    note_walks(document, content, walk, work);
+    return work.splits[walk];
+  }
+  return target_of(work, content, walk);
+}
+
+// The edits of the string matches on a page, by the list's page-wide
+// index.
+using ListEdits = std::map<std::size_t, std::vector<PropertyStrings::Edit>>;
+
 // Rewrites every marked-content property list of the page (BDC and DP,
 // inline or through /Properties) that names a redacted string or covers
 // removed glyphs (MarkedContentRewriter). A value (a search string) is
 // replaced in every list of the page; a located match's text only in the
 // lists of the spans that cover a removed glyph, because it is an expression
-// at that place and nowhere else.
+// at that place and nowhere else. A string match replaces its range in the
+// list of its operator alone, before the searches run over the list, so its
+// offsets read the string as found: an inline list in its operator (one
+// draw's copy of a form, as a located glyph edit), a named list held as a
+// NamedEdit for the write to place.
 void rewrite_properties(syntax::Document& document, const PageText& page,
                         const std::set<std::size_t>& removed,
                         const std::map<std::size_t, std::string>& placeholder_of,
                         const std::vector<MatchFinder::Match>& needles,
-                        const std::vector<MatchFinder::Match>& located, TextPlan::PageWork& work) {
+                        const std::vector<MatchFinder::Match>& located,
+                        const std::vector<PropertyStrings::List>& lists, const ListEdits& edits,
+                        TextPlan::PageWork& work) {
   const text::PageContent& content = page.content;
-  if (needles.empty() && removed.empty()) {
+  if (needles.empty() && removed.empty() && edits.empty()) {
     return;
   }
   std::vector<MatchFinder::Match> covering = needles;
@@ -319,6 +365,16 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
   }
   for (auto& [walk, items] : by_walk) {
     std::ranges::stable_sort(items, {}, &std::pair<std::size_t, std::size_t>::first);
+  }
+  // The edited lists by walk and operator.
+  std::map<std::pair<std::size_t, std::size_t>,
+           std::pair<const PropertyStrings::List*, const std::vector<PropertyStrings::Edit>*>>
+      edited;
+  for (const auto& [index, list_edits] : edits) {
+    if (index < lists.size()) {
+      const PropertyStrings::List& list = lists[index];
+      edited[{list.walk, list.operation}] = {&list, &list_edits};
+    }
   }
   const syntax::Page& source = document.pages().at(content.page - 1);
   const auto resolve = [&document](const Object& value) {
@@ -333,8 +389,11 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
       if ((marked.op != "BDC" && marked.op != "DP") || marked.operands.size() < 2) {
         continue;
       }
-      // A form drawn twice is two walks of one stream: its lists once.
-      if (stream.form != 0 && !done.insert({stream.form, index}).second) {
+      const auto edit = edited.find({walk, index});
+      // A form drawn twice is two walks of one stream: its lists once, but
+      // a string match's edit for the walk it names.
+      const bool shared = stream.form == 0 || done.insert({stream.form, index}).second;
+      if (!shared && edit == edited.end()) {
         continue;
       }
       bool all = true;
@@ -358,17 +417,57 @@ void rewrite_properties(syntax::Document& document, const PageText& page,
       }
       const std::string* whole_text = all && whole.has_value() ? &whole.value() : nullptr;
       const std::vector<MatchFinder::Match>& here = whole.has_value() ? covering : needles;
+      // The list with the string matches' ranges replaced, then the
+      // searches and the removed span's rule applied to the result.
+      const auto combined = [&](const Dictionary& list) {
+        Dictionary base = list;
+        if (auto replaced = PropertyStrings::apply(document, list, *edit->second.second)) {
+          base = std::move(*replaced);
+        }
+        if (auto rewritten = MarkedContentRewriter::rewrite(base, here, whole_text, resolve)) {
+          return std::move(*rewritten);
+        }
+        return base;
+      };
+      const auto inline_operation = [&](const Dictionary& list) {
+        const Object direct = PropertyStrings::direct(document, Object::make_dictionary(list));
+        return MarkedContentRewriter::operation(
+            marked.operands[0],
+            direct.dictionary() != nullptr ? *direct.dictionary() : Dictionary(), marked.op);
+      };
       const Object& operand = marked.operands[1];
       if (const Dictionary* inline_properties = operand.dictionary()) {
-        if (const auto rewritten =
-                MarkedContentRewriter::rewrite(*inline_properties, here, whole_text, resolve)) {
-          target_of(work, content, walk).replaced[index] =
-              MarkedContentRewriter::operation(marked.operands[0], *rewritten, marked.op);
+        if (shared) {
+          if (const auto rewritten =
+                  MarkedContentRewriter::rewrite(*inline_properties, here, whole_text, resolve)) {
+            target_of(work, content, walk).replaced[index] =
+                MarkedContentRewriter::operation(marked.operands[0], *rewritten, marked.op);
+          }
+        }
+        if (edit != edited.end()) {
+          change_target(document, work, content, walk, true).replaced[index] =
+              inline_operation(combined(*inline_properties));
         }
         continue;
       }
       const std::string* name = operand.name();
       if (name == nullptr) {
+        continue;
+      }
+      if (edit != edited.end()) {
+        const PropertyStrings::List& list = *edit->second.first;
+        TextPlan::NamedEdit named;
+        named.identity = list.identity;
+        named.walk = walk;
+        named.operation = index;
+        named.in_place = combined(list.dictionary);
+        named.inline_operation = inline_operation(named.in_place);
+        if (stream.form != 0) {
+          note_walks(document, content, walk, work);
+        }
+        work.named_edits.push_back(std::move(named));
+      }
+      if (!shared) {
         continue;
       }
       const TextPlan::Holder holder = holder_of(document, content, walk);
@@ -527,49 +626,17 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
   }
 }
 
-// Records walk and every walk on its form path in work.walks.
-void note_walks(syntax::Document& document, const text::PageContent& content, std::size_t walk,
-                TextPlan::PageWork& work) {
-  while (walk != 0 && walk < content.streams.size() && content.streams[walk].form != 0) {
-    const text::ContentStream& stream = content.streams[walk];
-    if (work.walks.contains(walk)) {
-      return;
-    }
-    TextPlan::Walk info;
-    info.form = stream.form;
-    info.parent = stream.parent;
-    info.drawn_at = stream.drawn_at;
-    const Object form = document.object({stream.form, 0});
-    const syntax::Stream* object = form.stream();
-    info.resources =
-        object != nullptr &&
-        document.resolve_entry(object->dictionary(), "Resources").dictionary() != nullptr;
-    work.walks[walk] = info;
-    walk = stream.parent;
-  }
-}
-
-// The target a change of walk goes to: a located match's change inside a
-// form belongs to that draw alone (a split, FormSplitter), every other
-// change to the stream it is made in.
-[[nodiscard]] TextPlan::Target& change_target(syntax::Document& document, TextPlan::PageWork& work,
-                                              const text::PageContent& content, std::size_t walk,
-                                              bool located) {
-  if (located && walk < content.streams.size() && content.streams[walk].form != 0) {
-    note_walks(document, content, walk, work);
-    return work.splits[walk];
-  }
-  return target_of(work, content, walk);
-}
-
 // The page's work over its merged occurrences; needles are the values,
-// located the texts of the page's located matches, and is_located whether a
-// match (by its index in the plan) is a located one.
+// located the texts of the page's located matches, is_located whether a
+// match (by its index in the plan) is a located one, and lists and edits the
+// page's marked-content lists and its string matches' edits of them.
 [[nodiscard]] TextPlan::PageWork build_work(syntax::Document& document, const PageText& page,
                                             const std::vector<MatchFinder::Occurrence>& merged,
                                             const std::vector<MatchFinder::Match>& needles,
                                             const std::vector<MatchFinder::Match>& located,
-                                            const std::function<bool(std::size_t)>& is_located) {
+                                            const std::function<bool(std::size_t)>& is_located,
+                                            const std::vector<PropertyStrings::List>& lists,
+                                            const ListEdits& edits) {
   TextPlan::PageWork work;
   const Layout layout = layout_of(page);
   const text::PageContent& content = page.content;
@@ -618,14 +685,15 @@ void note_walks(syntax::Document& document, const text::PageContent& content, st
     }
     ++work.placeholders;
   }
-  rewrite_properties(document, page, page_removed, placeholder_of, needles, located, work);
+  rewrite_properties(document, page, page_removed, placeholder_of, needles, located, lists, edits,
+                     work);
   remove_unshown(page, needles, work);
   return work;
 }
 
 [[nodiscard]] bool work_empty(const TextPlan::PageWork& work) {
   if (!work.content.empty() || !work.property_objects.empty() || !work.properties.empty() ||
-      !work.form_fonts.empty()) {
+      !work.form_fonts.empty() || !work.named_edits.empty()) {
     return false;
   }
   if (std::ranges::any_of(work.splits, [](const auto& entry) { return !entry.second.empty(); })) {
@@ -729,11 +797,104 @@ void note_walks(syntax::Document& document, const text::PageContent& content, st
   return out;
 }
 
-void refuse(std::size_t index, const std::string& failed, const std::string& expected,
-            const std::string& fix) {
+[[noreturn]] void refuse(std::size_t index, const std::string& failed, const std::string& expected,
+                         const std::string& fix) {
   throw platform::Error(platform::ErrorCode::invalid_argument,
                         "pdfkit_redact_text match " + std::to_string(index) + " " + failed,
                         expected, fix);
+}
+
+// A string match checked against its page's marked-content strings: the
+// list, the path naming a string, a non-empty range within its code points,
+// and every key the caller copied from pdfkit_find agreeing with what the
+// document holds. The edit keeps the text removed, the string's surface and
+// how many times the page's strings hold that text, code point for code
+// point, which the self-check compares with the output page.
+[[nodiscard]] TextPlan::StringEdit string_edit(
+    std::size_t i, const TextPlan::StringTarget& target,
+    const std::vector<PropertyStrings::List>& lists,
+    const std::vector<PropertyStrings::String>& strings) {
+  using TextFolding = platform::unicode::Folding;
+  const std::string fix =
+      "take the string match from this document's pdfkit_find answer and give it unchanged";
+  if (target.list >= lists.size()) {
+    refuse(i,
+           "names list " + std::to_string(target.list) + " of page " + std::to_string(target.page),
+           lists.empty() ? std::string("a page with a marked-content property list")
+                         : "a list from 0 to " + std::to_string(lists.size() - 1) +
+                               " of the page's marked-content property lists",
+           fix);
+  }
+  const PropertyStrings::List& list = lists[target.list];
+  const auto string = std::ranges::find_if(strings, [&target](const PropertyStrings::String& item) {
+    return item.list == target.list && item.path == target.path;
+  });
+  if (string == strings.end()) {
+    refuse(i, "names a path of list " + std::to_string(target.list) + " that holds no string",
+           "the path of a string of the list as pdfkit_find reports it (an /ActualText a glyph "
+           "reads is found in the glyphs' occurrences)",
+           fix);
+  }
+  const std::u32string decoded = TextFolding::decode(string->text);
+  if (target.first >= target.last || target.last > decoded.size()) {
+    refuse(i,
+           "names the range [" + std::to_string(target.first) + ", " + std::to_string(target.last) +
+               ") of a string of " + std::to_string(decoded.size()) + " characters",
+           "a non-empty range within the string's characters", fix);
+  }
+  TextPlan::StringEdit edit;
+  edit.page = target.page;
+  edit.list = target.list;
+  edit.path = target.path;
+  edit.first = target.first;
+  edit.last = target.last;
+  edit.text =
+      TextFolding::encode(std::u32string_view(decoded).substr(edit.first, edit.last - edit.first));
+  edit.surface = std::string(PropertyStrings::surface_name(string->surface));
+  const auto [glued_before, glued_after] = PropertyStrings::glued(decoded, edit.first, edit.last);
+  const auto agree = [i, &fix](std::string_view key, bool same, const std::string& held) {
+    if (!same) {
+      refuse(i, "gives a \"" + std::string(key) + "\" that does not agree with the document",
+             "the " + std::string(key) + " the document holds there: " + held, fix);
+    }
+  };
+  const std::string name = list.name.value_or("null");
+  const std::string object =
+      list.identity.object == 0 ? std::string("null") : std::to_string(list.identity.object);
+  if (target.surface) {
+    agree("surface", *target.surface == edit.surface, edit.surface);
+  }
+  if (target.stream) {
+    agree("stream", *target.stream == list.stream, std::to_string(list.stream));
+  }
+  if (target.operation) {
+    agree("operator", *target.operation == list.operation, std::to_string(list.operation));
+  }
+  if (target.properties) {
+    agree("properties", *target.properties == list.name, name);
+  }
+  if (target.object) {
+    agree("object", *target.object == list.identity.object, object);
+  }
+  if (target.string) {
+    agree("string", *target.string == string->text, "\"" + string->text + "\"");
+  }
+  if (target.text) {
+    agree("text", *target.text == edit.text, "\"" + edit.text + "\"");
+  }
+  if (target.glued_before) {
+    agree("glued_before", *target.glued_before == glued_before, "\"" + glued_before + "\"");
+  }
+  if (target.glued_after) {
+    agree("glued_after", *target.glued_after == glued_after, "\"" + glued_after + "\"");
+  }
+  MatchFinder::Match literal;
+  literal.search = edit.text;
+  literal.folding = MatchFinder::Folding::literal();
+  for (const PropertyStrings::String& item : strings) {
+    edit.before += MatchFinder::ranges_in(TextFolding::decode(item.text), literal).size();
+  }
+  return edit;
 }
 
 // A stream to rewrite, lexed again from the bytes the interpreter read.
@@ -801,6 +962,58 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
   return scrubbed;
 }
 
+// The pages' work with the string edits of named lists placed over the
+// written pages: a list that every operator of the written pages naming it
+// edits alike is edited where it lives (objects for an indirect list,
+// entries for a direct entry of a form's /Properties, the page's
+// properties for one of the page's), because a copy inline would leave the
+// original, unedited, in the file; one that another operator names too, or
+// that two operators edit apart, is written inline in each edited operator
+// (the page's content, or the draw's own copy of a form), the named
+// original kept for the others.
+[[nodiscard]] std::map<std::uint32_t, TextPlan::PageWork> place_named(
+    syntax::Document& document, const std::map<std::uint32_t, TextPlan::PageWork>& source,
+    const std::set<std::uint32_t>& written, std::map<std::uint32_t, Dictionary>& objects,
+    std::map<std::uint32_t, std::map<std::string, Dictionary>>& entries) {
+  std::map<std::uint32_t, TextPlan::PageWork> out = source;
+  std::map<PropertyStrings::Identity,
+           std::vector<std::pair<std::uint32_t, const TextPlan::NamedEdit*>>>
+      by_identity;
+  for (const auto& [number, work] : source) {
+    if (written.contains(number)) {
+      for (const TextPlan::NamedEdit& edit : work.named_edits) {
+        by_identity[edit.identity].emplace_back(number, &edit);
+      }
+    }
+  }
+  const std::map<PropertyStrings::Identity, std::size_t> uses =
+      PropertyStrings::uses(document, written);
+  for (const auto& [identity, edits] : by_identity) {
+    const auto used = uses.find(identity);
+    const Dictionary& first = edits.front().second->in_place;
+    const bool alone = used != uses.end() && used->second == edits.size() &&
+                       std::ranges::all_of(edits, [&first](const auto& entry) {
+                         return entry.second->in_place == first;
+                       });
+    if (alone) {
+      if (identity.object != 0) {
+        objects[identity.object] = first;
+      } else if (identity.holder != 0) {
+        entries[identity.holder][identity.name] = first;
+      } else {
+        out[identity.page].properties[{0, identity.name}] = first;
+      }
+      continue;
+    }
+    for (const auto& [number, edit] : edits) {
+      TextPlan::PageWork& work = out[number];
+      TextPlan::Target& target = edit->walk == 0 ? work.content : work.splits[edit->walk];
+      target.replaced[edit->operation] = edit->inline_operation;
+    }
+  }
+  return out;
+}
+
 // resources with faces named in its /Font, properties set in its
 // /Properties and the form copies of a split named in its /XObject (name to
 // object number), as a direct dictionary.
@@ -842,17 +1055,25 @@ void refuse(std::size_t index, const std::string& failed, const std::string& exp
 
 std::vector<TextRedactor::MatchReport> TextRedactor::add(EditPlan& plan,
                                                          std::vector<MatchFinder::Match> matches) {
-  return add(plan, std::move(matches), {});
+  return add(plan, std::move(matches), {}, {});
 }
 
 std::vector<TextRedactor::MatchReport> TextRedactor::add(
     EditPlan& plan, std::vector<MatchFinder::Match> matches,
     std::vector<std::vector<TextPlan::Range>> ranges) {
+  return add(plan, std::move(matches), std::move(ranges), {});
+}
+
+std::vector<TextRedactor::MatchReport> TextRedactor::add(
+    EditPlan& plan, std::vector<MatchFinder::Match> matches,
+    std::vector<std::vector<TextPlan::Range>> ranges,
+    std::vector<std::optional<TextPlan::StringTarget>> strings) {
   TextPlan& state = plan.text();
   syntax::Document& document = plan.document();
   const std::size_t page_count = document.pages().size();
   const std::size_t base = state.matches.size();
   ranges.resize(matches.size());
+  strings.resize(matches.size());
   bool any_search = false;
   std::set<std::uint32_t> pages;
   for (std::size_t i = 0; i < matches.size(); ++i) {
@@ -861,6 +1082,29 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
                                          "pdfkit_redact_text match " + std::to_string(i));
     if (match.kind == MatchFinder::Match::Kind::search) {
       any_search = true;
+      continue;
+    }
+    if (match.kind == MatchFinder::Match::Kind::string) {
+      if (!strings[i]) {
+        refuse(i, "is a string match without its string", "a string match {\"string\": {...}}",
+               "give the string as pdfkit_find reports it");
+      }
+      match.page = strings[i]->page;
+      if (match.fingerprint != plan.fingerprint()) {
+        refuse(
+            i,
+            "is a string match taken from another document (its fingerprint " +
+                (match.fingerprint.empty() ? std::string("is missing") : match.fingerprint) + ")",
+            "the fingerprint " + plan.fingerprint() + " that pdfkit_find reports for this document",
+            "find the value in this document again and take the string and the fingerprint "
+            "from that answer");
+      }
+      if (match.page < 1 || match.page > page_count) {
+        refuse(i, "names page " + std::to_string(match.page),
+               "a page from 1 to " + std::to_string(page_count),
+               "take the page number from this document's pdfkit_find answer");
+      }
+      pages.insert(match.page);
       continue;
     }
     // A glyph range is one expression at one place: its ranges, checked and
@@ -904,6 +1148,7 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
   std::map<std::uint32_t, std::optional<TextPlan::PageWork>> works;
   std::map<std::uint32_t, std::set<std::uint32_t>> forms_drawn;
   std::vector<TextPlan::Located> located;
+  std::vector<TextPlan::StringEdit> string_edits;
   text::TextReader reader(document);
   for (const std::uint32_t number : pages) {
     const PageText page = reader.read(number);
@@ -920,6 +1165,9 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
     std::vector<std::pair<std::size_t, std::pair<std::size_t, std::size_t>>> here_located;
     for (std::size_t i = 0; i < matches.size(); ++i) {
       const MatchFinder::Match& match = matches[i];
+      if (match.kind == MatchFinder::Match::Kind::string) {
+        continue;
+      }
       if (match.kind == MatchFinder::Match::Kind::search) {
         // The one search pdfkit_find reports: the reading order, every
         // other reader's order and the codes that spell the string.
@@ -1024,6 +1272,47 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
         reports[found[k].match - base].occurrences.push_back(std::move(entries[k]));
       }
     }
+    // The string matches on the page, each checked against the page's
+    // marked-content strings, and the edits of every string match of the
+    // page, earlier calls' included.
+    std::vector<PropertyStrings::List> lists;
+    std::vector<PropertyStrings::String> page_strings;
+    bool listed = false;
+    const auto list_page = [&]() {
+      if (!listed) {
+        lists = PropertyStrings::lists(document, page.content);
+        page_strings = PropertyStrings::strings(document, lists);
+        listed = true;
+      }
+    };
+    for (std::size_t i = 0; i < matches.size(); ++i) {
+      if (matches[i].kind != MatchFinder::Match::Kind::string || matches[i].page != number) {
+        continue;
+      }
+      list_page();
+      TextPlan::StringEdit edit = string_edit(i, *strings[i], lists, page_strings);
+      edit.match = base + i;
+      edit.placeholder = matches[i].placeholder;
+      Found entry;
+      entry.page = number;
+      entry.first = edit.first;
+      entry.last = edit.last;
+      entry.text = edit.text;
+      entry.list = edit.list;
+      entry.path = edit.path;
+      reports[i].occurrences.push_back(std::move(entry));
+      string_edits.push_back(std::move(edit));
+    }
+    ListEdits edits;
+    for (const std::vector<TextPlan::StringEdit>* list : {&state.strings, &string_edits}) {
+      for (const TextPlan::StringEdit& edit : *list) {
+        if (edit.page == number) {
+          list_page();
+          edits[edit.list].push_back(
+              {edit.path, edit.first, edit.last, edit.placeholder, edit.match});
+        }
+      }
+    }
     std::vector<MatchFinder::Occurrence> all;
     if (const auto earlier = state.occurrences.find(number); earlier != state.occurrences.end()) {
       all = earlier->second;
@@ -1048,8 +1337,8 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
           match < base ? state.matches[match] : matches[match - base];
       return source.kind == MatchFinder::Match::Kind::glyphs;
     };
-    TextPlan::PageWork work =
-        build_work(document, page, MatchFinder::merge(all), needles, located_texts, is_located);
+    TextPlan::PageWork work = build_work(document, page, MatchFinder::merge(all), needles,
+                                         located_texts, is_located, lists, edits);
     if (!work_empty(work)) {
       works[number] = std::move(work);
     } else {
@@ -1067,6 +1356,8 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
   state.needles = std::move(needles);
   state.located.insert(state.located.end(), std::make_move_iterator(located.begin()),
                        std::make_move_iterator(located.end()));
+  state.strings.insert(state.strings.end(), std::make_move_iterator(string_edits.begin()),
+                       std::make_move_iterator(string_edits.end()));
   for (auto& [number, forms] : forms_drawn) {
     state.forms_drawn[number] = std::move(forms);
   }
@@ -1107,11 +1398,26 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
       }
     }
   }
+  // The string edits of named lists, placed over the written pages.
+  std::map<std::uint32_t, Dictionary> named_objects;
+  std::map<std::uint32_t, std::map<std::string, Dictionary>> named_entries;
+  std::map<std::uint32_t, TextPlan::PageWork> placed;
+  const bool any_named = std::ranges::any_of(state.pages, [&kept](const auto& entry) {
+    return kept.contains(entry.first) && !entry.second.named_edits.empty();
+  });
+  if (any_named) {
+    std::set<std::uint32_t> written;
+    for (const auto& [source, where] : kept) {
+      written.insert(source);
+    }
+    placed = place_named(document, state.pages, written, named_objects, named_entries);
+  }
+  const std::map<std::uint32_t, TextPlan::PageWork>& pages = any_named ? placed : state.pages;
   writer::PlaceholderFont fonts(graph);
   std::map<std::uint32_t, TextPlan::Target> forms;
   std::map<std::uint32_t, std::set<Face>> form_fonts;
   std::map<std::uint32_t, std::map<std::string, Dictionary>> form_properties;
-  for (const auto& [number, work] : state.pages) {
+  for (const auto& [number, work] : pages) {
     for (const auto& [form, target] : work.forms) {
       forms[form].merge(target);
     }
@@ -1129,8 +1435,18 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
       graph.set(object, Object::make_dictionary(dictionary));
     }
   }
+  // A named list edited where it lives holds the searches' rewrite too, so
+  // it replaces the rewrite a page made without the edit.
+  for (const auto& [object, dictionary] : named_objects) {
+    graph.set(object, Object::make_dictionary(dictionary));
+  }
+  for (const auto& [holder, names] : named_entries) {
+    for (const auto& [name, dictionary] : names) {
+      form_properties[holder][name] = dictionary;
+    }
+  }
   std::map<std::uint32_t, std::set<Face>> page_form_fonts;
-  for (const auto& [number, work] : state.pages) {
+  for (const auto& [number, work] : pages) {
     for (const auto& [form, faces] : work.form_fonts) {
       page_form_fonts[form].insert(faces.begin(), faces.end());
     }
@@ -1198,7 +1514,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
   std::map<std::uint32_t, TextPlan::Target> page_local;
   std::map<std::uint32_t, std::map<std::string, syntax::Object::Reference>> page_names;
   std::map<std::uint32_t, std::map<std::string, syntax::Object::Reference>> form_names;
-  const bool any_split = std::ranges::any_of(state.pages, [&kept](const auto& entry) {
+  const bool any_split = std::ranges::any_of(pages, [&kept](const auto& entry) {
     return kept.contains(entry.first) &&
            std::ranges::any_of(entry.second.splits,
                                [](const auto& split) { return !split.second.empty(); });
@@ -1210,7 +1526,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     }
     const std::map<std::uint32_t, std::size_t> draws = FormSplitter::draws(document, written);
     std::vector<std::pair<std::uint32_t, FormSplitter::Plan>> plans;
-    for (const auto& [number, work] : state.pages) {
+    for (const auto& [number, work] : pages) {
       if (!kept.contains(number) || work.splits.empty()) {
         continue;
       }
@@ -1219,13 +1535,20 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
         if (walk == 0) {
           page_local[number].merge(target);
         } else if (!split.copied.contains(walk)) {
-          forms[work.walks.at(walk).form].merge(target);
+          // A form drawn once takes the draw's edits in place; a marked-
+          // content operator a string match rewrote replaces the shared
+          // rewrite of it, which holds only the searches.
+          TextPlan::Target& shared = forms[work.walks.at(walk).form];
+          shared.merge(target);
+          for (const auto& [index, bytes] : target.replaced) {
+            shared.replaced[index] = bytes;
+          }
         }
       }
       plans.emplace_back(number, std::move(split));
     }
     for (const auto& [number, split] : plans) {
-      const TextPlan::PageWork& work = state.pages.at(number);
+      const TextPlan::PageWork& work = pages.at(number);
       std::map<std::size_t, syntax::Object::Reference> copy_of;
       const auto names_of = [&split, &copy_of](std::size_t holder) {
         std::map<std::string, syntax::Object::Reference> out;
@@ -1289,7 +1612,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     }
   }
   std::set<std::uint32_t> pages_to_edit;
-  for (const auto& [number, work] : state.pages) {
+  for (const auto& [number, work] : pages) {
     pages_to_edit.insert(number);
   }
   for (const auto& [number, faces] : drawn_faces) {
@@ -1301,8 +1624,8 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     if (found == kept.end()) {
       continue;
     }
-    const auto listed = state.pages.find(number);
-    const TextPlan::PageWork& work = listed != state.pages.end() ? listed->second : no_work;
+    const auto listed = pages.find(number);
+    const TextPlan::PageWork& work = listed != pages.end() ? listed->second : no_work;
     const auto [output_page, object] = found->second;
     const Object value = graph.get(object);
     if (value.dictionary() == nullptr) {
@@ -1366,7 +1689,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     for (const Rect& box : work.rectangles) {
       changed.boxes.push_back({box.left, box.bottom, box.right, box.top});
     }
-    if (listed != state.pages.end()) {
+    if (listed != pages.end()) {
       report.rectangles.push_back(std::move(changed));
     }
   }

@@ -5,7 +5,8 @@ outputs, its status codes, the JSON error object, the versioning rule, and the
 command-line tool's verbs and exit codes. The header is
 `include/pdfkit/pdfkit.h`; `CLAUDE.md` §2 owns which functions exist, and this
 file owns how they are called. This build implements every catalogue
-function; the version of the library is 0.1.0 and of the ABI 1.
+function; the version of the library is 0.2.0-preview (the text
+`pdfkit_version` reports, its release label included) and of the ABI 2.
 
 ## 1. Calling rules
 
@@ -101,7 +102,7 @@ string, malformed JSON), then does its work. An optional JSON argument may be
 
 | Symbol | Signature | Behaviour |
 |---|---|---|
-| `pdfkit_abi_version` | `uint32_t pdfkit_abi_version(void)` | the ABI version, 1 |
+| `pdfkit_abi_version` | `uint32_t pdfkit_abi_version(void)` | the ABI version, 2 |
 | `pdfkit_version` | `pdfkit_status pdfkit_version(pdfkit_buffer* out)` | the version object below |
 | `pdfkit_buffer_free` | `void pdfkit_buffer_free(pdfkit_buffer* buffer)` | frees and zeroes the buffer; a zeroed buffer or `NULL` is a no-op |
 | `pdfkit_close` | `void pdfkit_close(pdfkit_document* doc)` | destroys the document; `NULL` is a no-op |
@@ -112,8 +113,8 @@ The version object:
 
 ```json
 {
-  "version": "0.1.0",
-  "abi": 1,
+  "version": "0.2.0-preview",
+  "abi": 2,
   "build": "gcc 16.1.0, Release",
   "catalogue": [
     {"number": "1.1", "function": "Open", "symbol": "pdfkit_open", "verb": "inspect",
@@ -138,14 +139,14 @@ type and never a time, so two builds of one tree report the same text.
 | 3.1 | `pdfkit_images(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the image list JSON | `build-6.md` |
 | 3.2 | `pdfkit_image_data(pdfkit_document* doc, const char* identity, const char* options_json, pdfkit_buffer* out)` | `doc`, `identity`, `out` | PNG or JPEG bytes (not JSON) | `build-6.md` |
 | 4 | `pdfkit_metadata(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the metadata JSON | `build-10.md` |
-| 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `docs/archive/build/build-8.md` |
+| 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `docs/archive/build/build-8.md`, ABI 2 `docs/archive/build/build-15.md` |
 | 6 | `pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json, pdfkit_buffer* out)` | `edit`, `treatments_json`, `out` | the per-treatment JSON | `docs/archive/build/build-9.md` |
 | 7 | `pdfkit_set_metadata(pdfkit_edit* edit, const char* fields_json, pdfkit_buffer* out)` | `edit`, `fields_json`, `out` | the fields as they will be written | `build-10.md` |
 | 8 | `pdfkit_channels(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the channel report JSON | `docs/archive/build/build-7.md` |
 | 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `docs/archive/build/build-7.md` |
 | 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
-| 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md` |
-| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `docs/archive/build/build-12.md` |
+| 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md`, ABI 2 `docs/archive/build/build-15.md` |
+| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `docs/archive/build/build-12.md`, ABI 2 `docs/archive/build/build-15.md` |
 
 Every function returns `PDFKIT_E_INVALID_ARGUMENT` for a missing required
 argument or malformed JSON; each function's section below gives its JSON
@@ -507,9 +508,37 @@ written. `matches_json` is `{"matches": [...]}`, each match one of:
 
 | Form | Keys |
 |---|---|
-| search | `search` (the string, UTF-8), optional `folding` (`case`, `diacritics`, `whitespace`, `hyphenation`, each `true` by default: simple case folding, marks stripped after canonical decomposition, any run of white space or an inferred word gap as one space, a joined hyphenation read without its hyphen), optional `placeholder` |
+| search | `search` (the string, UTF-8), optional `folding` (below), optional `placeholder` |
 | glyph range | `glyphs` (`{"page": n, "first": i, "last": j}`, a half-open range of positions in the page's glyph list of `pdfkit_text`, or an array of such ranges on one page read as one expression, the form an occurrence found in a drawing or row order takes), `fingerprint` (the one `pdfkit_text` reported), optional `placeholder` |
 | occurrence | `occurrence`: `{"text", "page", optional "folding", and at least one of "index", "near", "before", "after"}`, optional `placeholder`: the one occurrence of `text` on `page`, in `pdfkit_find`'s order, that every narrowing given matches |
+| string | `string`: `{"page", "list", "path", "first", "last"}`, the entry of a value's `strings` in `pdfkit_find` (§4.16), whose other keys (`occurrence`, `surface`, `stream`, `operator`, `properties`, `object`, `string`, `text`, `glued_before`, `glued_after`) may ride along and, but for `occurrence`, must agree with the document; `fingerprint`; optional `placeholder`: that range of code points of that marked-content string replaced by the placeholder, at that operator alone (`docs/DESIGN.md` §12) |
+
+**The folding** is an object of optional keys, the same in the search and
+occurrence forms, in `pdfkit_find` and in `pdfkit_check`. pdfkit folds only
+what it is asked to: a folding left out, or a key left out of it, folds
+nothing, and a search with no folding matches the text code point for code
+point (the ligatures the extraction decomposes and the Arabic positional
+forms it reads as their letters, `docs/DESIGN.md` §11, are how the text
+reads, not a folding).
+
+| Key | Default | When given |
+|---|---|---|
+| `case` | `false` | `true`: simple case folding |
+| `diacritics` | `false` | `true`: marks stripped after canonical decomposition |
+| `whitespace` | `false` | `true`: any run of white space or an inferred word gap reads as one space |
+| `hyphenation` | `false` | `true`: a word joined across a line by a hyphen reads without the hyphen |
+| `equivalents` | none | an array of classes, each a non-empty array of single characters (strings of one code point) that match one another: each reads as its class's first character |
+| `ignore` | none | an array of single characters read as absent, on both sides |
+
+The classes and the ignored characters apply first, to each character as
+written, and the flags after them, so `{"equivalents": [["'", "’"]]}` finds
+`O’Brien` for `O'Brien`. A character named twice (in two classes, twice in
+one, or in a class and in `ignore`), a member that is not exactly one code
+point, an empty class, or a class or `ignore` that is not an array is
+`invalid_argument`. The scans of a string operand's codes and of a stream's
+bytes (`docs/DESIGN.md` §11 and §18) look for the value without its ignored
+characters, in each spelling the classes allow (up to 64 per string), and
+skip no ignored character in the bytes they scan.
 
 The narrowings of an occurrence, each optional, all of them applying
 together:
@@ -555,10 +584,16 @@ searched nowhere else; given as an array, its ranges are sorted, the
 placeholder is drawn once at the first and the others are holes, and it is
 answered as one occurrence whose `glyphs` holds the ranges (`[[i, j], ...]`)
 and whose `text` joins their text with a space; an occurrence is answered
-the same way, with `kind` `occurrence`. Every match is checked
+the same way, with `kind` `occurrence`. A string occurrence is answered as
+one occurrence `{"page", "list", "path", "first", "last", "text"}` with
+`kind` `string`, and is verified on its page by the self-check
+(`docs/DESIGN.md` §18). Every match is checked
 before any is recorded, so a refused call leaves the plan as it was. Calls add
 up; occurrences that overlap across matches follow the overlap rule of
-`docs/DESIGN.md` §11 when the plan is written.
+`docs/DESIGN.md` §11 when the plan is written: the earlier-starting one keeps
+the overlap; of two starting on the same glyph the one ending later; of two
+covering the same glyphs the one recorded first (an earlier call's, then the
+earlier entry of `matches`).
 
 ```json
 {"fingerprint": "83ce7c...",
@@ -578,7 +613,8 @@ up; occurrences that overlap across matches follow the overlap rule of
 
 | Failure | Status | `code` |
 |---|---|---|
-| a null `edit` or `out`, malformed JSON, no `matches` array, an unknown key, a match with more than one or none of `search`, `glyphs` and `occurrence`, a non-boolean folding | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a null `edit` or `out`, malformed JSON, no `matches` array, an unknown key, a match with more than one or none of `search`, `glyphs`, `occurrence` and `string`, a non-boolean folding, a folding class or ignored character refused above | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a string occurrence with an unknown key or without `page`, `list`, `path`, `first` and `last`, a `folding` beside it, a path that is not an array starting with a key, a fingerprint not this document's, a page outside the document, a `list` the page does not have, a `path` that names no string (an `/ActualText` a glyph reads included), a range empty or past the string's code points, or a key that disagrees with the document | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | an occurrence without a non-empty `text` and a `page`, without a narrowing, with a page outside the document, a negative or fractional `index`, a `near` that is not four numbers with left not past right and bottom not above top, or a `folding` beside it rather than inside it | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | an occurrence whose narrowings leave no occurrence | `PDFKIT_E_INVALID_ARGUMENT` | `occurrence_not_found` |
 | an occurrence whose narrowings leave several (`failed` names how many and their indices) | `PDFKIT_E_INVALID_ARGUMENT` | `occurrence_ambiguous` |
@@ -593,7 +629,7 @@ up; occurrences that overlap across matches follow the overlap rule of
 self-check (`docs/DESIGN.md` §18) over any PDF bytes, opened with the default
 limits, each string searched as a value in every surface (the location check
 of a glyph range is the self-check's alone). `strings_json` is `{"strings": [{"text": "...", "folding": {...}}]}`,
-the folding as in §4.11. Finding a string is the answer:
+the folding as in §4.11 (nothing folded unless asked). Finding a string is the answer:
 
 ```json
 {"strings": 2, "pages": 1, "count": 1,
@@ -737,14 +773,15 @@ document.
 
 ```json
 {"values": [{"text": "EU", "folding": {"case": true, "diacritics": true,
-                                        "whitespace": true, "hyphenation": true}}],
+                                        "whitespace": true, "hyphenation": true,
+                                        "equivalents": [["'", "’"]]}}],
  "pages": [1, 2, 3],
  "context": 5}
 ```
 
 | Key | Default | Meaning |
 |---|---|---|
-| `values` | required | one entry per value; `text` is UTF-8, non-empty; `folding` as in §4.11 (each flag `true` by default) |
+| `values` | required | one entry per value; `text` is UTF-8, non-empty; `folding` as in §4.11 (nothing folded unless asked) |
 | `pages` | every page | page numbers from 1, each at most once |
 | `context` | 5 | words of context on each side, 0 to 50 |
 
@@ -757,7 +794,13 @@ document.
       "text": "EU", "order": "reading",
       "rectangles": [[70.17, 696.26, 84.8, 708.85]],
       "hidden": [],
-      "before": "the member states of the", "after": "agreed on the following"}]}]}
+      "before": "the member states of the", "after": "agreed on the following",
+      "glued_before": "", "glued_after": ""}],
+   "strings": [
+     {"occurrence": 0, "page": 3, "list": 2, "surface": "alt", "path": ["Alt"],
+      "stream": 0, "operator": 41, "properties": null, "object": null,
+      "string": "Logo of the EU", "first": 12, "last": 14, "text": "EU",
+      "glued_before": "", "glued_after": ""}]}]}
 ```
 
 | Key | Holds |
@@ -771,15 +814,23 @@ document.
 | `rectangles` | the device boxes of its glyphs, `[left, bottom, right, top]`, 0.01 pt: one per line of the reading order it lies on, the union of its glyphs' boxes there |
 | `hidden` | the hidden classes (`CLAUDE.md` §4) of any of its glyphs, in the order of `pdfkit_text`'s `hidden.classes` |
 | `before`, `after` | up to `context` words of the page's reading-order text on each side, joined by a space: the words wholly before its first glyph and wholly after its last, so the word a value is found inside is in neither |
+| `strings` | the value's occurrences in the strings of the marked-content property lists of the pages asked (`docs/DESIGN.md` §11), which a search rewrites and the write keeps, in page order, then list, then string, then offset; not counted in `count` |
+| `strings[].list`, `path` | the property list's index among the page's lists (every `BDC` and `DP` of the page's content and of each draw of a form, in that order, `/OC` lists left out), and the keys and array indices from the list to the string |
+| `strings[].surface` | `alt` (a top-level `/Alt`), `expansion` (`/E`), `actual_text` (an `/ActualText` no glyph reads as its text) or `property` (any other string) |
+| `strings[].stream`, `operator`, `properties`, `object` | 0 for the page's content or the form's object number; the index of the `BDC` or `DP` in that stream; the `/Properties` name, `null` when the list is inline; the list's object number, `null` when it is direct |
+| `strings[].string`, `first`, `last`, `text` | the whole string as UTF-8, the half-open range of the occurrence in its code points (not UTF-16 units), and its text |
+| `strings[].glued_before`, `glued_after` | the string's characters next to the range up to white space on each side |
+| `glued_before`, `glued_after` | the characters of the word or words the occurrence lies inside that precede its first glyph and follow its last, as the extraction reads them; empty when it starts or ends a word. In the reading order a word is a word of `pdfkit_text` (a word joined across a line by a hyphen is the two words the extraction writes); in another order they are the glyphs that order reads next to the occurrence up to a word gap or a white-space glyph. On "The EU and the neutral Europe agreed." the value `EU` with case folding gives `""` and `""` for the word, `"n"` and `"tral"` for the `eu` of "neutral", `""` and `"rope"` for "Europe" |
 
 Every key is written in the order shown; two calls give the same bytes. A
 value found inside a longer word is an occurrence (`CLAUDE.md` §5): deciding
-whether it stands as a word is the caller's. Pages are read in page order
+whether it stands as a word is the caller's, and the glued letters are what it
+decides with; pdfkit decides nothing with them. Pages are read in page order
 whatever order `pages` lists them in.
 
 | Failure | Status | `code` |
 |---|---|---|
-| a null `doc`, `values_json` or `out`, malformed JSON, no `values` array, an unknown key, a value that is not an object, a value without `text` or with an empty one, an unknown folding or a non-boolean one | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a null `doc`, `values_json` or `out`, malformed JSON, no `values` array, an unknown key, a value that is not an object, a value without `text` or with an empty one, an unknown folding, a non-boolean one, a folding class or ignored character refused in §4.11 | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a page number outside the document or listed twice, a `context` that is not a whole number from 0 to 50 | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a limit met while a page is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
 
@@ -795,10 +846,17 @@ named), optionally `pdfkit_check` on the bytes, and `pdfkit_buffer_free`,
 ## 5. Versioning
 
 - The ABI only grows: a symbol never changes its signature or its meaning, a
-  JSON output only gains fields, and a status value never changes.
-- `pdfkit_abi_version` returns 1, the version of the first release, and is
-  raised by one on every addition after it (a symbol, a status value or a JSON
-  field), in the change that adds it.
+  JSON output only gains fields, and a status value never changes. The one
+  exception is a change of meaning the owner orders, which raises the ABI
+  version in the change that makes it and is listed below.
+- `pdfkit_abi_version` returned 1 for the first release and is raised by one
+  on every addition after it (a symbol, a status value, a JSON field or a
+  match form), in the change that adds it.
+
+| ABI | Release | What it added or changed |
+|---|---|---|
+| 1 | `0.1.0-preview` | the catalogue of `CLAUDE.md` §2 |
+| 2 | `0.2.0-preview` | `glued_before`, `glued_after` and `strings` in `pdfkit_find`; the `string` match of `pdfkit_redact_text`; `equivalents` and `ignore` in a folding; **changed meaning**: a folding left out folds nothing (it folded everything in ABI 1), ordered by the owner because pdfkit applies no rule it was not asked for; the overlap rule's tie stated |
 - A caller checks `pdfkit_abi_version() >= N` for the version whose symbols it
   binds, and reads `pdfkit_version`'s `catalogue` to learn which functions this
   build implements.

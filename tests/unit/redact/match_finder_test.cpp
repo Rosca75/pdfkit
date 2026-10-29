@@ -26,7 +26,7 @@ MatchFinder::Match search(const std::string& text, bool case_fold = true, bool d
                           bool whitespace = true, bool hyphenation = true) {
   MatchFinder::Match match;
   match.search = text;
-  match.folding.text = {case_fold, diacritics, whitespace};
+  match.folding.text = {case_fold, diacritics, whitespace, {}, {}};
   match.folding.hyphenation = hyphenation;
   match.placeholder = "[REDACTED]";
   return match;
