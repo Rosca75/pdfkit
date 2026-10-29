@@ -75,8 +75,9 @@ redact::MatchFinder::Folding FoldingArgument::read(const JsonValue& value, const
   for (const auto& [key, setting] : value.as_object()) {
     if (key == "case" || key == "diacritics" || key == "whitespace" || key == "hyphenation") {
       if (setting.kind() != JsonValue::Kind::boolean) {
-        throw Error(ErrorCode::invalid_argument,
-                    where + " gives the folding \"" + key + "\" as " + kind_of(setting), expected,
+        std::string failed = where;
+        failed += " gives the folding \"" + key + "\" as " + kind_of(setting);
+        throw Error(ErrorCode::invalid_argument, failed, expected,
                     "write \"" + key + "\": true or false");
       }
       const bool on = setting.as_bool();
@@ -100,11 +101,11 @@ redact::MatchFinder::Folding FoldingArgument::read(const JsonValue& value, const
         const std::string what = "equivalents class " + std::to_string(c);
         const JsonValue& members = classes[c];
         if (members.kind() != JsonValue::Kind::array || members.as_array().empty()) {
-          throw Error(
-              ErrorCode::invalid_argument,
-              where + " gives " + what +
-                  (members.kind() == JsonValue::Kind::array ? " empty" : " as " + kind_of(members)),
-              expected, "write each class as a non-empty array of one-character strings");
+          std::string failed = where;
+          failed += " gives " + what;
+          failed += members.kind() == JsonValue::Kind::array ? " empty" : " as " + kind_of(members);
+          throw Error(ErrorCode::invalid_argument, failed, expected,
+                      "write each class as a non-empty array of one-character strings");
         }
         const char32_t first = character(members.as_array().front(), where, expected, what);
         for (const JsonValue& member : members.as_array()) {
@@ -116,7 +117,7 @@ redact::MatchFinder::Folding FoldingArgument::read(const JsonValue& value, const
     } else if (key == "ignore") {
       if (setting.kind() != JsonValue::Kind::array) {
         throw Error(ErrorCode::invalid_argument, where + " gives \"ignore\" as " + kind_of(setting),
-                    expected, "write the ignored characters as an array, such as [\"\\u00AD\"]");
+                    expected, R"(write the ignored characters as an array, such as ["\u00AD"])");
       }
       for (const JsonValue& member : setting.as_array()) {
         const char32_t code_point = character(member, where, expected, "ignore");
@@ -124,8 +125,9 @@ redact::MatchFinder::Folding FoldingArgument::read(const JsonValue& value, const
         folding.text.ignored.insert(code_point);
       }
     } else {
-      throw Error(ErrorCode::invalid_argument, where + " names the unknown folding \"" + key + "\"",
-                  expected, "use only " + std::string(keys));
+      std::string failed = where;
+      failed += " names the unknown folding \"" + key + "\"";
+      throw Error(ErrorCode::invalid_argument, failed, expected, "use only " + std::string(keys));
     }
   }
   return folding;

@@ -261,10 +261,18 @@ TEST_CASE("two searches starting on one glyph: the longer keeps it, then the one
   const std::string shorter = R"({"search": "Contoso", "placeholder": "[A]"})";
   const std::string longer = R"({"search": "Contoso Group", "placeholder": "[B]"})";
   const std::string again = R"({"search": "Contoso", "placeholder": "[C]"})";
-  CHECK(drawn(R"({"matches": [)" + shorter + ", " + longer + "]}") == "[B] report");
-  CHECK(drawn(R"({"matches": [)" + longer + ", " + shorter + "]}") == "[B] report");
-  CHECK(drawn(R"({"matches": [)" + shorter + ", " + again + "]}") == "[A] Group report");
-  CHECK(drawn(R"({"matches": [)" + again + ", " + shorter + "]}") == "[C] Group report");
+  const auto both = [](const std::string& first, const std::string& second) {
+    std::string out = R"({"matches": [)";
+    out += first;
+    out += ", ";
+    out += second;
+    out += "]}";
+    return out;
+  };
+  CHECK(drawn(both(shorter, longer)) == "[B] report");
+  CHECK(drawn(both(longer, shorter)) == "[B] report");
+  CHECK(drawn(both(shorter, again)) == "[A] Group report");
+  CHECK(drawn(both(again, shorter)) == "[C] Group report");
   // Across calls, the earlier call's match is recorded first.
   pdfkit_buffer out{nullptr, 0, nullptr};
   pdfkit_document* doc = nullptr;
