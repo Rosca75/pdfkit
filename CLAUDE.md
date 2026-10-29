@@ -35,7 +35,7 @@ performs no OCR.
 | `third_party/inventory.tsv` | every vendored component: path, version, upstream, licence, SHA-256 |
 | `THIRD-PARTY-NOTICES.md` | the licence notices shipped with every artefact |
 | `build/toolchain.md` | the pinned compiler, CMake, Ninja, clang-format and clang-tidy versions and the proxy behaviour |
-| `build-5.md`, `build-6.md`, `build-10.md`, `build-11.md` to `build-14.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase; 11 to 14 are the located check, find, hidden-layer removal and one occurrence as one place, whose §0 is the contract doc-anonymiser is built against): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 |
+| `build-5.md`, `build-6.md`, `build-10.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 and 11 to 14 |
 | `docs/change-01.md`, `docs/change-01a.md`, `docs/change-01b.md`, `docs/change-01c.md` | the reference panel order, awaiting the owner's launch: the parent holds its decisions and batch index, each batch file the work of one session |
 
 Every other markdown file is a working document. `OPEN-QUESTIONS.md` holds the
@@ -70,7 +70,7 @@ registry in `src/api/catalogue.cpp` and the CLI verbs to one another.
 | 9 | Select pages | `pdfkit_select_pages` | edit handle; JSON page list | the pages recorded; nothing is written until `pdfkit_write` | an empty, duplicated or out-of-range page list | `docs/archive/build/build-7.md` |
 | 10.1 | Write | `pdfkit_write` | edit handle | PDF bytes; a write report (pages, size and hash, objects, channels stripped, rectangles changed, image treatments, self-check result, warnings) | the self-check finds a search string in any text surface, a glyph range's text at its location, or an original value of a rewritten metadata field in the metadata (the refusal names the page and the surface); a limit met while a stream is read | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
 | 10.2 | Check | `pdfkit_check` | PDF bytes; JSON strings with folding rules | JSON: every surviving occurrence by page and surface | the bytes do not open | `docs/archive/build/build-8.md` |
-| 11 | Find | `pdfkit_find` | document handle; JSON values, each with the caller's folding rules; options (pages, context words) | JSON per value: the occurrences in every order a reader reads, each with page, glyph ranges, rectangles, hidden classes and context; the document fingerprint | a value with an empty text; an unknown folding or key; a page out of range or listed twice; a limit met while reading a page (`limit_exceeded`) | `build-12.md` |
+| 11 | Find | `pdfkit_find` | document handle; JSON values, each with the caller's folding rules; options (pages, context words) | JSON per value: the occurrences in every order a reader reads, each with page, glyph ranges, rectangles, hidden classes and context; the document fingerprint | a value with an empty text; an unknown folding or key; a page out of range or listed twice; a limit met while reading a page (`limit_exceeded`) | `docs/archive/build/build-12.md` |
 
 The lifecycle symbols carry no row of their own: `pdfkit_abi_version`,
 `pdfkit_version` (the library and ABI versions, the build and each catalogue

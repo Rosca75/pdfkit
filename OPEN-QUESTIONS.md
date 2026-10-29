@@ -47,7 +47,7 @@ The owner added on 2026-10-28: pdfkit offers two text operations, every
 occurrence of a string or one single occurrence; one occurrence is that place
 on that page only (an occurrence in a header drawn on 30 pages goes from the
 picked page alone), and the single-occurrence call takes parameters that
-narrow which text is meant. **Action**: `build-14.md` (shared forms copied per
+narrow which text is meant. **Action**: `docs/archive/build/build-14.md`, done (shared forms copied per
 located edit; the `occurrence` form with `index`, `near`, `before`, `after`).
 
 `CLAUDE.md` §5 states the principle. **Action**: a branch changes the
@@ -88,8 +88,8 @@ this commit; every brief carries it.
 ### 2.4 Release
 
 **Answer** (old 2.15): tag `0.1.0-preview` with the known gaps in the release
-notes. **Action**: a session writes the notes and tags the merged `main`,
-about 1 hour and $15.
+notes. **Done 2026-10-29**: `v0.1.0-preview`, published as a GitHub pre-release
+with the package and its notes.
 
 ### 2.5 Hidden layers are removed (old section 1, optional content)
 

@@ -12,6 +12,16 @@ cmake_minimum_required(VERSION 3.28)
 
 project(pdfkit VERSION 0.1.0 LANGUAGES C CXX)
 
+# The release label after the version: "preview" for a pre-release, empty for a
+# release. pdfkit_version reports the version with it and the package is named
+# with it, so a pre-release never claims the release's version.
+set(PDFKIT_VERSION_LABEL "preview")
+if(PDFKIT_VERSION_LABEL)
+  set(PDFKIT_VERSION_FULL "${PROJECT_VERSION}-${PDFKIT_VERSION_LABEL}")
+else()
+  set(PDFKIT_VERSION_FULL "${PROJECT_VERSION}")
+endif()
+
 # C++20 without compiler extensions, because the library must build on every
 # toolchain a consumer uses (CMake documentation of CMAKE_CXX_EXTENSIONS, recalled).
 set(CMAKE_CXX_STANDARD 20)
@@ -53,7 +63,7 @@ target_include_directories(pdfkit_core PUBLIC
 target_compile_definitions(pdfkit_core
   PUBLIC PDFKIT_BUILDING
          PDFKIT_EXPORT_HEADER="platform/export.hpp"
-  PRIVATE PDFKIT_VERSION_STRING="${PROJECT_VERSION}"
+  PRIVATE PDFKIT_VERSION_STRING="${PDFKIT_VERSION_FULL}"
           PDFKIT_BUILD_TYPE="$<IF:$<CONFIG:>,unspecified,$<CONFIG>>")
 # zlib is public so the unit tier's fixture writer compresses with the same
 # library the reader inflates with.

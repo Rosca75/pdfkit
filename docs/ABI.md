@@ -145,7 +145,7 @@ type and never a time, so two builds of one tree report the same text.
 | 9 | `pdfkit_select_pages(pdfkit_edit* edit, const char* pages_json, pdfkit_buffer* out)` | `edit`, `pages_json`, `out` | `{"pages": [...]}`, the pages recorded | `docs/archive/build/build-7.md` |
 | 10.1 | `pdfkit_write(pdfkit_edit* edit, const char* options_json, pdfkit_buffer* out_pdf, pdfkit_buffer* out)` | `edit`, `out_pdf`, `out` | `out_pdf` the PDF bytes; `out` the write report | `docs/archive/build/build-7.md`, self-check `docs/archive/build/build-8.md` |
 | 10.2 | `pdfkit_check(const uint8_t* bytes, size_t size, const char* strings_json, pdfkit_buffer* out)` | `strings_json`, `out`; `bytes` unless `size` is 0 | the surviving occurrences JSON | `docs/archive/build/build-8.md` |
-| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `build-12.md` |
+| 11 | `pdfkit_find(pdfkit_document* doc, const char* values_json, pdfkit_buffer* out)` | `doc`, `values_json`, `out` | the occurrences per value JSON | `docs/archive/build/build-12.md` |
 
 Every function returns `PDFKIT_E_INVALID_ARGUMENT` for a missing required
 argument or malformed JSON; each function's section below gives its JSON
