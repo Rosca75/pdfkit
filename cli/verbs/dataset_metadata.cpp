@@ -248,7 +248,7 @@ std::string dataset_set_metadata(pdfkit_document* document, std::string_view id,
   std::string matches = R"({"matches": [)";
   for (std::size_t i = 0; i < searched.size(); ++i) {
     matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(searched[i]) +
-               R"(, "placeholder": "[REDACTED]"})";
+               ", " + std::string(every_folding) + R"(, "placeholder": "[REDACTED]"})";
   }
   matches += "]}";
 

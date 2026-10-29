@@ -49,10 +49,23 @@ namespace pdfkit::redact {
 
 class MatchFinder {
  public:
-  // The caller's folding: the three text foldings and the hyphenation join.
+  // The caller's folding: the three text foldings with the caller's
+  // classes and ignored characters, and the hyphenation join. The defaults
+  // fold everything, as pdfkit's own searches do; literal() folds nothing,
+  // the C ABI's default.
   struct Folding {
     platform::unicode::Folding::Options text;
     bool hyphenation = true;
+
+    [[nodiscard]] static Folding literal() {
+      Folding none;
+      none.text.case_fold = false;
+      none.text.diacritics = false;
+      none.text.whitespace = false;
+      none.hyphenation = false;
+      return none;
+    }
+    auto operator<=>(const Folding&) const = default;
   };
 
   struct Match {
@@ -172,11 +185,22 @@ class MatchFinder {
   [[nodiscard]] std::pair<std::string, std::string> context(const Located& located,
                                                             std::size_t words);
 
+  // The characters glued to the occurrence: in the reading order, those of
+  // the word holding its first glyph that precede that glyph and those of
+  // the word holding its last glyph that follow it (a word of the page as
+  // pdfkit_text writes it); in another order, the glyphs that order reads
+  // next to it up to a word gap or a white-space glyph on each side. Empty
+  // where the occurrence starts or ends a word.
+  [[nodiscard]] std::pair<std::string, std::string> glued(const Located& located);
+
   // The byte forms of a search string the raw scans look for: its UTF-8, its
   // Latin-1 when every character fits, and its UTF-16BE, its white space
   // collapsed when white space folds and its ASCII letters in lower case when
-  // case folds.
+  // case folds; each spelling the caller's classes allow (every member of a
+  // class in place of a character of it), up to max_spellings of them, its
+  // ignored characters left out.
   [[nodiscard]] static std::vector<std::string> byte_forms(const Match& match);
+  static constexpr std::size_t max_spellings = 64;
 
   // bytes with its ASCII letters in lower case.
   [[nodiscard]] static std::string lower_ascii(std::string bytes);
@@ -254,13 +278,13 @@ class MatchFinder {
   std::set<std::string> left_out_;
   std::vector<Unit> plain_;
   std::vector<Unit> joined_;
-  std::map<unsigned, Haystack> folded_;
+  std::map<Folding, Haystack> folded_;
   // The other orders (the drawing order, the rows read forwards and
   // backwards), built on first use of find_orders, and their folded forms,
   // each glyph's text folded once for all three.
   std::vector<std::vector<Step>> orders_;
-  std::map<unsigned, std::vector<OrderHaystack>> order_folded_;
-  std::map<unsigned, std::set<char32_t>> order_shown_;
+  std::map<platform::unicode::Folding::Options, std::vector<OrderHaystack>> order_folded_;
+  std::map<platform::unicode::Folding::Options, std::set<char32_t>> order_shown_;
   // The reading-order position of each draw index, built on first use.
   std::vector<std::size_t> position_;
   // The code bytes of each string operand (consecutive records of one walk,
@@ -281,6 +305,12 @@ class MatchFinder {
   };
   std::vector<const text::TextLayout::Line*> line_of_;
   std::vector<WordAt> words_;
+  // The word of each reading-order position (none outside a word), and the
+  // step of each draw index in each other order, built on first use of
+  // glued.
+  std::vector<std::size_t> word_of_;
+  std::vector<std::vector<std::size_t>> step_of_;
+  void index_words();
 };
 
 }  // namespace pdfkit::redact

@@ -18,6 +18,7 @@
 #include "pdfkit/pdfkit.h"
 
 #include "api/arguments.hpp"
+#include "api/folding_argument.hpp"
 #include "api/guarded.hpp"
 #include "api/handles.hpp"
 #include "platform/error.hpp"
@@ -46,7 +47,7 @@ using pdfkit::redact::MatchFinder;
 using pdfkit::redact::TextPlan;
 
 constexpr std::string_view shape =
-    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"})";
+    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"})";
 constexpr std::string_view default_placeholder = "[REDACTED]";
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
@@ -56,15 +57,6 @@ constexpr std::string_view default_placeholder = "[REDACTED]";
 
 std::string where(std::size_t index) {
   return "match " + std::to_string(index);
-}
-
-bool flag(const JsonValue& value, std::size_t index, const std::string& name) {
-  if (value.kind() != JsonValue::Kind::boolean) {
-    refuse(where(index) + " gives the folding \"" + name + "\" as " +
-               std::string(JsonValue::kind_name(value.kind())),
-           "write \"" + name + "\": true or false");
-  }
-  return value.as_bool();
 }
 
 const std::string& text_member(const JsonValue& value, std::size_t index, const std::string& name) {
@@ -111,27 +103,8 @@ TextPlan::Range read_range(const JsonValue& value, std::size_t index) {
 }
 
 MatchFinder::Folding read_folding(const JsonValue& value, std::size_t index) {
-  if (value.kind() != JsonValue::Kind::object) {
-    refuse(
-        where(index) + " gives \"folding\" as " + std::string(JsonValue::kind_name(value.kind())),
-        "write the folding as an object of true or false flags");
-  }
-  MatchFinder::Folding folding;
-  for (const auto& [key, setting] : value.as_object()) {
-    if (key == "case") {
-      folding.text.case_fold = flag(setting, index, key);
-    } else if (key == "diacritics") {
-      folding.text.diacritics = flag(setting, index, key);
-    } else if (key == "whitespace") {
-      folding.text.whitespace = flag(setting, index, key);
-    } else if (key == "hyphenation") {
-      folding.hyphenation = flag(setting, index, key);
-    } else {
-      refuse(where(index) + " names the unknown folding \"" + key + "\"",
-             "use only case, diacritics, whitespace and hyphenation");
-    }
-  }
-  return folding;
+  return pdfkit::api::FoldingArgument::read(
+      value, "pdfkit_redact_text matches_json " + where(index), std::string(shape));
 }
 
 // The "occurrence" object of a match.
@@ -142,6 +115,7 @@ TextPlan::OccurrenceQuery read_occurrence(const JsonValue& value, std::size_t in
            R"(write the occurrence as {"text": "EU", "page": 3, "index": 0})");
   }
   TextPlan::OccurrenceQuery query;
+  query.folding = MatchFinder::Folding::literal();
   bool text = false;
   bool page = false;
   for (const auto& [key, item] : value.as_object()) {
@@ -209,6 +183,7 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
            "write each match as an object");
   }
   MatchFinder::Match match;
+  match.folding = MatchFinder::Folding::literal();
   match.placeholder = std::string(default_placeholder);
   bool search = false;
   bool glyphs = false;

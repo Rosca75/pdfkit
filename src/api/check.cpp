@@ -12,6 +12,7 @@
 #include "pdfkit/pdfkit.h"
 
 #include "api/arguments.hpp"
+#include "api/folding_argument.hpp"
 #include "api/guarded.hpp"
 #include "platform/byte_span.hpp"
 #include "platform/error.hpp"
@@ -34,7 +35,7 @@ using pdfkit::platform::JsonValue;
 using pdfkit::redact::MatchFinder;
 
 constexpr std::string_view shape =
-    R"({"strings": [{"text": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}}]})";
+    R"({"strings": [{"text": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}}]})";
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
   throw Error(ErrorCode::invalid_argument, "pdfkit_check strings_json " + failed,
@@ -48,33 +49,15 @@ MatchFinder::Match read_string(const JsonValue& item, std::size_t index) {
            R"(write each string as {"text": "..."})");
   }
   MatchFinder::Match match;
+  match.folding = MatchFinder::Folding::literal();
   bool text = false;
   for (const auto& [name, value] : item.as_object()) {
     if (name == "text" && value.kind() == JsonValue::Kind::string) {
       match.search = value.as_string();
       text = true;
-    } else if (name == "folding" && value.kind() == JsonValue::Kind::object) {
-      for (const auto& [key, setting] : value.as_object()) {
-        if (setting.kind() != JsonValue::Kind::boolean) {
-          std::string failed = where;
-          failed += " gives the folding \"" + key + "\" as ";
-          failed += JsonValue::kind_name(setting.kind());
-          refuse(failed, "write each folding flag as true or false");
-        }
-        if (key == "case") {
-          match.folding.text.case_fold = setting.as_bool();
-        } else if (key == "diacritics") {
-          match.folding.text.diacritics = setting.as_bool();
-        } else if (key == "whitespace") {
-          match.folding.text.whitespace = setting.as_bool();
-        } else if (key == "hyphenation") {
-          match.folding.hyphenation = setting.as_bool();
-        } else {
-          std::string failed = where;
-          failed += " names the unknown folding \"" + key + "\"";
-          refuse(failed, "use only case, diacritics, whitespace and hyphenation");
-        }
-      }
+    } else if (name == "folding") {
+      match.folding = pdfkit::api::FoldingArgument::read(
+          value, "pdfkit_check strings_json " + where, std::string(shape));
     } else {
       std::string failed = where;
       failed += " gives \"" + name + "\" as ";

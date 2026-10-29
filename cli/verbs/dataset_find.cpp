@@ -77,7 +77,8 @@ std::string ranges_json(const std::vector<Range>& ranges) {
 std::string values_json(const std::vector<std::string>& words, const std::string& extra) {
   std::string out = R"({"values": [)";
   for (std::size_t i = 0; i < words.size(); ++i) {
-    out += (i == 0 ? "" : ", ") + std::string(R"({"text": )") + json_quote(words[i]) + "}";
+    out += (i == 0 ? "" : ", ") + std::string(R"({"text": )") + json_quote(words[i]) + ", " +
+           std::string(every_folding) + "}";
   }
   return out + "]" + extra + "}";
 }
@@ -210,7 +211,8 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
   // The same words through the redaction search, on an edit never written.
   std::string matches = R"({"matches": [)";
   for (std::size_t i = 0; i < words.size(); ++i) {
-    matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(words[i]) + "}";
+    matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(words[i]) + ", " +
+               std::string(every_folding) + "}";
   }
   matches += "]}";
   pdfkit_edit* edit = nullptr;

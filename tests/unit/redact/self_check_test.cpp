@@ -157,9 +157,9 @@ TEST_CASE("pdfkit_check answers every survivor by page and surface") {
   fixture.page("BT /F1 10 Tf 72 700 Td (A note on Zebulon) Tj ET");
   const std::string file = fixture.bytes();
   pdfkit_buffer out{nullptr, 0, nullptr};
-  const pdfkit_status status =
-      pdfkit_check(reinterpret_cast<const std::uint8_t*>(file.data()), file.size(),
-                   R"({"strings": [{"text": "zebulon"}, {"text": "absent"}]})", &out);
+  const pdfkit_status status = pdfkit_check(
+      reinterpret_cast<const std::uint8_t*>(file.data()), file.size(),
+      R"({"strings": [{"text": "zebulon", "folding": {"case": true}}, {"text": "absent"}]})", &out);
   const std::string answer(reinterpret_cast<const char*>(out.data), out.size);
   pdfkit_buffer_free(&out);
   CHECK(status == PDFKIT_OK);

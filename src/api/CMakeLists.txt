@@ -10,6 +10,7 @@ target_sources(pdfkit_core PRIVATE
   catalogue.cpp
   document_report.cpp
   edit.cpp
+  folding_argument.cpp
   guarded.cpp
   handles.cpp
   lifecycle.cpp

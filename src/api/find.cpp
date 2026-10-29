@@ -14,6 +14,7 @@
 #include "pdfkit/pdfkit.h"
 
 #include "api/arguments.hpp"
+#include "api/folding_argument.hpp"
 #include "api/guarded.hpp"
 #include "api/handles.hpp"
 #include "platform/crypto/sha2.hpp"
@@ -47,7 +48,7 @@ using pdfkit::platform::JsonValue;
 using pdfkit::redact::MatchFinder;
 
 constexpr std::string_view shape =
-    R"({"values": [{"text": "<non-empty text>", "folding": {"case", "diacritics", "whitespace", "hyphenation"}}], "pages": [<page numbers from 1>], "context": <0 to 50>})";
+    R"({"values": [{"text": "<non-empty text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}}], "pages": [<page numbers from 1>], "context": <0 to 50>})";
 constexpr std::int64_t default_context = 5;
 constexpr std::int64_t most_context = 50;
 
@@ -60,21 +61,13 @@ std::string where(std::size_t index) {
   return "value " + std::to_string(index);
 }
 
-bool flag(const JsonValue& value, std::size_t index, const std::string& name) {
-  if (value.kind() != JsonValue::Kind::boolean) {
-    refuse(where(index) + " gives the folding \"" + name + "\" as " +
-               std::string(JsonValue::kind_name(value.kind())),
-           "write \"" + name + "\": true or false");
-  }
-  return value.as_bool();
-}
-
 MatchFinder::Match read_value(const JsonValue& item, std::size_t index) {
   if (item.kind() != JsonValue::Kind::object) {
     refuse(where(index) + " is " + std::string(JsonValue::kind_name(item.kind())),
            R"(write each value as an object such as {"text": "Jane Doe"})");
   }
   MatchFinder::Match match;
+  match.folding = MatchFinder::Folding::literal();
   bool text = false;
   for (const auto& [name, value] : item.as_object()) {
     if (name == "text") {
@@ -86,25 +79,8 @@ MatchFinder::Match read_value(const JsonValue& item, std::size_t index) {
       text = true;
       match.search = value.as_string();
     } else if (name == "folding") {
-      if (value.kind() != JsonValue::Kind::object) {
-        refuse(where(index) + " gives \"folding\" as " +
-                   std::string(JsonValue::kind_name(value.kind())),
-               "write the folding as an object of true or false flags");
-      }
-      for (const auto& [key, setting] : value.as_object()) {
-        if (key == "case") {
-          match.folding.text.case_fold = flag(setting, index, key);
-        } else if (key == "diacritics") {
-          match.folding.text.diacritics = flag(setting, index, key);
-        } else if (key == "whitespace") {
-          match.folding.text.whitespace = flag(setting, index, key);
-        } else if (key == "hyphenation") {
-          match.folding.hyphenation = flag(setting, index, key);
-        } else {
-          refuse(where(index) + " names the unknown folding \"" + key + "\"",
-                 "use only case, diacritics, whitespace and hyphenation");
-        }
-      }
+      match.folding = pdfkit::api::FoldingArgument::read(
+          value, "pdfkit_find values_json " + where(index), std::string(shape));
     } else {
       refuse(where(index) + " names the unknown key \"" + name + "\"", "use text and folding only");
     }
@@ -187,6 +163,8 @@ struct Found {
   std::uint16_t hidden = 0;
   std::string before;
   std::string after;
+  std::string glued_before;
+  std::string glued_after;
 };
 
 void write_found(pdfkit::platform::JsonWriter& writer, const Found& found, std::size_t index) {
@@ -223,6 +201,8 @@ void write_found(pdfkit::platform::JsonWriter& writer, const Found& found, std::
   writer.end_array();
   writer.key("before").string(found.before);
   writer.key("after").string(found.after);
+  writer.key("glued_before").string(found.glued_before);
+  writer.key("glued_after").string(found.glued_after);
   writer.end_object();
 }
 
@@ -271,6 +251,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
           entry.rectangles = finder.rectangles(item);
           entry.hidden = finder.hidden(item);
           std::tie(entry.before, entry.after) = finder.context(item, context);
+          std::tie(entry.glued_before, entry.glued_after) = finder.glued(item);
           entry.located = std::move(item);
           found[v].push_back(std::move(entry));
         }

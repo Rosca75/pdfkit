@@ -236,8 +236,9 @@ bool repeated(const std::vector<Word>& words, const std::vector<std::size_t>& in
 // the one range [first, last), or no value.
 std::optional<std::size_t> find_index(pdfkit_document* document, const Word& word) {
   pdfkit_buffer out{nullptr, 0, nullptr};
-  const std::string request = R"({"values": [{"text": )" + json_quote(word.text) +
-                              R"(}], "pages": [)" + word.page + R"(], "context": 0})";
+  const std::string request = R"({"values": [{"text": )" + json_quote(word.text) + ", " +
+                              std::string(every_folding) + R"(}], "pages": [)" + word.page +
+                              R"(], "context": 0})";
   const Call found = take(pdfkit_find(document, request.c_str(), &out), out);
   std::size_t offset = 0;
   const std::optional<JsonText> json =
@@ -329,8 +330,8 @@ std::string located(pdfkit_document* document, std::string_view id, const std::s
   }
   const std::string matches =
       index ? R"({"matches": [{"occurrence": {"text": )" + json_quote(chosen) + R"(, "page": )" +
-                  word.page + R"(, "index": )" + std::to_string(*index) +
-                  R"(}, "placeholder": "[REDACTED]"}]})"
+                  word.page + R"(, "index": )" + std::to_string(*index) + ", " +
+                  std::string(every_folding) + R"(}, "placeholder": "[REDACTED]"}]})"
             : R"({"matches": [{"glyphs": {"page": )" + word.page + R"(, "first": )" + word.first +
                   R"(, "last": )" + word.last + R"(}, "fingerprint": )" +
                   json_quote(fingerprint->text) + R"(, "placeholder": "[REDACTED]"}]})";
@@ -495,7 +496,7 @@ std::string dataset_redact(pdfkit_document* document, std::string_view id,
   std::string matches = R"({"matches": [)";
   for (std::size_t i = 0; i < strings.size(); ++i) {
     matches += (i == 0 ? "" : ", ") + std::string(R"({"search": )") + json_quote(strings[i]) +
-               R"(, "placeholder": "[REDACTED]"})";
+               ", " + std::string(every_folding) + R"(, "placeholder": "[REDACTED]"})";
   }
   matches += "]}";
 

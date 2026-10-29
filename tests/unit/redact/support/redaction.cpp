@@ -84,7 +84,8 @@ std::string page_text(const std::string& output, std::uint32_t number) {
 }
 
 std::string search(const std::string& text, const std::string& placeholder) {
-  return R"({"matches": [{"search": ")" + text + R"(", "placeholder": ")" + placeholder + R"("}]})";
+  return R"({"matches": [{"search": ")" + text + R"(", )" + std::string(every_folding) +
+         R"(, "placeholder": ")" + placeholder + R"("}]})";
 }
 
 }  // namespace pdfkit::test

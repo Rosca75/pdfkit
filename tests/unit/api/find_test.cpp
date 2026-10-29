@@ -127,7 +127,7 @@ TEST_CASE("pdfkit_find answers every value with its occurrences in the contract'
   CHECK(answer.json.find(R"("text":"EU","order":"reading","rectangles":[[)") != std::string::npos);
   CHECK(
       answer.json.find(
-          R"("hidden":[],"before":"the member states of the","after":"agreed on the following"})") !=
+          R"("hidden":[],"before":"the member states of the","after":"agreed on the following","glued_before":"","glued_after":""})") !=
       std::string::npos);
   const JsonValue json = JsonReader::parse(answer.json);
   CHECK(json.find("fingerprint")->as_string() == text_fingerprint(file));
@@ -208,7 +208,8 @@ TEST_CASE("pdfkit_find's occurrences are the ones pdfkit_redact_text removes, ra
     for (const std::string value :
          {"Annual Report", "TeX", "e", "eu", "Bravo Charlie", "text", "o"}) {
       INFO(value);
-      const Answer found = find(*source, R"({"values": [{"text": ")" + value + R"("}]})");
+      const Answer found = find(*source, R"({"values": [{"text": ")" + value + R"(", )" +
+                                             std::string(pdfkit::test::every_folding) + "}]}");
       REQUIRE(found.status == PDFKIT_OK);
       const pdfkit::test::Redaction redacted =
           pdfkit::test::redact(*source, pdfkit::test::search(value));

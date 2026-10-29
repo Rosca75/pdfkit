@@ -142,7 +142,8 @@ TEST_CASE("an occurrence is narrowed by index, near, before and after") {
   CHECK(left(R"("index": 1)") == "the EU budget\nan treaty\nthe EU treaty");
   // The second line's baseline is at 680 points.
   CHECK(left(R"("near": [60, 678, 600, 690])") == "the EU budget\nan treaty\nthe EU treaty");
-  CHECK(left(R"("after": "BUDGET")") == "the budget\nan EU treaty\nthe EU treaty");
+  CHECK(left(R"("after": "BUDGET", "folding": {"case": true})") ==
+        "the budget\nan EU treaty\nthe EU treaty");
   CHECK(left(R"("before": "the", "after": "treaty")") == "the EU budget\nan EU treaty\nthe treaty");
 }
 
@@ -170,7 +171,8 @@ TEST_CASE("an occurrence resolves to the glyphs find reports and answers as one"
   pdfkit::test::TextDocument fixture;
   fixture.page("BT /F1 10 Tf 72 700 Td (Zebulon and Zebulon) Tj ET");
   const pdfkit::test::Redaction result = pdfkit::test::redact(
-      fixture.bytes(), occurrence(R"("text": "zebulon", "page": 1, "index": 1)"));
+      fixture.bytes(),
+      occurrence(R"("text": "zebulon", "page": 1, "index": 1, "folding": {"case": true})"));
   REQUIRE(result.match_status == PDFKIT_OK);
   INFO(result.matches);
   CHECK(result.matches.find("\"kind\":\"occurrence\"") != std::string::npos);
