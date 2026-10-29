@@ -157,7 +157,8 @@ TextPlan::OccurrenceQuery read_occurrence(const JsonValue& value, std::size_t in
       }
       if (key == "page") {
         page = true;
-        query.page = *number > 0xFFFFFFFF ? 0U : static_cast<std::uint32_t>(*number);
+        query.page =
+            std::cmp_greater(*number, 0xFFFFFFFFU) ? 0U : static_cast<std::uint32_t>(*number);
       } else {
         query.index = static_cast<std::size_t>(*number);
       }
@@ -187,7 +188,7 @@ TextPlan::OccurrenceQuery read_occurrence(const JsonValue& value, std::size_t in
     }
   }
   if (!text || query.text.empty() || !page) {
-    refuse(where(index) + " gives an occurrence without a non-empty \"text\" and a \"page\"",
+    refuse(where(index) + R"( gives an occurrence without a non-empty "text" and a "page")",
            "give the occurrence's text and its page");
   }
   if (!query.index && !query.near && !query.before && !query.after) {

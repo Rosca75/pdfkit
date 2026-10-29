@@ -242,19 +242,23 @@ std::optional<std::size_t> find_index(pdfkit_document* document, const Word& wor
   std::size_t offset = 0;
   const std::optional<JsonText> json =
       found.status == PDFKIT_OK ? JsonText::parse(found.text, offset) : std::nullopt;
-  const JsonText::Node* values = json ? json->member(json->root(), "values") : nullptr;
+  if (!json) {
+    return std::nullopt;
+  }
+  const JsonText& answer = *json;
+  const JsonText::Node* values = answer.member(answer.root(), "values");
   if (values == nullptr || values->items.empty()) {
     return std::nullopt;
   }
-  const JsonText::Node* list = json->member(json->node(values->items.front()), "occurrences");
+  const JsonText::Node* list = answer.member(answer.node(values->items.front()), "occurrences");
   for (std::size_t i = 0; list != nullptr && i < list->items.size(); ++i) {
-    const JsonText::Node* glyphs = json->member(json->node(list->items[i]), "glyphs");
+    const JsonText::Node* glyphs = answer.member(answer.node(list->items[i]), "glyphs");
     if (glyphs == nullptr || glyphs->items.size() != 1) {
       continue;
     }
-    const JsonText::Node& range = json->node(glyphs->items.front());
-    const JsonText::Node* first = json->member(range, "first");
-    const JsonText::Node* last = json->member(range, "last");
+    const JsonText::Node& range = answer.node(glyphs->items.front());
+    const JsonText::Node* first = answer.member(range, "first");
+    const JsonText::Node* last = answer.member(range, "last");
     if (first != nullptr && last != nullptr && first->raw == word.first && last->raw == word.last) {
       return i;
     }
