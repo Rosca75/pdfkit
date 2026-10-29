@@ -3,9 +3,9 @@
 #
 # The same gate the pre-push hook runs, for hosted CI: the checks tier, the
 # unit tier and the ABI tier on Windows with the pinned toolchain of
-# build/toolchain.md. The hosted runners do not start for this repository, so
-# the pre-push hook (build/hooks/pre-push) is the gate; this file keeps the
-# two in step for the day they do.
+# build/toolchain.md, on every push. The pre-push hook (build/hooks/pre-push)
+# and the local merge gate stay the gate, because the sanitizer and dataset
+# tiers need the laptop's caches; this run is the second reading of each push.
 name: check
 
 on:
@@ -45,6 +45,10 @@ jobs:
 
       - name: Install clang-format and clang-tidy
         run: python -m pip install --user --require-hashes -r build/requirements-dev.txt
+
+      # The generated-files check re-runs build/fonts/subset.py, which needs its pinned fontTools.
+      - name: Install fontTools for the font generators
+        run: python -m pip install --user --require-hashes -r build/fonts/requirements.txt
 
       - name: Checks tier
         run: python build/check.py --full

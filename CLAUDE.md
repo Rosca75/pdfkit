@@ -559,12 +559,17 @@ out was analysed in full when its last change entered main.
   packaging step fails past it; the zip's entries are sorted, dated 1980-01-01
   and the import library's member dates zeroed, so `python build/package.py
   --verify`, which packs twice around a clean rebuild, finds one set of bytes.
-- **CI runs the same checks**: `.github/workflows/` call `build/check.py --full`,
-  the unit tier and the abi tier; the hosted runners do not start for this
-  repository, so the pre-push hook
-  (`build/hooks/pre-push`, installed by `python build/install_hooks.py`) is the
-  gate, and it runs `build/check.py --fast`, a mingw-debug build and the unit
-  tier. The merge gate of a branch is `python build/check.py --full` with the
+- **CI runs the same checks**: `.github/workflows/check.yml` calls
+  `build/check.py --full`, the unit tier and the abi tier on every push, as a
+  second reading; the pre-push hook (`build/hooks/pre-push`, installed by
+  `python build/install_hooks.py`) is the gate, and it runs
+  `build/check.py --fast`, a mingw-debug build and the unit tier, because the
+  sanitizer and dataset tiers need the laptop's caches.
+- **A tag's package is built and attached by CI**:
+  `.github/workflows/release.yml` runs `build/package.py` on a hosted Windows
+  runner when a tag `v*` is pushed (or by hand for an existing tag) and
+  attaches the zip to the tag's release, because uploads from the laptop fail
+  through the corporate proxy. A tag is pushed only when the owner chose it. The merge gate of a branch is `python build/check.py --full` with the
   unit, sanitizer and abi tiers on the merged tip (§8.1); a branch that changes
   only markdown and the paths check's allow-list `build/paths_pending.tsv`
   merges on `python build/check.py --fast`, because its merged tip builds the
