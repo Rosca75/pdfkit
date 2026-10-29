@@ -54,7 +54,11 @@ def project_version() -> str:
     if not m:
         raise SystemExit("package: CMakeLists.txt has no project(pdfkit VERSION x.y.z); expected the "
                          "version there; fix: restore the project() line")
-    return m.group(1)
+    label = re.search(r'set\(PDFKIT_VERSION_LABEL\s+"([^"]*)"\)', text)
+    if not label:
+        raise SystemExit("package: CMakeLists.txt sets no PDFKIT_VERSION_LABEL; expected "
+                         "set(PDFKIT_VERSION_LABEL \"...\") after project(); fix: restore that line")
+    return f"{m.group(1)}-{label.group(1)}" if label.group(1) else m.group(1)
 
 
 def budgets() -> dict[str, int]:
