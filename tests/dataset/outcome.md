@@ -172,7 +172,8 @@ function the verb did not run is `null`.
     "agree": true,
     "disagreements": [],
     "feedback": {"status": "ok", "tried": 2, "exact": 2, "failures": []},
-    "glued": {"checked": 3, "not_words": 0, "named": []}
+    "glued": {"checked": 3, "not_words": 0, "named": []},
+    "strings": {"status": "ok", "found": 2, "tried": 1, "exact": 1, "failures": []}
   }
 }
 ```
@@ -299,12 +300,24 @@ and `unsupported` when `pdfkit_redact_text` refuses the array form of
 `glyphs`. `glued` judges the glued letters: of every reading-order
 occurrence whose `glued_before`, `text` and `glued_after` joined hold no
 space or line feed (`checked`), `not_words` counts those whose join is not a
-word of the `text` member's text (split at spaces and line feeds), and
-`named` lists the first five. The times of the `pdfkit_find` call and of the `text` member go to
+word of the `text` member's text (split at spaces, line feeds and form feeds), and
+`named` lists the first five. `strings` sends the first entry of any value's
+`strings` array (an occurrence inside a marked-content string, in the order
+`pdfkit_find` lists them) back as a `string` match (its `page`, `list`,
+`path`, `first` and `last`, the `fingerprint`, an empty placeholder) on a
+fresh edit, writes it, and runs `pdfkit_find` on the output for the same value
+(every folding on, `pages` that page, `context` 0): `found` is the number of
+string occurrences over every value and page of the first answer, `tried` is 1
+when one was sent back and 0 otherwise (`status` `ok` or `none`), `exact` is 1
+when the page holds one string occurrence fewer in the output, and `failures`
+names the value, the page and the reason of a write that failed or a count
+that is not one fewer. The times of the `pdfkit_find` call and of the `text` member go to
 `<dir>/outputs/<id>.find-time.json` (`{"text": <s>, "find": <s>}`), never into
 the outcome, which holds no time. `tests/dataset/run.py` judges `expect_find`
 from the status; `tests/dataset/gates/phase12.py` judges agreement, feedback,
-determinism and the time ratio.
+determinism and the time ratio;
+`tests/dataset/gates/phase15.py` judges the glued letters, the string
+feedback, determinism and, against a baseline run, the regressions.
 
 `text` is `pdfkit_text` with `{"blocks": false, "reserialisation": true}`: each
 page's text as the function writes it (visible blocks, then hidden blocks, a

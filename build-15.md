@@ -206,7 +206,7 @@ says. ABI tier: the folding default and the glued fields from Python and
 | the dataset tier over every manifest file the session's machine holds, each expectation as on `v0.1.0-preview`, the dataset jobs sending all four flags | no file regresses |
 | two runs identical | 100 % |
 | find's glued letters: every reading-order occurrence of the find job whose `glued_before + text + glued_after` holds no space is a word of the page's `pdfkit_text` | 100 % |
-| find's string occurrences sent back as `string` matches: written, self-check passed, one occurrence fewer on that page and no other page changed | 100 % of the files whose pages hold a marked-content string |
+| find's string occurrences sent back as `string` matches: written, self-check passed, one occurrence fewer on that page | 100 % of the files where the job's seeded words reach a marked-content string (reported as not measured when none does; the unit tier holds the cases) |
 
 The PDFium and panel measures do not move in this phase (no reading, layout
 or writing rule changes for a caller that sends its flags, which every

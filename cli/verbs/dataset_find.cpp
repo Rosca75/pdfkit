@@ -12,7 +12,9 @@
 // leaves out what every write removes. The glued letters of every
 // reading-order occurrence are judged against the words of the file's text:
 // an occurrence glued to its letters without a space between them is a word
-// the extraction wrote.
+// the extraction wrote. The first occurrence of a value inside a
+// marked-content string is sent back as a string match the same way, and the
+// value's string occurrences on that page are counted again in the output.
 
 #include "verbs/dataset_find.hpp"
 
@@ -105,11 +107,18 @@ std::string place_of(const JsonText& json, const JsonText::Node& occurrence) {
          R"(, "hidden": )" + std::string(hidden != nullptr ? hidden->raw : "[]") + "}";
 }
 
-// The occurrences of value on page of an output (count and places), or no
-// value when the output does not open or the call fails.
-std::optional<std::pair<std::uint64_t, std::string>> count_on(const std::string& pdf,
-                                                              const std::string& value,
-                                                              std::uint64_t page) {
+// What a find of one value on one page of an output answers: the occurrences
+// in the text (count and places) and in the marked-content strings.
+struct PageCount {
+  std::uint64_t count = 0;
+  std::string places;
+  std::uint64_t strings = 0;
+};
+
+// The occurrences of value on page of an output, or no value when the output
+// does not open or the call fails.
+std::optional<PageCount> count_on(const std::string& pdf, const std::string& value,
+                                  std::uint64_t page) {
   pdfkit_buffer out{nullptr, 0, nullptr};
   pdfkit_document* doc = nullptr;
   const Call opened = take(pdfkit_open(reinterpret_cast<const std::uint8_t*>(pdf.data()),
@@ -139,8 +148,18 @@ std::optional<std::pair<std::uint64_t, std::string>> count_on(const std::string&
       places += (places.size() == 1 ? "" : ", ") + place_of(*json, json->node(at));
     }
   }
-  return std::make_pair(number_of(json->member(first, "count")), places + "]");
+  const JsonText::Node* strings = json->member(first, "strings");
+  return PageCount{number_of(json->member(first, "count")), places + "]",
+                   strings != nullptr ? strings->items.size() : 0};
 }
+
+// The first entry of a value's strings answer: where a string match is sent
+// back from.
+struct PickedString {
+  std::size_t value = 0;
+  std::uint64_t page = 0;
+  std::string match;
+};
 
 }  // namespace
 
@@ -186,13 +205,17 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
   // Per value, each occurrence's page and place.
   std::vector<std::vector<std::pair<std::uint64_t, std::string>>> places_of(words.size());
   std::vector<Picked> picked;
+  // The marked-content string occurrences found, per value and page, and the
+  // first one to send back.
+  std::vector<std::vector<std::uint64_t>> string_pages_of(words.size());
+  std::optional<PickedString> picked_string;
   // The words of the file's text, and the glued occurrences that are none.
   std::set<std::string> text_words;
   {
     const std::string_view all = text != nullptr ? std::string_view(text->text) : "";
     std::size_t start = 0;
     for (std::size_t i = 0; i <= all.size(); ++i) {
-      if (i == all.size() || all[i] == ' ' || all[i] == '\n') {
+      if (i == all.size() || all[i] == ' ' || all[i] == '\n' || all[i] == '\f') {
         if (i > start) {
           text_words.emplace(all.substr(start, i - start));
         }
@@ -244,6 +267,25 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
       }
     }
     std::ranges::sort(find_ranges[v]);
+    const JsonText::Node* strings = answer->member(value, "strings");
+    for (const std::size_t at : strings != nullptr ? strings->items : std::vector<std::size_t>{}) {
+      const JsonText::Node& entry = answer->node(at);
+      const std::uint64_t page = number_of(answer->member(entry, "page"));
+      string_pages_of[v].push_back(page);
+      const JsonText::Node* string_list = answer->member(entry, "list");
+      const JsonText::Node* string_path = answer->member(entry, "path");
+      const JsonText::Node* first = answer->member(entry, "first");
+      const JsonText::Node* last = answer->member(entry, "last");
+      if (!picked_string && string_list != nullptr && string_path != nullptr && first != nullptr &&
+          last != nullptr) {
+        picked_string = PickedString{v, page,
+                                     R"({"page": )" + std::to_string(page) + R"(, "list": )" +
+                                         std::string(string_list->raw) + R"(, "path": )" +
+                                         std::string(string_path->raw) + R"(, "first": )" +
+                                         std::string(first->raw) + R"(, "last": )" +
+                                         std::string(last->raw) + "}"};
+      }
+    }
   }
 
   // The same words through the redaction search, on an edit never written.
@@ -342,7 +384,9 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
       fail(item, dataset_failure(call.status, call.text));
       continue;
     }
-    const auto after = count_on(pdf, words[item.value], item.page);
+    const auto counted = count_on(pdf, words[item.value], item.page);
+    const std::optional<std::pair<std::uint64_t, std::string>> after =
+        counted ? std::optional(std::make_pair(counted->count, counted->places)) : std::nullopt;
     std::string before_places = "[";
     for (const auto& [page, place] : places_of[item.value]) {
       if (page == item.page) {
@@ -364,6 +408,52 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
   failures += ']';
   items += ']';
 
+  // The first marked-content string occurrence sent back as a string match,
+  // alone on a fresh edit, written, and the value searched again on its page:
+  // exact when the page holds one string occurrence fewer.
+  std::uint64_t strings_found = 0;
+  for (const auto& pages : string_pages_of) {
+    strings_found += pages.size();
+  }
+  std::size_t strings_exact = 0;
+  std::string strings_failures = "[";
+  if (picked_string) {
+    const auto before = static_cast<std::uint64_t>(
+        std::ranges::count(string_pages_of[picked_string->value], picked_string->page));
+    std::string why;
+    const std::string located =
+        R"({"matches": [{"string": )" + picked_string->match + R"(, "fingerprint": )" +
+        json_quote(fingerprint != nullptr ? fingerprint->text : "") + R"(, "placeholder": ""}]})";
+    edit = nullptr;
+    Call call = take(pdfkit_edit_new(document, &edit, &out), out);
+    if (call.status == PDFKIT_OK) {
+      call = take(pdfkit_redact_text(edit, located.c_str(), &out), out);
+    }
+    std::string pdf;
+    if (call.status == PDFKIT_OK) {
+      pdfkit_buffer bytes{nullptr, 0, nullptr};
+      call = take(pdfkit_write(edit, nullptr, &bytes, &out), out);
+      pdf.assign(reinterpret_cast<const char*>(bytes.data), bytes.size);
+      pdfkit_buffer_free(&bytes);
+    }
+    pdfkit_edit_free(edit);
+    if (call.status != PDFKIT_OK) {
+      why = dataset_failure(call.status, call.text);
+    } else if (const auto counted = count_on(pdf, words[picked_string->value], picked_string->page);
+               counted && counted->strings + 1 == before) {
+      ++strings_exact;
+    } else {
+      why = "the page held " + std::to_string(before) + " string occurrences before and " +
+            (counted ? std::to_string(counted->strings) : std::string("?")) + " after";
+    }
+    if (!why.empty()) {
+      strings_failures += std::string(R"({"value": )") + json_quote(words[picked_string->value]) +
+                          R"(, "page": )" + std::to_string(picked_string->page) + R"(, "why": )" +
+                          json_quote(why) + "}";
+    }
+  }
+  strings_failures += ']';
+
   std::string count_list;
   std::uint64_t total = 0;
   for (std::size_t v = 0; v < counts.size(); ++v) {
@@ -384,7 +474,12 @@ std::string dataset_find(pdfkit_document* document, std::string_view id,
          ", \"tried\": " + std::to_string(unsupported ? 0 : picked.size()) +
          ", \"exact\": " + std::to_string(exact) + ", \"failures\": " + failures +
          ", \"items\": " + items + R"(}, "glued": {"checked": )" + std::to_string(glued_checked) +
-         ", \"not_words\": " + std::to_string(glued_wrong) + ", \"named\": " + glued_named + "]}}";
+         ", \"not_words\": " + std::to_string(glued_wrong) + ", \"named\": " + glued_named +
+         R"(]}, "strings": {"status": )" + json_quote(picked_string ? "ok" : "none") +
+         ", \"found\": " + std::to_string(strings_found) +
+         ", \"tried\": " + (picked_string ? "1" : "0") +
+         ", \"exact\": " + std::to_string(strings_exact) + ", \"failures\": " + strings_failures +
+         "}}";
 }
 
 }  // namespace pdfkit::cli::verbs
