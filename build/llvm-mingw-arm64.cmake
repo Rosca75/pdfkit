@@ -16,7 +16,8 @@
 include("${CMAKE_CURRENT_LIST_DIR}/llvm-mingw-release.cmake")
 
 if(DEFINED ENV{PDFKIT_LLVM_MINGW_ARM64})
-  set(llvm_root "$ENV{PDFKIT_LLVM_MINGW_ARM64}")
+  # A Windows path's backslashes would read as escapes in the cache files CMake writes.
+  file(TO_CMAKE_PATH "$ENV{PDFKIT_LLVM_MINGW_ARM64}" llvm_root)
 else()
   pdfkit_llvm_mingw_root(x64_root "${CMAKE_CURRENT_LIST_DIR}")
   if(x64_root STREQUAL "")
