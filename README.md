@@ -2,7 +2,7 @@
 
 pdfkit is a stand-alone C++ library and command-line tool that reads PDF files
 into machine-readable text, images and metadata, and redacts text, images and
-metadata into a **new** PDF. The original file is never changed. Version 0.2.0-preview,
+metadata into a **new** PDF. The original file is never changed. Version 0.2.1-preview,
 C ABI version 2.
 
 - **Every glyph is text.** Invisible, clipped, off-page, white and duplicated
@@ -161,7 +161,9 @@ cache (`-DPDFKIT_COMPILER_CACHE=OFF` builds without it, to the same bytes).
 llvm-mingw; `mingw-release` links with GNU ld. `build/toolchain.md` section 6
 holds what each setting buys, measured, and the settings rejected.
 
-`python build/package.py` writes `dist/pdfkit-0.2.0-preview-windows-x64.zip`: the DLL,
+`python build/package.py` writes `dist/pdfkit-0.2.1-preview-windows-x64.zip`, and
+`python build/package.py --arch arm64` writes `dist/pdfkit-0.2.1-preview-windows-arm64.zip`
+with llvm-mingw's aarch64 clang (`build/toolchain.md` §4, "The ARM64 toolchain"): the DLL,
 its import library, the header, the CLI, `LICENSE`, `NOTICE` and
 `THIRD-PARTY-NOTICES.md`, each within its budget in `build/budgets.tsv`; with
 `--verify` it packs twice around a clean rebuild and fails unless the two zips

@@ -2,7 +2,9 @@
 # Copyright 2026 The pdfkit authors
 #
 # Reads the import and export tables of a built pdfkit.dll and pdfkit.exe with
-# objdump (CLAUDE.md section 10). Each may import only the operating-system
+# objdump, GNU's from the pinned WinLibs toolchain for the x64 build or LLVM's
+# from llvm-mingw for the ARM64 build, whose objdump on Windows is a shell
+# script Python cannot start (CLAUDE.md section 10). Each may import only the operating-system
 # DLLs listed below, because a P/Invoke or ctypes caller cannot be asked to
 # ship a compiler runtime; the DLL must export every symbol the public header
 # declares, undecorated, and nothing else, because an exported internal symbol
@@ -11,6 +13,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -31,11 +34,14 @@ HEADER_SYMBOL = re.compile(r"\bPDFKIT_API\b[^;{]*?\b(pdfkit_\w+)\s*\(")
 
 
 def objdump(path: Path) -> str:
-    tool = shutil.which("objdump")
+    """The private headers of a PE file, read by PDFKIT_OBJDUMP when set, else by objdump, else
+    by llvm-objdump."""
+    tool = os.environ.get("PDFKIT_OBJDUMP") or shutil.which("objdump") or shutil.which("llvm-objdump")
     if tool is None:
-        raise SystemExit("check_artefact: objdump is not on PATH; expected the binutils of the "
-                         "pinned WinLibs toolchain (build/toolchain.md); fix: put its bin folder "
-                         "on PATH")
+        raise SystemExit("check_artefact: neither objdump nor llvm-objdump is on PATH; expected the "
+                         "binutils of the pinned WinLibs toolchain or llvm-mingw's llvm-objdump "
+                         "(build/toolchain.md); fix: put the toolchain's bin folder on PATH or set "
+                         "PDFKIT_OBJDUMP")
     return subprocess.run([tool, "-p", str(path)], capture_output=True, text=True,
                           check=True).stdout
 
@@ -45,9 +51,9 @@ def imports_of(dump: str) -> list[str]:
 
 
 def exports_of(dump: str) -> list[str]:
+    if "[Ordinal/Name Pointer] Table" not in dump:
+        return llvm_exports_of(dump)
     section = dump.split("[Ordinal/Name Pointer] Table", 1)
-    if len(section) < 2:
-        return []
     names: list[str] = []
     for line in section[1].splitlines()[1:]:
         m = re.match(r"^\s*\[\s*\d+\]\s*\+base\[\s*\d+\]\s+[0-9a-f]+\s+(\S+)", line)
@@ -56,6 +62,22 @@ def exports_of(dump: str) -> list[str]:
                 break
             continue
         names.append(m.group(1))
+    return names
+
+
+def llvm_exports_of(dump: str) -> list[str]:
+    """The export names of llvm-objdump's table: a line "Ordinal RVA Name" under "Export Table:",
+    then one "<ordinal> 0x<rva> <name>" line per export."""
+    section = dump.split("Export Table:", 1)
+    if len(section) < 2:
+        return []
+    names: list[str] = []
+    for line in section[1].splitlines():
+        m = re.match(r"^\s*\d+\s+0x[0-9a-f]+\s+(\S+)\s*$", line)
+        if m:
+            names.append(m.group(1))
+        elif names:
+            break
     return names
 
 

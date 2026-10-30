@@ -128,6 +128,44 @@ sanitizer run of the unit tier and the sanitizer dataset pass (§6.5), and its
 `ld.lld` links the debug presets (§6.3). Its release is named in
 `build/llvm-mingw-release.cmake`.
 
+### The ARM64 toolchain
+
+The Windows ARM64 package is built by llvm-mingw's aarch64 clang, from the
+same release as the sanitizer toolchain, because the pinned WinLibs GCC has no
+ARM64 target and llvm-mingw keeps the gcc-compatible build: the same warning
+set, the same `-static` link (libc++, libunwind and compiler-rt in place of
+libstdc++, libgcc and winpthread), and the same import table, `KERNEL32.dll`
+and the `api-ms-win-crt-*` sets only. MSVC's ARM64 target was the other choice
+and would have been a second compiler family to port the flags and the static
+runtime to. The presets are `arm64-debug` and `arm64-release`
+(`build/llvm-mingw-arm64.cmake`), the test preset `unit-arm64`. llvm-mingw's
+`objdump` is a shell script on Windows, so `build/check_artefact.py` reads the
+ARM64 artefacts with its `llvm-objdump.exe`, named by `PDFKIT_OBJDUMP`.
+
+| Archive | Build | SHA-256 |
+|---|---|---|
+| `llvm-mingw-20261020-ucrt-aarch64.zip` | llvm-mingw 20261020 for an ARM64 Windows host (clang 23.1.4) | `8f24fedd0b75c674c6c83dec2d76a7ac31a690120212843a17e465ef49854f69` |
+| `llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz` | the same release for a Linux x86_64 host, to cross-compile and read the tables off Windows | `55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335` |
+| `cmake-4.3.2-windows-arm64.zip` | the pinned CMake for an ARM64 host, from https://github.com/Kitware/CMake/releases/tag/v4.3.2 | `42a2a88fc57e70d04a92f6eaaac2094241995f53584bc2afdae7e6ef982b3781` |
+| `ninja-winarm64.zip` | the pinned Ninja for an ARM64 host, from https://github.com/ninja-build/ninja/releases/tag/v1.13.2 | `e52f0bdef9dfb1003229dbd6508a508c4073fd017247002adc66e5e806cb0391` |
+
+The hashes were computed over the archives downloaded on 2026-10-30. The
+release workflow and the `arm64` job of the check workflow install the three
+Windows archives through `.github/actions/arm64-toolchain`, which refuses an
+archive whose hash differs, because the laptop is x64 and the ARM64 build is
+proved on a hosted ARM64 runner (`windows-11-arm`) only. The toolchain file
+reads the llvm-mingw folder from `PDFKIT_LLVM_MINGW_ARM64`, else from
+`build/cache/llvm-mingw/llvm-mingw-20261020-ucrt-aarch64/` of the main
+checkout. To cross-compile on the laptop or on Linux, point the variable at the
+x86_64 or Linux build of the same release, whose `aarch64-w64-mingw32-clang`
+is the same compiler:
+
+```
+PDFKIT_LLVM_MINGW_ARM64=<llvm-mingw folder> cmake --preset arm64-release
+cmake --build --preset arm64-release
+PDFKIT_OBJDUMP=<llvm-mingw folder>/bin/llvm-objdump python build/package.py --arch arm64 --skip-build
+```
+
 ## 5. The proxy
 
 The laptop reaches the internet through a corporate proxy that inspects TLS.

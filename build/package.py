@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The pdfkit authors
 #
-# Builds the release preset and packs the artefact of CLAUDE.md section 10:
-# dist/pdfkit-<version>-windows-x64.zip holding pdfkit.dll, its import library,
-# pdfkit.h, pdfkit.exe and the three licence files. The zip is deterministic
+# Builds the release preset of one architecture and packs the artefact of
+# CLAUDE.md section 10: dist/pdfkit-<version>-windows-<arch>.zip holding
+# pdfkit.dll, its import library, pdfkit.h, pdfkit.exe and the three licence
+# files. x64 builds with the pinned WinLibs GCC (mingw-release), arm64 with
+# llvm-mingw's aarch64 clang (arm64-release); the entries are the same. The zip is deterministic
 # (sorted entries, a fixed timestamp, fixed permissions), so one tree packs to
 # one set of bytes. Each file and the zip are checked against build/budgets.tsv
 # and the artefacts against build/check_artefact.py before the zip is written.
-"""Build and package the release: python build/package.py [--skip-build]."""
+"""Build and package the release: python build/package.py [--arch x64|arm64] [--skip-build]."""
 
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PRESET = "mingw-release"
+# The release preset of each architecture; the package is named for the architecture.
+PRESETS = {"x64": "mingw-release", "arm64": "arm64-release"}
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -70,34 +73,40 @@ def budgets() -> dict[str, int]:
     return rows
 
 
-def over_budget(name: str, size: int, limits: dict[str, int]) -> str | None:
-    limit = limits.get(name)
+def over_budget(name: str, size: int, limits: dict[str, int], arch: str) -> str | None:
+    """The budget breach of one artefact, or None. An arm64 artefact's row is named arm64/<name>,
+    because the two compilers and runtimes make files of different sizes."""
+    key = name if arch == "x64" else f"{arch}/{name}"
+    limit = limits.get(key)
     if limit is not None and size > limit:
-        return (f"package: {name} is {size} bytes, over its budget of {limit} bytes in "
+        return (f"package: {key} is {size} bytes, over its budget of {limit} bytes in "
                 f"build/budgets.tsv; fix: shrink the artefact, or raise the budget with a reason")
     return None
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--skip-build", action="store_true", help="package out/mingw-release as is")
+    parser.add_argument("--arch", choices=sorted(PRESETS), default="x64",
+                        help="the architecture to build and package (default x64)")
+    parser.add_argument("--skip-build", action="store_true", help="package the preset's folder as is")
     parser.add_argument("--verify", action="store_true",
                         help="then rebuild the preset from clean, package again and fail unless the "
                              "two zips are byte-identical")
     args = parser.parse_args()
+    preset = PRESETS[args.arch]
     if not args.skip_build:
-        subprocess.run(["cmake", "--preset", PRESET], cwd=ROOT, check=True)
-        subprocess.run(["cmake", "--build", "--preset", PRESET], cwd=ROOT, check=True)
-    first = package()
+        subprocess.run(["cmake", "--preset", preset], cwd=ROOT, check=True)
+        subprocess.run(["cmake", "--build", "--preset", preset], cwd=ROOT, check=True)
+    first = package(args.arch)
     if first is None:
         return 1
     if not args.verify:
         return 0
     # The rebuild compiles every source again: with the compile cache on, it would take the first
     # build's objects and prove only that linking is reproducible (build/compiler-cache.cmake).
-    subprocess.run(["cmake", "--build", "--preset", PRESET, "--clean-first"], cwd=ROOT, check=True,
+    subprocess.run(["cmake", "--build", "--preset", preset, "--clean-first"], cwd=ROOT, check=True,
                    env=dict(os.environ, CCACHE_DISABLE="1"))
-    second = package()
+    second = package(args.arch)
     if second is None:
         return 1
     if first != second:
@@ -109,9 +118,10 @@ def main() -> int:
     return 0
 
 
-def package() -> str | None:
-    """Checks and packs out/<preset>; the zip's SHA-256, or None on a failure."""
-    out = ROOT / "out" / PRESET
+def package(arch: str) -> str | None:
+    """Checks and packs out/<preset> of one architecture; the zip's SHA-256, or None on a failure."""
+    preset = PRESETS[arch]
+    out = ROOT / "out" / preset
     check = subprocess.run([sys.executable, str(ROOT / "build" / "check_artefact.py"), str(out)],
                            cwd=ROOT, check=False)
     if check.returncode != 0:
@@ -129,10 +139,10 @@ def package() -> str | None:
     problems = []
     for name, path in files.items():
         if not path.is_file():
-            problems.append(f"package: {path} is missing; expected it from the {PRESET} build or "
+            problems.append(f"package: {path} is missing; expected it from the {preset} build or "
                             f"the repository; fix: build the preset first")
             continue
-        problem = over_budget(Path(name).name, path.stat().st_size, limits)
+        problem = over_budget(Path(name).name, path.stat().st_size, limits, arch)
         if problem:
             problems.append(problem)
     if problems:
@@ -140,7 +150,7 @@ def package() -> str | None:
         return None
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
-    target = dist / f"pdfkit-{project_version()}-windows-x64.zip"
+    target = dist / f"pdfkit-{project_version()}-windows-{arch}.zip"
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name in sorted(files):
             info = zipfile.ZipInfo(name, date_time=FIXED_TIME)
@@ -150,7 +160,7 @@ def package() -> str | None:
             if name.endswith(".lib"):
                 data = without_member_dates(data)
             archive.writestr(info, data)
-    problem = over_budget("zip", target.stat().st_size, limits)
+    problem = over_budget("zip", target.stat().st_size, limits, arch)
     if problem:
         print(problem, file=sys.stderr)
         return None

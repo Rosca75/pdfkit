@@ -201,7 +201,7 @@ TEST_CASE("pdfkit_version reports the version, the ABI and the catalogue") {
   OwnedBuffer out;
   REQUIRE(pdfkit_version(out.get()) == PDFKIT_OK);
   const JsonValue version = JsonReader::parse(out.text());
-  CHECK(version.find("version")->as_string() == "0.2.0-preview");
+  CHECK(version.find("version")->as_string() == "0.2.1-preview");
   CHECK(version.find("abi")->as_int64() == std::int64_t{2});
   CHECK_FALSE(version.find("build")->as_string().empty());
   const auto& catalogue = version.find("catalogue")->as_array();

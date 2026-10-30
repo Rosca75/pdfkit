@@ -5,7 +5,7 @@ outputs, its status codes, the JSON error object, the versioning rule, and the
 command-line tool's verbs and exit codes. The header is
 `include/pdfkit/pdfkit.h`; `CLAUDE.md` §2 owns which functions exist, and this
 file owns how they are called. This build implements every catalogue
-function; the version of the library is 0.2.0-preview (the text
+function; the version of the library is 0.2.1-preview (the text
 `pdfkit_version` reports, its release label included) and of the ABI 2.
 
 ## 1. Calling rules
@@ -113,7 +113,7 @@ The version object:
 
 ```json
 {
-  "version": "0.2.0-preview",
+  "version": "0.2.1-preview",
   "abi": 2,
   "build": "gcc 16.1.0, Release",
   "catalogue": [

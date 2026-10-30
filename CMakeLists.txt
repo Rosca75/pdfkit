@@ -10,7 +10,7 @@
 
 cmake_minimum_required(VERSION 3.28)
 
-project(pdfkit VERSION 0.2.0 LANGUAGES C CXX)
+project(pdfkit VERSION 0.2.1 LANGUAGES C CXX)
 
 # The release label after the version: "preview" for a pre-release, empty for a
 # release. pdfkit_version reports the version with it and the package is named
