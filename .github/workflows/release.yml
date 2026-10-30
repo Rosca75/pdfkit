@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The pdfkit authors
 #
-# Builds the release package of a tag on a hosted Windows runner and attaches
-# it to the tag's GitHub release, creating the release when the tag has none.
+# Builds the release packages of a tag on hosted Windows runners and attaches
+# them to the tag's GitHub release, creating the release when the tag has none:
+# the x64 package on an x64 runner, then the ARM64 package on an ARM64 runner,
+# which runs the unit and ABI tiers of its build before it attaches anything.
 # Uploads from the laptop fail through the corporate proxy (uploads.github.com
 # answers 503), so the package is built where the upload works. The build is
 # build/package.py with the pinned WinLibs GCC and GNU ld, the toolchain the
-# laptop releases with; the job prints the zip's SHA-256 so it can be compared
-# with the laptop's package of the same tag. Started by pushing a tag v*, or by
+# laptop releases with, and the ARM64 build is llvm-mingw's aarch64 clang
+# (build/toolchain.md); each job prints its zip's SHA-256 so it can be compared
+# with a package built elsewhere from the same tag. Started by pushing a tag v*, or by
 # hand for an existing tag.
 name: release
 
@@ -68,5 +71,49 @@ jobs:
             gh release create $env:TAG $kind --verify-tag --title "pdfkit $($env:TAG.TrimStart('v'))" --notes "Built from $env:TAG by the release workflow."
             if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
           }
+          gh release upload $env:TAG $zip --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+
+  package-arm64:
+    # After the x64 job, which creates the release, so the two never race to create it.
+    needs: package
+    runs-on: windows-11-arm
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: ./.github/actions/arm64-toolchain
+
+      - name: Unit tier on ARM64
+        run: |
+          cmake --preset arm64-debug
+          cmake --build --preset arm64-debug
+          ctest --preset unit-arm64
+
+      - name: Build and package the ARM64 release preset
+        run: python build/package.py --arch arm64
+
+      - name: ABI tier on the packaged build
+        run: python tests/abi/run.py --preset arm64-release
+
+      - name: Attach the package to the tag's release
+        shell: pwsh
+        run: |
+          $zips = @(Get-ChildItem dist -Filter "pdfkit-*-windows-arm64.zip")
+          if ($zips.Count -ne 1) { throw "expected one ARM64 package in dist/, found $($zips.Count)" }
+          $zip = $zips[0].FullName
+          "SHA-256 $((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower())  $($zips[0].Name)"
           gh release upload $env:TAG $zip --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }

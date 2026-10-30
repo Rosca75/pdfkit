@@ -3,7 +3,9 @@
 #
 # The same gate the pre-push hook runs, for hosted CI: the checks tier, the
 # unit tier and the ABI tier on Windows with the pinned toolchain of
-# build/toolchain.md, on every push. The pre-push hook (build/hooks/pre-push)
+# build/toolchain.md, on every push; and the unit and ABI tiers of the ARM64
+# build on an ARM64 runner, because a cross-compiled library nobody ran is a
+# package nobody tested. The pre-push hook (build/hooks/pre-push)
 # and the local merge gate stay the gate, because the sanitizer and dataset
 # tiers need the laptop's caches; this run is the second reading of each push.
 name: check
@@ -58,3 +60,34 @@ jobs:
 
       - name: ABI tier
         run: python tests/abi/run.py
+
+  arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: ./.github/actions/arm64-toolchain
+
+      - name: Build the ARM64 debug and release presets
+        run: |
+          cmake --preset arm64-debug
+          cmake --build --preset arm64-debug
+          cmake --preset arm64-release
+          cmake --build --preset arm64-release
+
+      - name: Artefact tables of the ARM64 release build
+        run: python build/check_artefact.py out/arm64-release
+
+      - name: Unit tier on ARM64
+        run: ctest --preset unit-arm64
+
+      - name: ABI tier on ARM64
+        run: python tests/abi/run.py --preset arm64-release

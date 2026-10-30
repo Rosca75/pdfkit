@@ -539,39 +539,46 @@ out was analysed in full when its last change entered main.
 ## 10. Build and release
 
 - **CMake with Ninja**, driven by `CMakePresets.json`: `mingw-debug`,
-  `mingw-release`, `mingw-sanitize` and `clang-sanitize` (llvm-mingw, for
-  AddressSanitizer). Targets: `pdfkit` (the shared library), `pdfkit_core` (the
+  `mingw-release`, `mingw-sanitize`, `clang-sanitize` (llvm-mingw, for
+  AddressSanitizer), and `arm64-debug` and `arm64-release` (llvm-mingw's
+  aarch64 clang, for Windows ARM64). Targets: `pdfkit` (the shared library), `pdfkit_core` (the
   static library every test links), `pdfkit_cli` (the `pdfkit` executable),
   `pdfkit_tests` (the unit tier), `pdfkit_image_census` (the image decoders'
   dataset census), and one target per vendored component.
 - **The toolchain is pinned** in `build/toolchain.md`: WinLibs MinGW-w64 GCC
-  16.1.0 (UCRT, POSIX threads, SEH), CMake 4.3.2, Ninja 1.13.2, and clang-format
+  16.1.0 (UCRT, POSIX threads, SEH) for x64, llvm-mingw 20261020 for ARM64,
+  CMake 4.3.2, Ninja 1.13.2, and clang-format
   and clang-tidy from PyPI at the versions recorded there, with the proxy
   behaviour observed on the laptop. A version moves only by a change to that
   file and a full check run.
 - **The shared library imports only operating-system DLLs**: libgcc, libstdc++
-  and winpthread are linked statically, because a P/Invoke caller cannot be
-  asked to ship a compiler runtime. `build/check_artefact.py` reads the import
+  and winpthread on x64, libc++ and compiler-rt on ARM64, are linked
+  statically, because a P/Invoke caller cannot be asked to ship a compiler
+  runtime. `build/check_artefact.py` reads the import
   table and fails on any other import.
-- **Artefacts per architecture**: `dist/pdfkit-<version>-windows-x64.zip`
-  holding `pdfkit.dll`, its import library, `pdfkit.h`, `pdfkit.exe`,
-  `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md`, produced by
-  `python build/package.py`; further architectures are added as the toolchain
-  pin gains them. `build/budgets.tsv` holds the size budget of the DLL, the
-  executable and the zip (the first release package plus 25%) and the
-  packaging step fails past it; the zip's entries are sorted, dated 1980-01-01
+- **Artefacts per architecture**: `dist/pdfkit-<version>-windows-x64.zip` and
+  `dist/pdfkit-<version>-windows-arm64.zip`, each holding `pdfkit.dll`, its
+  import library, `pdfkit.h`, `pdfkit.exe`, `LICENSE`, `NOTICE` and
+  `THIRD-PARTY-NOTICES.md`, produced by `python build/package.py --arch x64`
+  (the default) or `--arch arm64`; a further architecture is added as the
+  toolchain pin gains it. `build/budgets.tsv` holds the size budget of the
+  DLL, the executable and the zip per architecture (each architecture's first
+  release package plus 25%) and the packaging step fails past it; the zip's entries are sorted, dated 1980-01-01
   and the import library's member dates zeroed, so `python build/package.py
   --verify`, which packs twice around a clean rebuild, finds one set of bytes.
 - **CI runs the same checks**: `.github/workflows/check.yml` calls
-  `build/check.py --full`, the unit tier and the abi tier on every push, as a
-  second reading; the pre-push hook (`build/hooks/pre-push`, installed by
+  `build/check.py --full`, the unit tier and the abi tier on every push, and
+  the ARM64 build's artefact check, unit tier and abi tier on a hosted ARM64
+  runner, because no ARM64 machine is on the laptop and a cross-compiled
+  library nobody ran is a package nobody tested; as a second reading, the pre-push hook (`build/hooks/pre-push`, installed by
   `python build/install_hooks.py`) is the gate, and it runs
   `build/check.py --fast`, a mingw-debug build and the unit tier, because the
   sanitizer and dataset tiers need the laptop's caches.
 - **A tag's package is built and attached by CI**:
   `.github/workflows/release.yml` runs `build/package.py` on a hosted Windows
-  runner when a tag `v*` is pushed (or by hand for an existing tag) and
-  attaches the zip to the tag's release, because uploads from the laptop fail
+  runner per architecture when a tag `v*` is pushed (or by hand for an
+  existing tag), the ARM64 one after its unit and abi tiers pass on the ARM64
+  runner, and attaches both zips to the tag's release, because uploads from the laptop fail
   through the corporate proxy. A tag is pushed only when the owner chose it. The merge gate of a branch is `python build/check.py --full` with the
   unit, sanitizer and abi tiers on the merged tip (§8.1); a branch that changes
   only markdown and the paths check's allow-list `build/paths_pending.tsv`

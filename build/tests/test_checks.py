@@ -311,6 +311,22 @@ class ArtefactTest(CheckTest):
                           args=(str(folder),))
 
 
+    def test_llvm_objdumps_tables_are_read(self) -> None:
+        """The ARM64 build is read with llvm-objdump, whose export table has its own layout."""
+        sys.path.insert(0, str(REPO / "build"))
+        import check_artefact  # noqa: PLC0415
+
+        dump = ("The Import Tables:\n  lookup 0001 time 00000000 fwd 00000000 name 0002 addr 0003\n"
+                "\n    DLL Name: KERNEL32.dll\n    vma:  Hint/Ord Member-Name Bound-To\n"
+                "\n    DLL Name: api-ms-win-crt-heap-l1-1-0.dll\n\n"
+                "Export Table:\n Ordinal base: 1\n Ordinal      RVA  Name\n"
+                "       1 0x15453c  pdfkit_abi_version\n       2 0x1549b0  pdfkit_buffer_free\n"
+                "\nSections:\n")
+        self.assertEqual(check_artefact.imports_of(dump),
+                         ["KERNEL32.dll", "api-ms-win-crt-heap-l1-1-0.dll"])
+        self.assertEqual(check_artefact.exports_of(dump),
+                         ["pdfkit_abi_version", "pdfkit_buffer_free"])
+
 class TidySelectionTest(unittest.TestCase):
     """The sources a routine tidy run analyses: those reaching a changed file through #include."""
 

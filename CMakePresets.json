@@ -9,7 +9,10 @@
     "shared compile cache when ccache is found (build/compiler-cache.cmake). mingw-debug keeps line",
     "tables only (-g1, file and line in every backtrace) and, with mingw-sanitize, links with lld",
     "(build/linker.cmake); mingw-release, which ships, links with GNU ld. clang-sanitize compiles at",
-    "-O1, AddressSanitizer's recommended level. build/toolchain.md section 6 holds the measurements."
+    "-O1, AddressSanitizer's recommended level. build/toolchain.md section 6 holds the measurements.",
+    "arm64-release and arm64-debug build for Windows ARM64 with llvm-mingw's aarch64 clang",
+    "(build/llvm-mingw-arm64.cmake); arm64-release ships, and unit-arm64 runs the unit tier on an",
+    "ARM64 machine."
   ],
   "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
   "configurePresets": [
@@ -70,13 +73,37 @@
         "CMAKE_CXX_FLAGS_DEBUG": "-g -O1",
         "PDFKIT_SANITIZE": "address-undefined"
       }
+    },
+    {
+      "name": "arm64-base",
+      "hidden": true,
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/build/llvm-mingw-arm64.cmake"
+    },
+    {
+      "name": "arm64-debug",
+      "displayName": "llvm-mingw clang, Windows ARM64, debug",
+      "inherits": "arm64-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_FLAGS_DEBUG": "-g1",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g1"
+      }
+    },
+    {
+      "name": "arm64-release",
+      "displayName": "llvm-mingw clang, Windows ARM64, release",
+      "inherits": "arm64-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     }
   ],
   "buildPresets": [
     { "name": "mingw-debug", "configurePreset": "mingw-debug" },
     { "name": "mingw-release", "configurePreset": "mingw-release" },
     { "name": "mingw-sanitize", "configurePreset": "mingw-sanitize" },
-    { "name": "clang-sanitize", "configurePreset": "clang-sanitize" }
+    { "name": "clang-sanitize", "configurePreset": "clang-sanitize" },
+    { "name": "arm64-debug", "configurePreset": "arm64-debug" },
+    { "name": "arm64-release", "configurePreset": "arm64-release" }
   ],
   "testPresets": [
     {
@@ -94,6 +121,12 @@
     {
       "name": "clang-sanitize",
       "configurePreset": "clang-sanitize",
+      "filter": { "include": { "label": "unit" } },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "unit-arm64",
+      "configurePreset": "arm64-debug",
       "filter": { "include": { "label": "unit" } },
       "output": { "outputOnFailure": true }
     }

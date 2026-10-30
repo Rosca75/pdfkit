@@ -2,13 +2,16 @@
 # Copyright 2026 The pdfkit authors
 #
 # The pinned llvm-mingw release and where it is unpacked, named once for the
-# two files that use it: build/llvm-mingw.cmake (the clang-sanitize toolchain)
-# and build/linker.cmake (lld for the presets that ship nothing). The release
+# files that use it: build/llvm-mingw.cmake (the clang-sanitize toolchain),
+# build/linker.cmake (lld for the presets that ship nothing) and
+# build/llvm-mingw-arm64.cmake (the ARM64 package), which reads the release's
+# build for an ARM64 host, unpacked beside the x86_64 one. The release
 # and its SHA-256 are recorded in build/toolchain.md. PDFKIT_LLVM_MINGW names
 # another folder; otherwise it is the shared cache of the main checkout
 # (CLAUDE.md section 11), found through git from `from`.
 
 set(PDFKIT_LLVM_MINGW_RELEASE "llvm-mingw-20261020-ucrt-x86_64")
+set(PDFKIT_LLVM_MINGW_ARM64_RELEASE "llvm-mingw-20261020-ucrt-aarch64")
 
 function(pdfkit_llvm_mingw_root out from)
   if(DEFINED ENV{PDFKIT_LLVM_MINGW})

@@ -12,7 +12,9 @@
 # than the one a case allows, a malformed error object or a buffer left set
 # fails the tier, naming the file and the function. Without the dataset the
 # file cases are skipped by name with the command that supplies them, and the
-# tier runs the library-level calls alone.
+# tier runs the library-level calls alone. The .NET caller is built for the
+# library's own machine (x64 or ARM64), read from its PE header, because a
+# process loads only a library of its own architecture.
 """Run the ABI tier: python tests/abi/run.py [--preset mingw-release] [--dll <path>] [--cases N]."""
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ sys.path.insert(0, str(ROOT / "dataset" / "tools"))
 import common  # noqa: E402
 
 EXPECTED_ABI = 2
+# The COFF machine field of a PE file and the PlatformTarget a .NET process loading it needs
+# (the PE and COFF specification, recalled; a library of each build reads back as named).
+MACHINES = {0x8664: "x64", 0xAA64: "ARM64"}
 # One case per tag: the smallest manifest file that opens and carries it.
 CASE_TAGS = (
     "gen_word", "gen_libreoffice", "gen_pdftex", "object_streams", "xref_stream", "incremental_update",
@@ -109,14 +114,32 @@ def cli_fixture(exe: Path | None, cases: list[tuple[str, str, str]], folder: Pat
     return [(str(output), "opens", "cli-fixture")]
 
 
+def platform_of(dll: Path) -> str | None:
+    """The PlatformTarget of a PE file's machine: the PE header's offset is at 0x3C, and the COFF
+    machine field follows its four-byte signature. None for a file that is not a known PE."""
+    data = dll.read_bytes()[:4096]
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        return None
+    header = int.from_bytes(data[0x3C:0x40], "little")
+    if header + 6 > len(data) or data[header:header + 4] != b"PE\0\0":
+        return None
+    return MACHINES.get(int.from_bytes(data[header + 4:header + 6], "little"))
+
+
 def run_dotnet(dll: Path, cases_file: Path) -> bool:
     dotnet = shutil.which("dotnet")
     if dotnet is None:
         print("abi: dotnet is not on PATH; expected the .NET SDK of build/toolchain.md; "
               "fix: install the .NET 10 SDK for the user and reopen the shell", file=sys.stderr)
         return False
+    platform = platform_of(dll)
+    if platform is None:
+        print(f"abi: {dll} is not a PE file of a known machine; expected an x64 or ARM64 pdfkit.dll; "
+              f"fix: build one of the release presets", file=sys.stderr)
+        return False
     project = ROOT / "tests" / "abi" / "dotnet" / "PdfkitAbi.csproj"
-    build = subprocess.run([dotnet, "build", str(project), "-c", "Release", "--nologo", "-v", "quiet"],
+    build = subprocess.run([dotnet, "build", str(project), "-c", "Release", "--nologo", "-v", "quiet",
+                            "--no-incremental", f"-p:PlatformTarget={platform}"],
                            capture_output=True, text=True, check=False)
     if build.returncode != 0:
         print(build.stdout + build.stderr, file=sys.stderr)

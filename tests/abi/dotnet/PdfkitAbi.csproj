@@ -4,7 +4,9 @@
      symbol of include/pdfkit/pdfkit.h with LibraryImport and calls each catalogue
      function over the files tests/abi/run.py hands it. It references no package,
      so nothing is fetched; the LibraryImport source generator ships with the SDK
-     and needs unsafe code for the pointers it marshals. -->
+     and needs unsafe code for the pointers it marshals. tests/abi/run.py
+     builds it for the library's machine with -p:PlatformTarget; x64 is the
+     default for a build by hand. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
