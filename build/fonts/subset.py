@@ -5,10 +5,14 @@
 # Regular and Bold (third_party/liberation-fonts/, SIL OFL 1.1, whose FAQ
 # permits embedding a subset in a document) and writes
 # src/writer/placeholder_font_data.inc: per face the TrueType program holding
-# .notdef and the 39 glyphs of the placeholder alphabet ([, ], _, 0-9, A-Z),
-# its SHA-256, the subset tag derived from that hash, the code-to-glyph map
+# .notdef, the 319 glyphs of the placeholder alphabet (printable ASCII
+# U+0020-007E, the Latin-1 Supplement U+00A0-00FF and Latin Extended-A
+# U+0100-017F) and the components its composite glyphs reference, its
+# SHA-256, the subset tag derived from that hash, the code-point-to-glyph map
 # with the hmtx widths in thousandths of an em, and the metrics the font
-# descriptor states. The run-time writer subsets nothing: it embeds these
+# descriptor states. The mapped glyphs take the contiguous ids from 1, the
+# order the source holds them in, and the components follow them, so the
+# writer's /W is one run; the tool fails when they do not. The run-time writer subsets nothing: it embeds these
 # bytes. fontTools (MIT, pinned in build/fonts/requirements.txt) does the
 # cutting with hinting dropped and the tables kept to glyf, loca, head, hhea,
 # hmtx, maxp, cmap, post (format 3, no glyph names) and name, whose copyright
@@ -33,7 +37,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cpp_table  # noqa: E402
 
 FONTTOOLS_VERSION = "4.67.0"
-ALPHABET = "[]_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+# The placeholder alphabet (CLAUDE.md section 4): every code point of the three
+# ranges, each of which Liberation Sans 2.1.5 Regular and Bold map (measured).
+PLACEHOLDER_ALPHABET = "".join(chr(code) for first, last in ((0x20, 0x7E), (0xA0, 0xFF),
+                                                             (0x100, 0x17F))
+                               for code in range(first, last + 1))
 FACES = (("regular", "LiberationSans-Regular.ttf", "LiberationSans", 400),
          ("bold", "LiberationSans-Bold.ttf", "LiberationSans-Bold", 700))
 SOURCE = cpp_table.ROOT / "third_party" / "liberation-fonts"
@@ -106,7 +114,7 @@ def cut(path: Path) -> tuple[bytes, dict]:
     options.recalc_timestamp = False
     options.drop_tables = sorted(set(source.keys()) - set(KEPT_TABLES) - {"GlyphOrder"})
     subsetter = subset.Subsetter(options)
-    subsetter.populate(unicodes=[ord(ch) for ch in ALPHABET])
+    subsetter.populate(unicodes=[ord(ch) for ch in PLACEHOLDER_ALPHABET])
     subsetter.subset(source)
     for tag in list(source.keys()):
         if tag not in KEPT_TABLES and tag != "GlyphOrder":
@@ -120,9 +128,15 @@ def cut(path: Path) -> tuple[bytes, dict]:
     order = font.getGlyphOrder()
     cmap = font.getBestCmap()
     glyphs = []
-    for ch in sorted(ALPHABET):
+    for ch in PLACEHOLDER_ALPHABET:
+        if ord(ch) not in cmap:
+            sys.exit(f"{path.name} maps no glyph to U+{ord(ch):04X} of the placeholder alphabet")
         name = cmap[ord(ch)]
-        glyphs.append((ch, order.index(name), scaled(font["hmtx"][name][0], units)))
+        glyphs.append((ord(ch), order.index(name), scaled(font["hmtx"][name][0], units)))
+    # The writer states /W as one run from the first mapped glyph id, so the
+    # mapped ids are 1 to the alphabet's size with none shared.
+    if sorted(gid for _, gid, _ in glyphs) != list(range(1, len(glyphs) + 1)):
+        sys.exit(f"{path.name}: the placeholder alphabet's glyph ids are not contiguous from 1")
     head = font["head"]
     info = {
         "glyphs": glyphs,
@@ -161,8 +175,9 @@ def generate() -> str:
         "The placeholder font's two subsets, cut from Liberation Sans 2.1.5 Regular",
         "and Bold (third_party/liberation-fonts/, SIL OFL 1.1, read; the licence is",
         "third_party/liberation-fonts/LICENSE and THIRD-PARTY-NOTICES.md): each face's",
-        "TrueType program, its SHA-256 and subset tag, its glyphs (character, glyph",
-        "id, advance in thousandths of an em) and the metrics of its descriptor.",
+        "TrueType program, its SHA-256 and subset tag, its glyphs (code point in",
+        "ascending order, glyph id, advance in thousandths of an em) and the metrics",
+        "of its descriptor.",
         "Included by src/writer/placeholder_font.cpp, which declares the types.",
     ], "build/fonts/subset.py"), ""]
     faces = []
@@ -172,8 +187,8 @@ def generate() -> str:
         out += byte_lines(f"{key}_program", program)
         out.append("")
         out.append(f"constexpr std::array<SubsetGlyph, {len(info['glyphs'])}> {key}_glyphs{{{{")
-        for ch, gid, width in info["glyphs"]:
-            out.append(f"    {{'{ch}', {gid}, {width}}},")
+        for code, gid, width in info["glyphs"]:
+            out.append(f"    {{0x{code:04X}, {gid}, {width}}},")
         out.append("}};")
         out.append("")
         faces.append((key, base, digest, info))

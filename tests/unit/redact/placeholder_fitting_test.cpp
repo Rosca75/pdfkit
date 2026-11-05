@@ -2,10 +2,12 @@
 // Copyright 2026 The pdfkit authors
 //
 // Tests of redact::PlaceholderFitting (docs/DESIGN.md section 13): the three
-// outcomes with their numbers, the hole running to the next kept glyph of the
-// line, bold chosen from the font's weight and from a name holding "Bold",
-// and a placeholder outside the alphabet refused with the three-part message,
-// before anything is recorded on the edit plan.
+// outcomes with their numbers, for a bracketed placeholder and for realistic
+// text with lower case, spaces and accents, the hole running to the next
+// kept glyph of the line, bold chosen from the font's weight and from a name
+// holding "Bold", and a placeholder outside the alphabet or not UTF-8
+// refused with the three-part message naming the code point, before
+// anything is recorded on the edit plan.
 
 #include "redact/placeholder_fitting.hpp"
 
@@ -103,20 +105,52 @@ TEST_CASE("the bold face follows the font's weight and its name") {
 
 TEST_CASE("a placeholder outside the alphabet is refused with what, why and how") {
   try {
-    PlaceholderFitting::require_alphabet("[redacted]", "pdfkit_redact_text match 0");
+    PlaceholderFitting::require_alphabet("[a\u0180b]", "pdfkit_redact_text match 0");
     FAIL("expected a refusal");
   } catch (const pdfkit::platform::Error& error) {
     CHECK(error.code() == pdfkit::platform::ErrorCode::invalid_argument);
-    CHECK(std::string(error.failed()).find("'r'") != std::string::npos);
-    CHECK(std::string(error.expected()).find("A to Z") != std::string::npos);
+    CHECK(std::string(error.failed()).find("U+0180") != std::string::npos);
+    CHECK(std::string(error.expected()).find("Latin Extended-A") != std::string::npos);
     CHECK(std::string(error.fix()).find("[REDACTED]") != std::string::npos);
+  }
+  try {
+    PlaceholderFitting::require_alphabet(std::string("J\xC3r", 3), "pdfkit_redact_text match 2");
+    FAIL("expected a refusal");
+  } catch (const pdfkit::platform::Error& error) {
+    CHECK(error.code() == pdfkit::platform::ErrorCode::invalid_argument);
+    CHECK(std::string(error.failed()).find("ill-formed UTF-8") != std::string::npos);
+    CHECK(std::string(error.failed()).find("match 2") != std::string::npos);
   }
   pdfkit::test::TextDocument fixture;
   fixture.page("BT /F1 10 Tf 72 700 Td (Jane Doe) Tj ET");
   const pdfkit::test::Redaction result =
-      pdfkit::test::redact(fixture.bytes(), pdfkit::test::search("Jane", "[x]"));
+      pdfkit::test::redact(fixture.bytes(), pdfkit::test::search("Jane", "a\u2014b"));
   CHECK(result.match_status == PDFKIT_E_INVALID_ARGUMENT);
   CHECK(result.matches.find("placeholder alphabet") != std::string::npos);
+  CHECK(result.matches.find("U+2014") != std::string::npos);
+}
+
+TEST_CASE("a lower-case accented placeholder with spaces is fitted by its width") {
+  const std::string placeholder = "Jérôme Łukasz";
+  // Its natural width in the regular face at 10 pt.
+  const double natural = pdfkit::writer::PlaceholderFont::width(
+                             placeholder, pdfkit::writer::PlaceholderFont::Face::regular) /
+                         100.0;
+  CHECK(natural > 50.0);
+  CHECK(natural < 80.0);
+  // A hole wider than the placeholder: drawn as it is.
+  const Fitted wide =
+      fit("BT /F1 10 Tf 72 700 Td (Bartholomew Featherstonehaugh end) Tj ET", 0, 29, placeholder);
+  CHECK(wide.result.outcome == Outcome::natural);
+  CHECK(wide.result.natural == doctest::Approx(natural));
+  // A hole a little narrower: narrowed to fit.
+  const Fitted close = fit("BT /F1 10 Tf 72 700 Td (Jane Smith met) Tj ET", 0, 10, placeholder);
+  CHECK(close.result.outcome == Outcome::scaled);
+  CHECK(close.result.natural * close.result.scale == doctest::Approx(close.result.hole));
+  // A hole far narrower: overflowing at the floor.
+  const Fitted narrow = fit("BT /F1 10 Tf 72 700 Td (I met) Tj ET", 0, 1, placeholder);
+  CHECK(narrow.result.outcome == Outcome::overflow);
+  CHECK(narrow.result.scale == PlaceholderFitting::floor);
 }
 
 TEST_CASE("the fitting is reported per occurrence") {

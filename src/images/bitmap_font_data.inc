@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// The caption font of the image box: the placeholder alphabet rasterised
+// The caption font of the image box: the caption alphabet rasterised
 // from Liberation Sans 2.1.5 Regular (third_party/liberation-fonts/, SIL OFL
 // 1.1, read; the licence is third_party/liberation-fonts/LICENSE and
 // THIRD-PARTY-NOTICES.md) at the pixel heights below, one bit per pixel, rows

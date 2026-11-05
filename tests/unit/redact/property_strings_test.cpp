@@ -457,7 +457,7 @@ TEST_CASE("a string match is refused when it names what the document does not ho
   refused(matches(string_match(replaced(R"("object":null)", R"("object":7)"), fingerprint)));
   refused(matches(
       string_match(replaced(R"("glued_after":"")", R"("glued_after":"son")"), fingerprint)));
-  refused(matches(string_match(entry, fingerprint, "[x]")));
+  refused(matches(string_match(entry, fingerprint, "[\u0180]")));
   refused(matches(string_match(replaced(R"("page":1)", R"("page":1, "colour":1)"), fingerprint)));
   // The /ActualText a glyph reads is no string a match can name.
   refused(matches(string_match(
@@ -497,7 +497,7 @@ TEST_CASE("the self-check refuses a page whose strings hold the text as often as
   const auto run = [&file](std::size_t before) {
     const std::vector<SelfCheck::StringCheck> checks{{"Smith", 1, "alt", before, 1}};
     return SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{},
-                          SelfCheck::Needles{{}, {}, {}, {}, checks}, std::vector<std::string>{});
+                          SelfCheck::Needles{{}, {}, {}, {}, checks});
   };
   const SelfCheck::Result unchanged = run(6);
   REQUIRE(unchanged.survivors.size() == 1);

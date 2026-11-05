@@ -414,6 +414,10 @@ internal sealed class Session
             status = Native.pdfkit_redact_text(edit,
                 $"{{\"matches\": [{{\"search\": \"{word}\", \"placeholder\": \"[X]\"}}]}}", ref buffer);
             Take("pdfkit_redact_text", status, ref buffer, Expected("pdfkit_redact_text"));
+            status = Native.pdfkit_redact_text(edit,
+                $"{{\"matches\": [{{\"search\": \"{word}\", \"style\": \"box\", \"colour\": [0, 0, 0]}}]}}",
+                ref buffer);
+            Take("pdfkit_redact_text", status, ref buffer, Expected("pdfkit_redact_text"));
             status = Native.pdfkit_redact_text(edit, null, ref buffer);
             Take("pdfkit_redact_text", status, ref buffer, Status.InvalidArgument);
 

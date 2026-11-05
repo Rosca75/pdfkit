@@ -11,7 +11,10 @@
 // Every rectangle is a removed glyph's box, or the drawn placeholder's,
 // widened by a sixth of the glyph's size on each side, because a glyph's ink
 // can leave the box its font's ascent, descent and advance give it (an
-// accent, an italic overhang, a descender below a short /Descent).
+// accent, an italic overhang, a descender below a short /Descent). A box
+// match's box covers its line's visible removed glyphs' own boxes, unwidened,
+// so it lies inside those rectangles (turned text adds the box's device
+// bound, which runs past them at the corners).
 
 #include "redact/text_redactor.hpp"
 
@@ -24,6 +27,7 @@
 #include "redact/text_surgery.hpp"
 #include "syntax/content_lexer.hpp"
 #include "text/content_serialiser.hpp"
+#include "text/hidden_class.hpp"
 #include "text/text_reader.hpp"
 #include "writer/stream_copier.hpp"
 
@@ -103,6 +107,16 @@ struct Layout {
   return out;
 }
 
+// One box of a box match: the glyph whose text matrix it is painted in, the
+// operation it is written before (the BT of that glyph's text object), the
+// area in that glyph's text space and the device rectangle it covers.
+struct BoxDraw {
+  const GlyphRecord* anchor = nullptr;
+  std::size_t before = 0;
+  Rect area;
+  Rect device;
+};
+
 // What one occurrence removes and draws.
 struct Geometry {
   std::set<std::size_t> removed;
@@ -110,7 +124,107 @@ struct Geometry {
   bool drawn = false;
   bool invisible = false;
   std::vector<Rect> rectangles;
+  std::vector<BoxDraw> boxes;
+  // Why a line of a box match paints no box although a viewer sees its
+  // glyphs.
+  std::vector<std::string> box_warnings;
 };
+
+// The glyph's device box, unpadded (a glyph without a box spans its origin
+// to the end of its advance).
+[[nodiscard]] Rect bare_box(const GlyphRecord& record) {
+  Rect box = record.box;
+  if (box.is_empty()) {
+    box.add(record.origin.x, record.origin.y);
+    box.add(record.advance_end.x, record.advance_end.y);
+  }
+  return box;
+}
+
+// Whether a viewer sees the glyph: it is in no hidden class but duplicate,
+// which is a visible copy drawn over its partner.
+[[nodiscard]] bool visible(const GlyphRecord& record) {
+  return (record.hidden &
+          static_cast<std::uint16_t>(~text::hidden_bit(text::HiddenClass::duplicate))) == 0;
+}
+
+// The BT that opens the text object of operation in stream, when no
+// operator between them changes the transformation (cm, q or Q, which a
+// text object does not hold): before it the CTM is the glyph's and the clip
+// the one its glyphs were painted with.
+[[nodiscard]] std::optional<std::size_t> text_object_start(const text::ContentStream& stream,
+                                                           std::size_t operation) {
+  for (std::size_t i = std::min(operation, stream.operations.size()); i > 0; --i) {
+    const std::string& op = stream.operations[i - 1].op;
+    if (op == "BT") {
+      return i - 1;
+    }
+    if (op == "ET" || op == "cm" || op == "q" || op == "Q") {
+      return std::nullopt;
+    }
+  }
+  return std::nullopt;
+}
+
+// The boxes of a box match's removed glyphs: one per reading line and
+// content stream walk, over the line's visible removed glyphs, painted in
+// the text space of the first of them (docs/DESIGN.md section 12). A line
+// whose removed glyphs are all hidden paints none.
+void boxes_of(const PageText& page, const Layout& layout, Geometry& out) {
+  const std::vector<GlyphRecord>& glyphs = page.content.glyphs;
+  // Per line (its first position) and walk, the visible removed glyphs in
+  // draw order.
+  std::map<std::pair<std::size_t, std::size_t>, std::vector<const GlyphRecord*>> groups;
+  for (const std::size_t draw : out.removed) {
+    const std::size_t p = layout.position[draw];
+    const text::TextLayout::Line* line = p == none ? nullptr : layout.line[p];
+    if (line != nullptr && visible(glyphs[draw])) {
+      groups[{line->first, glyphs[draw].stream}].push_back(&glyphs[draw]);
+    }
+  }
+  for (const auto& [key, members] : groups) {
+    const GlyphRecord& anchor = *members.front();
+    const std::optional<text::Matrix> inverse = (anchor.text_matrix * anchor.ctm).inverse();
+    const std::optional<std::size_t> start =
+        text_object_start(page.content.streams[anchor.stream], anchor.operation);
+    if (!inverse || !start) {
+      out.box_warnings.push_back(
+          "page " + std::to_string(page.content.page) + ": a line of removed glyphs at (" +
+          ContentSyntax::number(anchor.origin.x) + ", " + ContentSyntax::number(anchor.origin.y) +
+          ") is painted no box, because " +
+          (!inverse ? std::string("its text matrix is singular")
+                    : std::string("its text object does not open with a BT under the "
+                                  "transformation the glyphs were drawn with")) +
+          "; its glyphs are removed");
+      continue;
+    }
+    BoxDraw box;
+    box.anchor = &anchor;
+    box.before = *start;
+    for (const GlyphRecord* record : members) {
+      const Rect device = bare_box(*record);
+      if (!device.is_empty()) {
+        box.area.add(
+            Rect::transformed(device.left, device.bottom, device.right, device.top, *inverse));
+      }
+    }
+    if (box.area.is_empty()) {
+      continue;
+    }
+    box.device = Rect::transformed(box.area.left, box.area.bottom, box.area.right, box.area.top,
+                                   anchor.text_matrix * anchor.ctm);
+    // A box of turned text covers the corners of its glyphs' device boxes,
+    // past the line's rectangle: the changed rectangles hold it too.
+    const bool held = std::ranges::any_of(out.rectangles, [&box](const Rect& changed) {
+      return changed.left <= box.device.left && changed.right >= box.device.right &&
+             changed.bottom <= box.device.bottom && changed.top >= box.device.top;
+    });
+    if (!held) {
+      out.rectangles.push_back(box.device);
+    }
+    out.boxes.push_back(box);
+  }
+}
 
 [[nodiscard]] Geometry geometry(const PageText& page, const Layout& layout,
                                 const MatchFinder::Occurrence& occurrence,
@@ -176,6 +290,12 @@ struct Geometry {
     if (!box.is_empty()) {
       out.rectangles.push_back(box);
     }
+  }
+  if (occurrence.style == MatchFinder::Style::box) {
+    // A box draws no text: its placeholder is only written into the
+    // marked-content strings.
+    boxes_of(page, layout, out);
+    return out;
   }
   // The first line: the line of the occurrence's first glyph.
   const text::TextLayout::Line* first = nullptr;
@@ -665,13 +785,30 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
       note_operation(target, content, record);
     }
     work.rectangles.insert(work.rectangles.end(), found.rectangles.begin(), found.rectangles.end());
+    for (const BoxDraw& box : found.boxes) {
+      const GlyphRecord& anchor = *box.anchor;
+      TextPlan::Insertion insertion;
+      insertion.at = box.before;
+      insertion.before = true;
+      insertion.operators =
+          PlaceholderDrawing::box(anchor.text_matrix, box.area, occurrence.colour);
+      change_target(document, work, content, anchor.stream, here)
+          .insertions.try_emplace({anchor.operation, anchor.code_start}, std::move(insertion));
+      const TextPlan::Holder holder = holder_of(document, content, anchor.stream);
+      work.box_states.insert(holder);
+      if (holder == 0 && content.streams[anchor.stream].form != 0) {
+        for (const std::uint32_t form : content.streams[anchor.stream].form_path) {
+          work.form_box_states.insert(form);
+        }
+      }
+    }
     if (!found.drawn) {
       continue;
     }
     const GlyphRecord& anchor = *found.fit.anchor;
     const text::ContentStream& stream = content.streams[anchor.stream];
     TextPlan::Insertion insertion;
-    insertion.after = insertion_point(stream, anchor.operation);
+    insertion.at = insertion_point(stream, anchor.operation);
     insertion.operators = PlaceholderDrawing::operators(
         anchor, occurrence.placeholder, found.fit.face, found.fit.scale, found.invisible);
     change_target(document, work, content, anchor.stream, here)
@@ -693,7 +830,7 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
 
 [[nodiscard]] bool work_empty(const TextPlan::PageWork& work) {
   if (!work.content.empty() || !work.property_objects.empty() || !work.properties.empty() ||
-      !work.form_fonts.empty() || !work.named_edits.empty()) {
+      !work.form_fonts.empty() || !work.form_box_states.empty() || !work.named_edits.empty()) {
     return false;
   }
   if (std::ranges::any_of(work.splits, [](const auto& entry) { return !entry.second.empty(); })) {
@@ -932,15 +1069,15 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
   for (const auto& [index, bytes] : target.replaced) {
     edits.try_emplace(index, bytes);
   }
+  std::map<std::size_t, std::string> before;
   std::map<std::size_t, std::string> after;
   for (const auto& [key, insertion] : target.insertions) {
-    after[insertion.after] += insertion.operators;
+    (insertion.before ? before : after)[insertion.at] += insertion.operators;
   }
   const std::vector<std::byte>& bytes = *stream.bytes;
-  for (const auto& [index, text] : after) {
-    if (index >= stream.operations.size()) {
-      continue;
-    }
+  // The operation's bytes as they will be written: its edit, else the
+  // original.
+  const auto written_as = [&](std::size_t index) -> std::string& {
     if (!edits.contains(index)) {
       const syntax::ContentLexer::Operation& operation = stream.operations[index];
       std::string original;
@@ -949,7 +1086,18 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
       }
       edits[index] = std::move(original);
     }
-    edits[index] += text;
+    return edits[index];
+  };
+  for (const auto& [index, text] : after) {
+    if (index < stream.operations.size()) {
+      written_as(index) += text;
+    }
+  }
+  for (const auto& [index, text] : before) {
+    if (index < stream.operations.size()) {
+      std::string& operation = written_as(index);
+      operation.insert(0, text);
+    }
   }
   std::vector<std::byte> written = text::ContentSerialiser::write(stream, 0, {}, edits).bytes;
   if (!target.comments) {
@@ -1014,15 +1162,24 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
   return out;
 }
 
-// resources with faces named in its /Font, properties set in its
-// /Properties and the form copies of a split named in its /XObject (name to
-// object number), as a direct dictionary.
+// resources with faces named in its /Font, the box's graphics state in its
+// /ExtGState when box_state is set, properties set in its /Properties and
+// the form copies of a split named in its /XObject (name to object number),
+// as a direct dictionary.
 [[nodiscard]] Object edited_resources(
     writer::ObjectGraph& graph, writer::PlaceholderFont& fonts, const Object& resources,
-    const std::set<Face>& faces, const std::map<std::string, Dictionary>& properties,
+    const std::set<Face>& faces, bool box_state,
+    const std::map<std::string, Dictionary>& properties,
     const std::map<std::string, syntax::Object::Reference>& xobjects = {}) {
   const Object resolved = graph.resolve(resources);
   Dictionary out = resolved.dictionary() != nullptr ? *resolved.dictionary() : Dictionary();
+  if (box_state) {
+    const Object group = graph.resolve(out.get("ExtGState"));
+    Dictionary entries = group.dictionary() != nullptr ? *group.dictionary() : Dictionary();
+    entries.set(std::string(PlaceholderDrawing::box_state),
+                Object::make_dictionary(PlaceholderDrawing::box_state_dictionary()));
+    out.set("ExtGState", Object::make_dictionary(std::move(entries)));
+  }
   if (!xobjects.empty()) {
     const Object group = graph.resolve(out.get("XObject"));
     Dictionary entries = group.dictionary() != nullptr ? *group.dictionary() : Dictionary();
@@ -1191,7 +1348,8 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
         // The placeholder is drawn once, at the first range; the others are
         // holes.
         found.push_back({base + i, number, range.first, range.last,
-                         from == found.size() ? match.placeholder : std::string()});
+                         from == found.size() ? match.placeholder : std::string(), match.style,
+                         match.colour});
       }
       here_located.push_back({i, {from, found.size()}});
     }
@@ -1209,6 +1367,10 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
       entry.drawn = shape.drawn;
       entry.fitting = shape.fit.outcome;
       entry.scale = shape.fit.scale;
+      for (const BoxDraw& box : shape.boxes) {
+        entry.boxes.push_back(box.device);
+      }
+      entry.warnings = shape.box_warnings;
       std::uint32_t font = 0;
       for (const std::size_t draw : shape.removed) {
         const GlyphRecord& record = page.content.glyphs[draw];
@@ -1240,6 +1402,8 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
           first.rectangles.insert(first.rectangles.end(), other.rectangles.begin(),
                                   other.rectangles.end());
           first.codes.insert(first.codes.end(), other.codes.begin(), other.codes.end());
+          first.boxes.insert(first.boxes.end(), other.boxes.begin(), other.boxes.end());
+          first.warnings.insert(first.warnings.end(), other.warnings.begin(), other.warnings.end());
           joined.insert(k);
         }
         // The glyph's own box, unpadded, so a neighbour's centre lies
@@ -1263,7 +1427,8 @@ std::vector<TextRedactor::MatchReport> TextRedactor::add(
         removed.insert(removed_of[k].begin(), removed_of[k].end());
       }
       for (const auto& [from, to] : copies_at(page, finder, layout, entry, removed)) {
-        copies.push_back({base + i, number, from, to, std::string()});
+        copies.push_back(
+            {base + i, number, from, to, std::string(), matches[i].style, matches[i].colour});
       }
       located.push_back(std::move(entry));
     }
@@ -1416,10 +1581,16 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
   writer::PlaceholderFont fonts(graph);
   std::map<std::uint32_t, TextPlan::Target> forms;
   std::map<std::uint32_t, std::set<Face>> form_fonts;
+  std::set<std::uint32_t> form_states;
   std::map<std::uint32_t, std::map<std::string, Dictionary>> form_properties;
   for (const auto& [number, work] : pages) {
     for (const auto& [form, target] : work.forms) {
       forms[form].merge(target);
+    }
+    for (const TextPlan::Holder holder : work.box_states) {
+      if (holder != 0) {
+        form_states.insert(holder);
+      }
     }
     for (const auto& [holder, face] : work.fonts) {
       if (holder != 0) {
@@ -1446,15 +1617,19 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     }
   }
   std::map<std::uint32_t, std::set<Face>> page_form_fonts;
+  std::set<std::uint32_t> page_form_states;
   for (const auto& [number, work] : pages) {
     for (const auto& [form, faces] : work.form_fonts) {
       page_form_fonts[form].insert(faces.begin(), faces.end());
     }
+    page_form_states.insert(work.form_box_states.begin(), work.form_box_states.end());
   }
   // A form without resources of its own reads the resources of the page
-  // that draws it, so every kept page naming it gains its faces.
+  // that draws it, so every kept page naming it gains its faces and the
+  // box's graphics state.
   std::map<std::uint32_t, std::set<Face>> drawn_faces;
-  if (!page_form_fonts.empty()) {
+  std::set<std::uint32_t> drawn_states;
+  if (!page_form_fonts.empty() || !page_form_states.empty()) {
     for (const auto& [source, where] : kept) {
       const Object value = graph.get(where.second);
       const Dictionary* page = value.dictionary();
@@ -1468,6 +1643,9 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
             if (const auto faces = page_form_fonts.find(reference->number);
                 faces != page_form_fonts.end()) {
               drawn_faces[source].insert(faces->second.begin(), faces->second.end());
+            }
+            if (page_form_states.contains(reference->number)) {
+              drawn_states.insert(source);
             }
           }
         }
@@ -1486,15 +1664,17 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
     }
     Dictionary dictionary = stream->dictionary();
     const auto faces = form_fonts.find(form);
+    const bool box_state = form_states.contains(form);
     const auto properties = form_properties.find(form);
-    if (faces != form_fonts.end() || properties != form_properties.end() || !names.empty()) {
+    if (faces != form_fonts.end() || box_state || properties != form_properties.end() ||
+        !names.empty()) {
       dictionary.set("Resources",
-                     edited_resources(graph, fonts, dictionary.get("Resources"),
-                                      faces != form_fonts.end() ? faces->second : std::set<Face>(),
-                                      properties != form_properties.end()
-                                          ? properties->second
-                                          : std::map<std::string, Dictionary>(),
-                                      names));
+                     edited_resources(
+                         graph, fonts, dictionary.get("Resources"),
+                         faces != form_fonts.end() ? faces->second : std::set<Face>(), box_state,
+                         properties != form_properties.end() ? properties->second
+                                                             : std::map<std::string, Dictionary>(),
+                         names));
     }
     if (target == nullptr || target->empty()) {
       return Object::make_stream(stream->with_dictionary(std::move(dictionary)));
@@ -1594,6 +1774,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
   for (const auto& entry : form_fonts) {
     touched.insert(entry.first);
   }
+  touched.insert(form_states.begin(), form_states.end());
   for (const auto& entry : form_properties) {
     touched.insert(entry.first);
   }
@@ -1618,6 +1799,7 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
   for (const auto& [number, faces] : drawn_faces) {
     pages_to_edit.insert(number);
   }
+  pages_to_edit.insert(drawn_states.begin(), drawn_states.end());
   const TextPlan::PageWork no_work;
   for (const std::uint32_t number : pages_to_edit) {
     const auto found = kept.find(number);
@@ -1673,10 +1855,11 @@ void TextRedactor::apply(EditPlan& plan, writer::ObjectGraph& graph, writer::Wri
         properties[where.second] = dictionary;
       }
     }
+    const bool box_state = work.box_states.contains(0) || drawn_states.contains(number);
     const auto names = page_names.find(number);
-    if (!faces.empty() || !properties.empty() || names != page_names.end()) {
+    if (!faces.empty() || box_state || !properties.empty() || names != page_names.end()) {
       page.set("Resources",
-               edited_resources(graph, fonts, page.get("Resources"), faces, properties,
+               edited_resources(graph, fonts, page.get("Resources"), faces, box_state, properties,
                                 names != page_names.end()
                                     ? names->second
                                     : std::map<std::string, syntax::Object::Reference>()));

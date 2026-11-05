@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// The matrix product in the specification's row-vector convention, and the
-// checks the interpreter applies before trusting a matrix read from a file.
+// The matrix product in the specification's row-vector convention, its
+// inverse, and the checks the interpreter applies before trusting a matrix
+// read from a file.
 
 #include "text/matrix.hpp"
 
@@ -23,6 +24,17 @@ Matrix Matrix::operator*(const Matrix& other) const noexcept {
   return {(a * other.a) + (b * other.c),           (a * other.b) + (b * other.d),
           (c * other.a) + (d * other.c),           (c * other.b) + (d * other.d),
           (e * other.a) + (f * other.c) + other.e, (e * other.b) + (f * other.d) + other.f};
+}
+
+std::optional<Matrix> Matrix::inverse() const noexcept {
+  // The adjugate over the determinant for the linear part; the translation
+  // is the negated translation carried through it.
+  const double det = determinant();
+  if (det == 0.0 || !std::isfinite(det)) {
+    return std::nullopt;
+  }
+  return of(
+      {d / det, -b / det, -c / det, a / det, ((c * f) - (d * e)) / det, ((b * e) - (a * f)) / det});
 }
 
 bool Matrix::axis_aligned() const noexcept {

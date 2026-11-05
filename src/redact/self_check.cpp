@@ -14,7 +14,13 @@
 // outside, and a glyph drawn over the removed one (a second text layer)
 // lies inside. A string match is verified by counting its text in the
 // output page's marked-content strings, with no folding, because it named
-// a range code point for code point.
+// a range code point for code point. Nothing is cut out of a surface before
+// it is searched (docs/DESIGN.md section 18): a found occurrence is
+// dismissed only where it lies wholly inside text drawn in the placeholder
+// font, in the page text by its glyphs and in a content stream's raw scan by
+// the string operands shown while the current font is a resource naming a
+// placeholder face, because a placeholder is arbitrary text ("de", "e") and
+// cutting it out of a surface would hide a survivor that holds it.
 
 #include "redact/self_check.hpp"
 
@@ -53,24 +59,23 @@ constexpr std::size_t listed = 5;
 
 enum class Kind : std::uint8_t { scan, content, skip };
 
-// Every placeholder cut out of text (UTF-8).
-[[nodiscard]] std::string without(std::string text, std::span<const std::string> placeholders) {
-  for (const std::string& placeholder : placeholders) {
-    if (placeholder.empty()) {
+// Every one of values cut out of text (UTF-8): the metadata values the
+// caller wrote, which are the caller's own.
+[[nodiscard]] std::string without(std::string text, std::span<const std::string> values) {
+  for (const std::string& value : values) {
+    if (value.empty()) {
       continue;
     }
     std::size_t at = 0;
-    while ((at = text.find(placeholder, at)) != std::string::npos) {
-      text.replace(at, placeholder.size(), " ");
+    while ((at = text.find(value, at)) != std::string::npos) {
+      text.replace(at, value.size(), " ");
       at += 1;
     }
   }
   return text;
 }
 
-[[nodiscard]] bool scan(std::string bytes, const std::vector<std::string>& wanted, bool fold_case,
-                        std::span<const std::string> placeholders) {
-  bytes = without(std::move(bytes), placeholders);
+[[nodiscard]] bool scan(std::string bytes, const std::vector<std::string>& wanted, bool fold_case) {
   if (fold_case) {
     bytes = MatchFinder::lower_ascii(std::move(bytes));
   }
@@ -211,13 +216,8 @@ enum class Kind : std::uint8_t { scan, content, skip };
 class Search {
  public:
   Search(std::span<const MatchFinder::Match> needles, std::span<const MatchFinder::Match> metadata,
-         std::span<const std::string> placeholders, std::span<const std::string> written,
-         SelfCheck::Result& result)
-      : needles_(needles),
-        metadata_(metadata),
-        placeholders_(placeholders),
-        written_(written),
-        result_(result) {
+         std::span<const std::string> written, SelfCheck::Result& result)
+      : needles_(needles), metadata_(metadata), written_(written), result_(result) {
     for (const MatchFinder::Match& needle : needles) {
       forms_.push_back(MatchFinder::byte_forms(needle));
     }
@@ -229,17 +229,16 @@ class Search {
     if (value.empty()) {
       return;
     }
-    const std::u32string cut = TextFolding::decode(without(value, placeholders_));
+    const std::u32string whole = TextFolding::decode(value);
     for (const MatchFinder::Match& needle : needles_) {
-      if (!MatchFinder::ranges_in(cut, needle).empty()) {
+      if (!MatchFinder::ranges_in(whole, needle).empty()) {
         add(needle, page, surface, object);
       }
     }
     if (metadata_surface(surface) && !metadata_.empty()) {
-      // The values the caller wrote are cut out too, as the placeholders
-      // are: "[_5_]" written over an original "5" is the caller's own value.
-      const std::u32string fresh =
-          TextFolding::decode(without(without(value, placeholders_), written_));
+      // The values the caller wrote are cut out: "[_5_]" written over an
+      // original "5" is the caller's own value.
+      const std::u32string fresh = TextFolding::decode(without(value, written_));
       for (const MatchFinder::Match& needle : metadata_) {
         if (!MatchFinder::ranges_in(fresh, needle).empty()) {
           add(needle, page, surface, object);
@@ -254,7 +253,7 @@ class Search {
       return;
     }
     for (std::size_t i = 0; i < needles_.size(); ++i) {
-      if (scan(bytes, forms_[i], needles_[i].folding.text.case_fold, placeholders_)) {
+      if (scan(bytes, forms_[i], needles_[i].folding.text.case_fold)) {
         add(needles_[i], page, "stream", object);
       }
     }
@@ -277,7 +276,6 @@ class Search {
  private:
   std::span<const MatchFinder::Match> needles_;
   std::span<const MatchFinder::Match> metadata_;
-  std::span<const std::string> placeholders_;
   std::span<const std::string> written_;
   std::vector<std::vector<std::string>> forms_;
   SelfCheck::Result& result_;
@@ -378,7 +376,6 @@ void operand_strings(const Object& value, int depth, std::string& out) {
 // The located check of docs/DESIGN.md section 18 over one output page.
 void check_located(const text::PageText& page, MatchFinder& finder,
                    std::span<const SelfCheck::Located* const> located,
-                   std::span<const std::string> placeholders,
                    const std::set<std::string_view>& placeholder_fonts, Search& search) {
   const std::vector<text::GlyphRecord>& glyphs = page.content.glyphs;
   const auto placeholder = [&placeholder_fonts](const text::GlyphRecord& record) {
@@ -444,9 +441,7 @@ void check_located(const text::PageText& page, MatchFinder& finder,
       const text::MarkedSpan& span = page.content.spans[s];
       for (const std::optional<std::string>* value :
            {&span.actual_text, &span.alt, &span.expansion}) {
-        if (*value &&
-            !MatchFinder::ranges_in(TextFolding::decode(without(**value, placeholders)), needle)
-                 .empty()) {
+        if (*value && !MatchFinder::ranges_in(TextFolding::decode(**value), needle).empty()) {
           survives = true;
         }
       }
@@ -458,17 +453,16 @@ void check_located(const text::PageText& page, MatchFinder& finder,
 }
 
 // The string-match check of docs/DESIGN.md section 18 over one output page:
-// each text held by the page's marked-content strings (placeholders cut
-// out) more often than its input count less its edits survives.
+// each text held by the page's marked-content strings more often than its
+// input count less its edits survives.
 void check_strings(syntax::Document& document, const text::PageText& page,
-                   std::span<const SelfCheck::StringCheck* const> checks,
-                   std::span<const std::string> placeholders, Search& search) {
+                   std::span<const SelfCheck::StringCheck* const> checks, Search& search) {
   const std::vector<PropertyStrings::List> lists = PropertyStrings::lists(document, page.content);
   const std::vector<PropertyStrings::String> strings = PropertyStrings::strings(document, lists);
   std::vector<std::u32string> texts;
   texts.reserve(strings.size());
   for (const PropertyStrings::String& string : strings) {
-    texts.push_back(TextFolding::decode(without(string.text, placeholders)));
+    texts.push_back(TextFolding::decode(string.text));
   }
   for (const SelfCheck::StringCheck* check : checks) {
     MatchFinder::Match literal;
@@ -488,14 +482,12 @@ void check_strings(syntax::Document& document, const text::PageText& page,
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                  std::span<const MatchFinder::Match> needles,
-                                 std::span<const std::string> placeholders,
                                  const std::set<std::uint32_t>* pages) {
-  return run(pdf, limits, Needles{needles, {}, {}, {}}, placeholders, pages);
+  return run(pdf, limits, Needles{needles, {}, {}, {}}, pages);
 }
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
-                                 const Needles& requests, std::span<const std::string> placeholders,
-                                 const std::set<std::uint32_t>* pages) {
+                                 const Needles& requests, const std::set<std::uint32_t>* pages) {
   Result result;
   const std::span<const MatchFinder::Match> needles = requests.values;
   std::vector<MatchFinder::Match> originals;
@@ -509,7 +501,7 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
   result.strings =
       needles.size() + result.located + requests.strings.size() + result.metadata_values;
   std::unique_ptr<syntax::Document> document = syntax::Document::open(pdf, limits);
-  Search search(needles, originals, placeholders, requests.written, result);
+  Search search(needles, originals, requests.written, result);
   if (result.strings == 0) {
     return result;
   }
@@ -539,10 +531,10 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     const text::PageText page = reader.read(source.number);
     MatchFinder finder(page, {placeholder_fonts.begin(), placeholder_fonts.end()});
     if (here != located_on.end()) {
-      check_located(page, finder, here->second, placeholders, placeholder_fonts, search);
+      check_located(page, finder, here->second, placeholder_fonts, search);
     }
     if (strings_here != strings_on.end()) {
-      check_strings(*document, page, strings_here->second, placeholders, search);
+      check_strings(*document, page, strings_here->second, search);
     }
     if (!values) {
       continue;
@@ -687,6 +679,47 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     }
   }
 
+  // The resource dictionaries a content stream reads: its own /Resources, else
+  // its page's, else (a form or a glyph procedure without resources of its
+  // own, which reads the resources of what draws it) every page's.
+  const auto stream_resources = [&document](const Dictionary& dictionary,
+                                            std::optional<std::uint32_t> page) {
+    std::vector<Object> out;
+    if (const Object own = document->resolve(dictionary.get("Resources"));
+        own.dictionary() != nullptr) {
+      out.push_back(own);
+    } else if (page) {
+      out.push_back(document->resolve(document->pages().at(*page - 1).resources));
+    } else {
+      for (const syntax::Page& each : document->pages()) {
+        out.push_back(document->resolve(each.resources));
+      }
+    }
+    return out;
+  };
+  // The /Font names of resources whose font is a placeholder face (its
+  // /BaseFont one of faces).
+  const auto placeholder_names = [](syntax::Document& file, const std::vector<Object>& resources,
+                                    const std::set<std::string_view>& faces) {
+    std::set<std::string> out;
+    for (const Object& entries : resources) {
+      const Dictionary* dictionary = entries.dictionary();
+      const Object fonts =
+          dictionary != nullptr ? file.resolve_entry(*dictionary, "Font") : Object();
+      if (const Dictionary* names = fonts.dictionary()) {
+        for (const auto& [name, entry] : names->entries()) {
+          const Object font = file.resolve(entry);
+          const Dictionary* fields = font.dictionary();
+          const std::string* base = fields != nullptr ? fields->get("BaseFont").name() : nullptr;
+          if (base != nullptr && faces.contains(*base)) {
+            out.insert(name);
+          }
+        }
+      }
+    }
+    return out;
+  };
+
   // String objects and streams.
   for (const std::uint32_t number : numbers) {
     const Object value = document->object({number, 0});
@@ -732,9 +765,29 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     syntax::ContentLexer lexer(pieces, document->limits(), "object " + std::to_string(number));
     std::string operands;
     std::vector<syntax::ContentLexer::Operation> operations;
+    // The strings a text-showing operator shows in a placeholder face are
+    // the placeholder's codes, not the document's text: the font in force is
+    // followed through Tf and the q and Q that save and restore it.
+    const std::set<std::string> faces =
+        placeholder_names(*document, stream_resources(dictionary, page), placeholder_fonts);
+    std::string font;
+    std::vector<std::string> saved;
     while (std::optional<syntax::ContentLexer::Operation> operation = lexer.next()) {
-      for (const Object& operand : operation->operands) {
-        operand_strings(operand, 0, operands);
+      const std::string& op = operation->op;
+      if (op == "q") {
+        saved.push_back(font);
+      } else if (op == "Q" && !saved.empty()) {
+        font = saved.back();
+        saved.pop_back();
+      } else if (op == "Tf" && !operation->operands.empty()) {
+        const std::string* name = operation->operands.front().name();
+        font = name != nullptr ? *name : std::string();
+      }
+      const bool shows = op == "Tj" || op == "TJ" || op == "'" || op == "\"";
+      if (!shows || !faces.contains(font)) {
+        for (const Object& operand : operation->operands) {
+          operand_strings(operand, 0, operands);
+        }
       }
       operations.push_back(std::move(*operation));
     }
@@ -764,11 +817,6 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
     report.self_check_reason = "no text redaction in the edit plan";
     return;
   }
-  std::set<std::string> unique;
-  for (const MatchFinder::Match& match : text.matches) {
-    unique.insert(match.placeholder);
-  }
-  const std::vector<std::string> placeholders(unique.begin(), unique.end());
   // An original the plan also searches for with every folding on is
   // verified everywhere as a value already.
   const auto searched = [&text](const std::string& original) {
@@ -857,9 +905,8 @@ void SelfCheck::verify(EditPlan& plan, const std::string& pdf, writer::WriteRepo
       changed.insert(static_cast<std::uint32_t>(i + 1));
     }
   }
-  const Result result =
-      run(platform::as_bytes(pdf), plan.document().limits(),
-          Needles{text.needles, located, metadata, written, strings}, placeholders, &changed);
+  const Result result = run(platform::as_bytes(pdf), plan.document().limits(),
+                            Needles{text.needles, located, metadata, written, strings}, &changed);
   report.self_check_strings = result.strings;
   report.self_check_located = result.located;
   report.self_check_metadata_values = result.metadata_values;

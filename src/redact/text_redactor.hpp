@@ -10,15 +10,17 @@
 // and computes each page's work: the glyphs to remove (a match's glyphs, the
 // duplicates folded into them and every glyph of an /ActualText span one of
 // them belongs to), the placeholder of each occurrence fitted into its hole
-// (PlaceholderFitting) and drawn at its first line (PlaceholderDrawing), the
+// (PlaceholderFitting) and drawn at its first line (PlaceholderDrawing), or
+// for a box match a filled box per reading line over its visible glyphs, the
 // text operators rebuilt (TextSurgery), the marked-content properties
 // rewritten (MarkedContentRewriter) and the string matches' ranges replaced
 // in them (PropertyStrings), the forms touched (once per form,
 // whatever draws it) and the device rectangles changed. apply() is the text
 // surgery stage of the write pipeline: it writes each page's content and
 // each touched form again through the object graph, embeds the placeholder
-// faces drawn (writer::PlaceholderFont) and names them, with any rewritten
-// property list, in the resource dictionaries the streams read.
+// faces drawn (writer::PlaceholderFont) and names them, with the box's
+// graphics state and any rewritten property list, in the resource
+// dictionaries the streams read.
 
 #ifndef PDFKIT_REDACT_TEXT_REDACTOR_HPP
 #define PDFKIT_REDACT_TEXT_REDACTOR_HPP
@@ -49,6 +51,10 @@ class TextRedactor {
     std::size_t last = 0;
     std::string text;
     std::vector<text::Rect> rectangles;
+    // A box match's boxes, as device rectangles, and why a line of it
+    // painted none although a viewer sees its glyphs.
+    std::vector<text::Rect> boxes;
+    std::vector<std::string> warnings;
     bool drawn = false;
     PlaceholderFitting::Outcome fitting = PlaceholderFitting::Outcome::natural;
     double scale = 1.0;

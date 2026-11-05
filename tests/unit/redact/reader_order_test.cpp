@@ -112,7 +112,7 @@ PageText page_of(TextDocument& document, std::string_view content) {
 bool survives(const std::string& file, const std::string& phrase) {
   const std::vector<MatchFinder::Match> needles{search(phrase)};
   const SelfCheck::Result result =
-      SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{}, needles, {});
+      SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{}, needles);
   for (const SelfCheck::Survivor& survivor : result.survivors) {
     if (survivor.surface == "text") {
       return true;

@@ -13,7 +13,8 @@
 // placeholder is drawn bold when the removed glyph's font is bold (the
 // descriptor's /FontWeight 600 or more, the ForceBold flag, a Core 14 bold
 // face, or "Bold", "Black" or "Heavy" in its name, as fonts::PdfFont reads
-// it). Lengths are measured in device space along the run's direction.
+// it). Lengths are measured in device space along the run's direction, and
+// a placeholder's natural length is the sum of its code points' widths.
 
 #ifndef PDFKIT_REDACT_PLACEHOLDER_FITTING_HPP
 #define PDFKIT_REDACT_PLACEHOLDER_FITTING_HPP
@@ -64,8 +65,9 @@ class PlaceholderFitting {
 
   [[nodiscard]] static writer::PlaceholderFont::Face face_for(const text::GlyphRecord& anchor);
 
-  // Throws platform::Error (invalid_argument) naming the first character of
-  // placeholder outside the alphabet; where names the match.
+  // Throws platform::Error (invalid_argument) naming, as U+XXXX, the first
+  // character of placeholder outside the alphabet, or an ill-formed UTF-8
+  // sequence; where names the match.
   static void require_alphabet(std::string_view placeholder, std::string_view where);
 
   [[nodiscard]] static std::string_view name(Outcome outcome) noexcept;

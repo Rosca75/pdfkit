@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The pdfkit authors
 //
-// The placeholder's operators, one per line, every number through
-// ContentSyntax so the bytes are a function of the values.
+// The placeholder's and the box's operators, one per line, every number
+// through ContentSyntax so the bytes are a function of the values.
 
 #include "redact/placeholder_drawing.hpp"
 
 #include "redact/content_syntax.hpp"
+#include "syntax/object.hpp"
 
 namespace pdfkit::redact {
 
@@ -44,6 +45,28 @@ std::string PlaceholderDrawing::operators(const text::GlyphRecord& anchor,
   out += ContentSyntax::number(anchor.rise) + " Ts\n0 Tc\n0 Tw\n";
   out += invisible ? "3 Tr\n" : "0 Tr\n";
   out += ContentSyntax::hex(writer::PlaceholderFont::codes(placeholder, face)) + " Tj\nET\nQ\n";
+  return out;
+}
+
+syntax::Dictionary PlaceholderDrawing::box_state_dictionary() {
+  syntax::Dictionary state;
+  state.set("Type", syntax::Object::make_name("ExtGState"));
+  state.set("ca", syntax::Object::make_integer(1));
+  state.set("CA", syntax::Object::make_integer(1));
+  state.set("BM", syntax::Object::make_name("Normal"));
+  state.set("SMask", syntax::Object::make_name("None"));
+  return state;
+}
+
+std::string PlaceholderDrawing::box(const text::Matrix& text_matrix, const text::Rect& area,
+                                    const MatchFinder::Colour& colour) {
+  std::string out = "\nq\n/" + std::string(box_state) + " gs\n";
+  out += ContentSyntax::number(colour[0]) + " " + ContentSyntax::number(colour[1]) + " " +
+         ContentSyntax::number(colour[2]) + " rg\n";
+  out += ContentSyntax::matrix(text_matrix) + " cm\n";
+  out += ContentSyntax::number(area.left) + " " + ContentSyntax::number(area.bottom) + " " +
+         ContentSyntax::number(area.width()) + " " + ContentSyntax::number(area.height()) +
+         " re\nf\nQ\n";
   return out;
 }
 

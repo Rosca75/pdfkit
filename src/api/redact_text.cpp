@@ -14,9 +14,14 @@
 // it, then read as a glyph range. A string match names one range of one
 // string of a marked-content property list as pdfkit_find reports it (the
 // page, the list, the path and the range, with any other key of the entry
-// checked against the document). Every match is checked before any is
-// recorded, so a refused call leaves the plan as it was. The text is
-// removed when the plan is written.
+// checked against the document). A match's style says how the place of
+// the removed glyphs is marked: "text" (the default) draws its placeholder,
+// "box" paints a filled box per reading line in its colour (black unless
+// "colour" gives DeviceRGB components from 0 to 1) and draws no text, its
+// placeholder (empty unless given) still replacing the text in the
+// marked-content strings. Every match is checked before any is recorded, so
+// a refused call leaves the plan as it was. The text is removed when the
+// plan is written.
 
 #include "pdfkit/pdfkit.h"
 
@@ -52,7 +57,7 @@ using pdfkit::redact::MatchFinder;
 using pdfkit::redact::TextPlan;
 
 constexpr std::string_view shape =
-    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"} or {"string": {"page": <n>, "list": <n>, "path": [<keys and indices>], "first": <n>, "last": <n>, and any other key of the pdfkit_find entry}, "fingerprint": "<from pdfkit_find>", "placeholder": "<text>"})";
+    R"({"matches": [...]}, each match either {"search": "<text>", "folding": {"case", "diacritics", "whitespace", "hyphenation", "equivalents", "ignore"}, "placeholder": "<text>"} or {"glyphs": {"page": <n>, "first": <n>, "last": <n>} or an array of such ranges on one page, "fingerprint": "<from pdfkit_text>", "placeholder": "<text>"} or {"occurrence": {"text": "<text>", "page": <n>, "folding": {...}, and one or more of "index": <n>, "near": [left, bottom, right, top], "before": "<text>", "after": "<text>"}, "placeholder": "<text>"} or {"string": {"page": <n>, "list": <n>, "path": [<keys and indices>], "first": <n>, "last": <n>, and any other key of the pdfkit_find entry}, "fingerprint": "<from pdfkit_find>", "placeholder": "<text>"}; any match may add "style": "text" or "box" and, with "box", "colour": [r, g, b] from 0 to 1)";
 constexpr std::string_view default_placeholder = "[REDACTED]";
 
 [[noreturn]] void refuse(const std::string& failed, const std::string& fix) {
@@ -302,6 +307,27 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
       match.placeholder = text_member(value, index, name);
     } else if (name == "fingerprint") {
       match.fingerprint = text_member(value, index, name);
+    } else if (name == "style") {
+      const std::string& style = text_member(value, index, name);
+      if (style != "text" && style != "box") {
+        refuse(where(index) + " gives the unknown style \"" + style + "\"",
+               R"(write "style" as "text" (the placeholder drawn) or "box" (a filled box))");
+      }
+      match.style = style == "box" ? MatchFinder::Style::box : MatchFinder::Style::text;
+    } else if (name == "colour") {
+      const bool three = value.kind() == JsonValue::Kind::array && value.as_array().size() == 3 &&
+                         std::ranges::all_of(value.as_array(), [](const JsonValue& v) {
+                           return v.kind() == JsonValue::Kind::number && v.as_number() >= 0.0 &&
+                                  v.as_number() <= 1.0;
+                         });
+      if (!three) {
+        refuse(
+            where(index) + R"( gives "colour" as no three numbers from 0 to 1)",
+            R"(write the colour as its red, green and blue from 0 to 1, as "colour": [0, 0, 0])");
+      }
+      for (std::size_t c = 0; c < 3; ++c) {
+        match.colour[c] = value.as_array()[c].as_number();
+      }
     } else if (name == "folding") {
       match.folding = read_folding(value, index);
     } else if (name == "occurrence") {
@@ -334,7 +360,8 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
       }
     } else {
       refuse(where(index) + " names the unknown key \"" + name + "\"",
-             "use search, folding, glyphs, occurrence, string, fingerprint and placeholder only");
+             "use search, folding, glyphs, occurrence, string, fingerprint, placeholder, style "
+             "and colour only");
     }
   }
   const int forms = (search ? 1 : 0) + (glyphs ? 1 : 0) + (occurrence ? 1 : 0) + (string ? 1 : 0);
@@ -348,6 +375,15 @@ MatchFinder::Match read_match(const JsonValue& item, std::size_t index,
   if (occurrence && item.find("folding") != nullptr) {
     refuse(where(index) + R"( gives "folding" beside "occurrence")",
            R"(give the occurrence's folding inside "occurrence")");
+  }
+  if (item.find("colour") != nullptr && match.style != MatchFinder::Style::box) {
+    refuse(where(index) + R"( gives "colour" without "style": "box")",
+           R"(give "style": "box" with the colour, or leave the colour out)");
+  }
+  // A box draws no text, so its placeholder is the one the caller gives for
+  // the marked-content strings, else nothing.
+  if (item.find("placeholder") == nullptr && match.style == MatchFinder::Style::box) {
+    match.placeholder.clear();
   }
   if (string && item.find("folding") != nullptr) {
     refuse(where(index) + R"( gives "folding" beside "string")",
@@ -445,6 +481,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
         writer.key("search").string(match.search);
       }
       writer.key("placeholder").string(match.placeholder);
+      writer.key("style").string(match.style == MatchFinder::Style::box ? "box" : "text");
       writer.key("count").unsigned_integer(reports[i].occurrences.size());
       writer.key("occurrences").begin_array();
       for (const pdfkit::redact::TextRedactor::Found& found : reports[i].occurrences) {
@@ -473,6 +510,11 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
           write_box(writer, box);
         }
         writer.end_array();
+        writer.key("boxes").begin_array();
+        for (const pdfkit::text::Rect& box : found.boxes) {
+          write_box(writer, box);
+        }
+        writer.end_array();
         writer.key("placeholder_drawn").boolean(found.drawn);
         writer.key("fitting");
         if (found.drawn) {
@@ -490,6 +532,23 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_redact_text(pdfkit_edit* edit, const 
       }
       writer.end_array();
       writer.end_object();
+    }
+    writer.end_array();
+    // A line of a box match that a viewer sees but no box could be painted
+    // over (docs/DESIGN.md section 12): its glyphs are removed, and the
+    // caller learns the place carries no mark.
+    writer.key("warnings").begin_array();
+    for (std::size_t i = 0; i < reports.size(); ++i) {
+      for (const pdfkit::redact::TextRedactor::Found& found : reports[i].occurrences) {
+        for (const std::string& message : found.warnings) {
+          writer.begin_object();
+          writer.key("code").string("box_not_drawn");
+          writer.key("message").string(message);
+          writer.key("page").unsigned_integer(found.page);
+          writer.key("match").unsigned_integer(i);
+          writer.end_object();
+        }
+      }
     }
     writer.end_array();
     writer.end_object();

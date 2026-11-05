@@ -9,7 +9,7 @@
 // an identity no page draws, a second box, blur or remove of one identity
 // (refused naming the first), a box or blur of an image that does not decode
 // (remove is offered), a blur of a bitonal image too small to hide its shapes
-// (box is offered), a caption outside the placeholder alphabet, a caption on
+// (box is offered), a caption outside the caption alphabet, a caption on
 // anything but a box, a region of a removed image, a rectangle that covers no
 // pixel, a page rectangle on a page that does not draw the image. A page
 // rectangle is mapped onto the pixels through the inverse of the CTM of each

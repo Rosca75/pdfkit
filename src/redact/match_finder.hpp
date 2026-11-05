@@ -19,8 +19,8 @@
 // either direction), so a phrase pdfkit's reading order splits is still
 // found wherever another reader puts its words side by side.
 // merge() applies the overlap rule: overlapping or adjacent occurrences with
-// one placeholder become one, and where placeholders differ the occurrence
-// that starts earlier keeps the overlap.
+// one placeholder, one style and one colour become one, and where they
+// differ the occurrence that starts earlier keeps the overlap.
 // locate() is the one search pdfkit_find reports and pdfkit_redact_text
 // removes (occurrences() is the same run flattened into the stretches a
 // redaction takes), so the count shown to a caller is the count removed:
@@ -35,6 +35,7 @@
 #include "text/page_text.hpp"
 #include "text/rect.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -68,6 +69,13 @@ class MatchFinder {
     auto operator<=>(const Folding&) const = default;
   };
 
+  // How a match marks where its glyphs were: its placeholder drawn as text
+  // (docs/DESIGN.md section 13), or a filled box over the removed glyphs
+  // that draws no text (section 12).
+  enum class Style : std::uint8_t { text, box };
+  // A box's fill colour: DeviceRGB components from 0 to 1.
+  using Colour = std::array<double, 3>;
+
   struct Match {
     // A string match (a range of a marked-content string) is found by
     // PropertyStrings, not here; its kind keeps it out of every search.
@@ -84,6 +92,8 @@ class MatchFinder {
     // The document fingerprint the extraction reported with the range.
     std::string fingerprint;
     std::string placeholder;
+    Style style = Style::text;
+    Colour colour{};
   };
 
   struct Occurrence {
@@ -94,6 +104,8 @@ class MatchFinder {
     std::size_t first = 0;
     std::size_t last = 0;
     std::string placeholder;
+    Style style = Style::text;
+    Colour colour{};
   };
 
   // The order a reader reads the page in: pdfkit's reading order, the
@@ -261,7 +273,7 @@ class MatchFinder {
   // The glyphs of a run in the order that read it, joined into its text.
   [[nodiscard]] std::string run_text(const std::vector<std::size_t>& draws,
                                      const std::vector<bool>& gaps) const;
-  static void flatten(const Located& located, std::size_t index, const std::string& placeholder,
+  static void flatten(const Located& located, std::size_t index, const Match& match,
                       std::vector<Occurrence>& out);
   void build(bool hyphenation, std::vector<Unit>& units) const;
   // The reading-order position of each draw index.

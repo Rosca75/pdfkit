@@ -233,6 +233,9 @@ class Session:
             matches = {"matches": [{"search": MARKER, "placeholder": "[X]"}]}
             self.call("pdfkit_redact_text", edit, utf8(json.dumps(matches)),
                       allowed=(self.expected("pdfkit_redact_text"),))
+            boxed = {"matches": [{"search": MARKER, "style": "box", "colour": [0, 0, 0]}]}
+            self.call("pdfkit_redact_text", edit, utf8(json.dumps(boxed)),
+                      allowed=(self.expected("pdfkit_redact_text"),))
             self.call("pdfkit_redact_text", edit, None, allowed=(INVALID_ARGUMENT,))
             self.call("pdfkit_redact_images", edit, b'{"treatments": []}',
                       allowed=(self.expected("pdfkit_redact_images"), INVALID_ARGUMENT))

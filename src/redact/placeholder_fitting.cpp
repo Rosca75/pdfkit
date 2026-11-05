@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
 
 namespace pdfkit::redact {
@@ -120,20 +121,23 @@ PlaceholderFont::Face PlaceholderFitting::face_for(const text::GlyphRecord& anch
 }
 
 void PlaceholderFitting::require_alphabet(std::string_view placeholder, std::string_view where) {
-  if (const auto bad = PlaceholderFont::outside(placeholder)) {
-    const auto byte = static_cast<unsigned char>(*bad);
-    const std::string shown = byte >= 0x20 && byte < 0x7F
-                                  ? "'" + std::string(1, *bad) + "'"
-                                  : "the byte " + std::to_string(static_cast<unsigned>(byte));
-    throw platform::Error(
-        platform::ErrorCode::invalid_argument,
-        std::string(where) + " has the placeholder \"" + std::string(placeholder) +
-            "\", which holds " + shown + ", a character outside the placeholder alphabet",
-        "a placeholder of the characters [, ], _, 0 to 9 and A to Z, which the embedded "
-        "placeholder font draws",
-        "write the placeholder in capitals, digits, brackets and underscores, for example "
-        "[REDACTED] or [NAME_1]");
+  const std::optional<std::string> bad = PlaceholderFont::outside(placeholder);
+  if (!bad) {
+    return;
   }
+  const bool ill_formed = !bad->starts_with("U+");
+  throw platform::Error(
+      platform::ErrorCode::invalid_argument,
+      std::string(where) + " has a placeholder that holds " + *bad +
+          (ill_formed ? std::string(", which is not text")
+                      : ", a character outside the placeholder alphabet"),
+      "a placeholder of UTF-8 text over printable ASCII (U+0020 to U+007E), the Latin-1 "
+      "Supplement (U+00A0 to U+00FF) and Latin Extended-A (U+0100 to U+017F), which the "
+      "embedded placeholder font draws",
+      ill_formed ? std::string("send the placeholder as UTF-8")
+                 : "write the placeholder without " + *bad +
+                       ", for example [REDACTED], a mask of asterisks or a name such as "
+                       "Jérôme Dupont");
 }
 
 std::string_view PlaceholderFitting::name(Outcome outcome) noexcept {

@@ -53,6 +53,10 @@ class Matrix {
   }
 
   [[nodiscard]] double determinant() const noexcept { return (a * d) - (b * c); }
+  // The matrix that undoes this one (this then the inverse is the
+  // identity); no value when this one is singular or the inverse is not
+  // finite.
+  [[nodiscard]] std::optional<Matrix> inverse() const noexcept;
   // Whether the matrix maps axis-aligned rectangles to axis-aligned
   // rectangles (no rotation other than multiples of 90 degrees, no skew).
   [[nodiscard]] bool axis_aligned() const noexcept;
