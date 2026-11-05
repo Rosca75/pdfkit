@@ -2,15 +2,17 @@
 
 pdfkit is a stand-alone C++ library and command-line tool that reads PDF files
 into machine-readable text, images and metadata, and redacts text, images and
-metadata into a **new** PDF. The original file is never changed. Version 0.2.1-preview,
-C ABI version 2.
+metadata into a **new** PDF. The original file is never changed. Version 0.3.0-preview,
+C ABI version 3.
 
 - **Every glyph is text.** Invisible, clipped, off-page, white and duplicated
   text is extracted and flagged, because any extractor can reach it. A glyph
   pdfkit cannot decode is counted and named, never dropped in silence.
 - **Redaction is surgery, not a box.** Matched glyphs are removed from the
-  content stream. A placeholder such as `[NAME_1]` is drawn in a font pdfkit
-  embeds, and every other glyph stays where it was. Images are boxed, blurred
+  content stream. A placeholder such as `[NAME_1]`, a mask such as `*****` or
+  realistic text such as `Jérôme Dupont` (printable ASCII, Latin-1 and Latin
+  Extended-A) is drawn in a font pdfkit embeds, or a black box is painted
+  where the removed glyphs were, and every other glyph stays where it was. Images are boxed, blurred
   into a mosaic or removed in their samples, not covered.
 - **The output is a fresh file.** It holds only reachable objects, with no
   earlier revisions, thumbnails, attachments, annotations, form data, bookmarks,
@@ -35,7 +37,7 @@ JSON, and `docs/DESIGN.md` the format rules behind it.
 | 3.1 | List images: identity, encoding, size, colour space, masks and every draw | `pdfkit_images` | `pdfkit images` |
 | 3.2 | Image pixels: PNG for a lossless source, the original JPEG for a DCT source | `pdfkit_image_data` | `pdfkit images --out` |
 | 4 | Extract metadata: the Info dictionary and the XMP packet side by side | `pdfkit_metadata` | `pdfkit metadata` |
-| 5 | Redact text by glyph range or search string, drawing a placeholder | `pdfkit_redact_text` | `pdfkit redact` |
+| 5 | Redact text by glyph range or search string, drawing a placeholder or painting a box | `pdfkit_redact_text` | `pdfkit redact` |
 | 6 | Redact images: box (with a caption), region boxes, blur (a destructive mosaic) or remove | `pdfkit_redact_images` | `pdfkit redact` |
 | 7 | Rewrite metadata in both the Info dictionary and the XMP packet | `pdfkit_set_metadata` | `pdfkit redact` |
 | 8 | Strip hidden channels (applied to every output) and report what is present | `pdfkit_channels` | `pdfkit channels` |
@@ -67,7 +69,8 @@ function, each handed byte for byte to it (`docs/ABI.md` §6):
 {
   "input": "report.pdf",
   "output": "report.redacted.pdf",
-  "text": {"matches": [{"search": "Jane Doe", "placeholder": "[NAME_1]"}]},
+  "text": {"matches": [{"search": "Jane Doe", "placeholder": "[NAME_1]"},
+                       {"search": "Project Falcon", "style": "box"}]},
   "images": {"treatments": [{"identity": "img:0123456789abcdef", "treatment": "box",
                              "caption": "[LOGO]"}]},
   "metadata": {"Author": "[AUTHOR]", "Title": null},
@@ -161,8 +164,8 @@ cache (`-DPDFKIT_COMPILER_CACHE=OFF` builds without it, to the same bytes).
 llvm-mingw; `mingw-release` links with GNU ld. `build/toolchain.md` section 6
 holds what each setting buys, measured, and the settings rejected.
 
-`python build/package.py` writes `dist/pdfkit-0.2.1-preview-windows-x64.zip`, and
-`python build/package.py --arch arm64` writes `dist/pdfkit-0.2.1-preview-windows-arm64.zip`
+`python build/package.py` writes `dist/pdfkit-0.3.0-preview-windows-x64.zip`, and
+`python build/package.py --arch arm64` writes `dist/pdfkit-0.3.0-preview-windows-arm64.zip`
 with llvm-mingw's aarch64 clang (`build/toolchain.md` §4, "The ARM64 toolchain"): the DLL,
 its import library, the header, the CLI, `LICENSE`, `NOTICE` and
 `THIRD-PARTY-NOTICES.md`, each within its budget in `build/budgets.tsv`; with

@@ -805,8 +805,10 @@ the common words of a title wherever they stand near each other (it fired in
 A match spans operators, fonts, `TJ` adjustments, lines and a hyphen, and is one
 match. It removes its glyphs, every duplicate folded into one of them (§7), and
 every glyph of an `/ActualText` span one of them belongs to, because the span's
-text is read as one unit. Overlapping or adjacent matches with the same placeholder are merged;
-with different placeholders, the earlier-starting one wins the overlap. Of
+text is read as one unit. Overlapping or adjacent matches with the same placeholder, style
+and box colour are merged; where any of them differs, the earlier-starting
+one wins the overlap (the edits of one marked-content string merge by
+placeholder alone, because a style changes nothing written into a string). Of
 two that start on the same glyph, the one that ends later wins: it covers the
 other whole, so the shorter draws nothing (the searches `Contoso` and
 `Contoso Group` over "Contoso Group" draw the placeholder of `Contoso Group`
@@ -953,17 +955,58 @@ position the original gave it (CLAUDE.md §5).
   the later lines' holes stay holes; an attached hyphen goes with the match.
 - A box drawn over live text is never a redaction, because the text stays in the
   file (the Manafort filing).
+- **The box style**: a match with `"style": "box"` removes its glyphs exactly
+  as above and, in place of the placeholder, paints a filled rectangle over
+  them: one per reading line and content stream walk, over that line's
+  removed glyphs a viewer sees (each glyph's own box, from its origin to its
+  width and from its font's descent to its ascent, unwidened), so it lies
+  inside the `rectangles` the answer reports. The rectangle is the union of
+  those boxes mapped into the text space of the line's first such glyph (the
+  inverse of its text matrix times its CTM) and painted there as
+  `q /PdfkitBoxGS gs r g b rg <Tm> cm x y w h re f Q`, in the caller's
+  DeviceRGB colour (black by default). It is written before the `BT` that
+  opens that glyph's text object, in the same stream, so it is under the
+  glyph's CTM and under the clip its glyphs were painted with: a text object
+  in a clipping render mode (4 to 7) adds its kept glyphs' outlines to the
+  clip at `ET`, and a box written after that `ET` would be cut to them. The
+  graphics state `PdfkitBoxGS`, named in the resources the stream reads (in
+  every kept page drawing a form without resources of its own, as the
+  placeholder face is), sets `/ca 1 /CA 1 /BM /Normal /SMask /None`, so the
+  box is opaque under whatever alpha, blend mode or soft mask the text was
+  drawn with. A line whose removed glyphs are all hidden (any class of §8
+  but `duplicate`, which is a visible copy) paints no box, because a bar
+  over a hidden word reveals that a word was there. A line whose text object
+  does not open with a `BT` before its glyph under the same transformation
+  (a `cm`, `q` or `Q` between them, or no `BT`), or whose text matrix is
+  singular, paints none and is named in the answer's `box_not_drawn`
+  warnings; its glyphs are removed all the same. The box draws no text, so
+  the leak rule is unchanged: the glyphs are gone from the content and no box
+  ever covers live text. The match's placeholder (empty unless given) still
+  replaces the text in `/ActualText`, `/Alt`, `/E` and a string match's
+  string, because those are text an extractor copies.
 
 ## 13. The placeholder font and the width-fitting rule
 
+- **The alphabet**: a placeholder is UTF-8 text over printable ASCII (U+0020
+  to U+007E), the Latin-1 Supplement (U+00A0 to U+00FF) and Latin Extended-A
+  (U+0100 to U+017F), 319 characters, so a caller can draw a bracketed name
+  (`[NAME_1]`), a mask (`*****`) or realistic text with lower case, spaces,
+  punctuation and accented letters (`Jérôme Łukasz-O'Brien & Co.`).
+  Liberation Sans 2.1.5 Regular and Bold map every one of them.
 - **The font**: a `Type0` font over a `CIDFontType2` descendant, `Identity-H`
-  encoding, `/CIDToGIDMap /Identity`, holding the 40 glyphs of the placeholder
-  alphabet (`[`, `]`, `_`, `0`–`9`, `A`–`Z`) and `.notdef`, cut from Liberation
-  Sans Regular and Bold (SIL OFL 1.1, whose FAQ permits embedding a subset) by a
-  build tool in `build/fonts/` and committed as data pinned by hash, so the
-  run-time writer subsets nothing; with a `/ToUnicode` stream so an extractor
-  reads the placeholder, `/W` from the subset's `hmtx`, and a font descriptor
-  with the subset's metrics. Liberation Sans is metric-compatible with Arial, so
+  encoding, `/CIDToGIDMap /Identity`, holding `.notdef`, the 319 glyphs of the
+  alphabet and the components its composite glyphs reference (344 glyphs in
+  the Regular face, 343 in the Bold), cut from Liberation Sans Regular and
+  Bold (SIL OFL 1.1, whose FAQ permits embedding a subset) by
+  `build/fonts/subset.py` and committed as data pinned by hash, so the
+  run-time writer subsets nothing, about 20 KB per face. The alphabet's glyphs
+  take the ids 1 to 319 in code point order and the components follow them,
+  which the tool checks, so `/W` is one run from 1. A `/ToUnicode` stream maps
+  each code back to its character, in `bfchar` blocks of at most 100 entries
+  (the CMap block limit, Adobe Technical Note 5099, recalled), so an
+  extractor reads the placeholder; `/W` comes from the subset's `hmtx`, and a
+  font descriptor carries the subset's metrics. The image caption's bitmap
+  font keeps the narrow alphabet of §14, which is its own decision. Liberation Sans is metric-compatible with Arial, so
   a placeholder's width is close to what the same letters took in a common
   business face. It is embedded once per output file, only when a placeholder is
   drawn, the bold face only when a bold placeholder is drawn.
@@ -987,8 +1030,11 @@ position the original gave it (CLAUDE.md §5).
   visible and a placeholder drawn over the next glyph hides a word the reader
   cannot see was there. The result of `pdfkit_redact_text` reports the fitting
   per occurrence.
-- A placeholder with a character outside the alphabet is refused before
-  anything is written.
+- **Fitting** reads the placeholder's code points, each at its own `hmtx`
+  width, so realistic text fits, narrows or overflows by its width as a
+  bracketed name does.
+- A placeholder with a character outside the alphabet (named as `U+XXXX`), or
+  that is not well-formed UTF-8, is refused before anything is written.
 
 ## 14. Image treatments
 
@@ -1010,8 +1056,10 @@ because the samples stay in the file.
   never a value a colour-key `/Mask` hides. A caller rectangle given in page
   space is mapped through the inverse of the CTM of every draw of the image on
   that page and rounded outward, and every mapped rectangle is painted. An
-  optional caption from the placeholder alphabet is drawn inside the box with
-  a bitmap font of the alphabet rasterised from Liberation Sans at build time
+  optional caption from the caption alphabet (`[`, `]`, `_`, `0` to `9`, `A`
+  to `Z`, narrower than the placeholder alphabet of §13, because the bitmap
+  font is its own decision) is drawn inside the box with a bitmap font of
+  that alphabet rasterised from Liberation Sans at build time
   (`build/fonts/bitmap_font.py`, heights 8, 12, 16, 24, 32, 48 and 64
   pixels) and committed as data, at the largest height whose line fits, in
   white or black, whichever contrasts with the fill, upright as the image's
@@ -1204,7 +1252,7 @@ rewritten metadata field is verified in the metadata.
 |---|---|---|
 | a search string (a value) | every occurrence in every order of every page (§11) | every surface below, under the string's folding |
 | a glyph range or an occurrence (an expression at a location) | the glyphs of its ranges and every copy of its text drawn at the place (§11); inside a form drawn elsewhere too, from a copy of the form that this draw alone reads (§12) | that location: no occurrence of its text, in the reading order or any other order of §11, has a glyph (outside the placeholder font) whose box's centre lies in the box of a glyph the match removed; no string operator drawing a glyph there holds a code run the answer reported under `codes` (at a code boundary); no `/ActualText`, `/Alt` or `/E` of a span over the place (one whose `BDC` ... `EMC` encloses a glyph there, the placeholder included, or whose `/ActualText` a glyph there names) holds the text. Nothing elsewhere is searched for it |
-| a string occurrence (an expression in one marked-content string) | its code points in that string, at that operator alone (§12) | that page: its marked-content strings (§11), read with no folding and the placeholders cut out, hold its text fewer times than the input page's did by at least the number of distinct string occurrences of that text removed there. Nothing elsewhere is searched for it |
+| a string occurrence (an expression in one marked-content string) | its code points in that string, at that operator alone (§12) | that page: its marked-content strings (§11), read with no folding and nothing cut out, hold its text fewer times than the input page's did by at least the number of distinct string occurrences of that text removed there. Nothing elsewhere is searched for it |
 | a rewritten metadata field | the Info entry and its paired XMP properties | each of its source values (the Info value, each paired XMP value and array item), of any length, with every folding on, in the Info dictionary, the XMP packet and every string object outside content streams; the page text is not searched for it, because the document may say it for another reason (an author "PC" in a page about a PC) |
 
 The location is the removed glyphs' own boxes and a glyph is there by its
@@ -1215,8 +1263,8 @@ second occurrence on the same line would lie in them. A value whose search
 the caller also adds with every folding on is verified everywhere as a
 value, whatever else the plan holds. The values the caller writes into the
 metadata fields are cut out of the metadata surfaces before the originals are
-searched, as the placeholders are, because a written value holding an
-original ("[_5_]" over "5") is the caller's own.
+searched, because a written value holding an original ("[_5_]" over "5") is
+the caller's own.
 
 The surfaces of a value:
 
@@ -1255,8 +1303,19 @@ edit, or an edited form drawn) and on the page of every located match; an
 unchanged page reads as it did. Every other surface is searched on every
 page.
 
-Before a surface is searched every placeholder of the plan is cut out of it,
-so a placeholder holding a redacted string is not a survivor.
+Nothing is cut out of a surface before it is searched. A found occurrence is
+dismissed only where it lies wholly inside text drawn in the placeholder
+font: in the page text, by its glyphs (every glyph of the occurrence that is
+not a space is in a placeholder face); in the raw scan of a content stream,
+by the string operands a text-showing operator shows while the current font
+(followed through `Tf` and the `q` and `Q` that save and restore it) is a
+resource of the stream whose `/BaseFont` is a placeholder face, because
+those strings are the placeholder's two-byte codes, which may spell a value's
+bytes. A placeholder is arbitrary text, and one cut out of a surface would
+hide a survivor that holds it: "de" cut out of an `/Alt` would hide "Jean de
+la Fontaine", "e" cut out of the raw scan every e. A placeholder that spells
+its own value in a marked-content string (a value "de" with the placeholder
+"de") is therefore a survivor there, and the write is refused.
 
 A survivor is a refusal (exit code 3 in the CLI) naming the page and the surface
 for each occurrence (`location` for a glyph range's text at its location); no
