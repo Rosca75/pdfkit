@@ -53,8 +53,10 @@ JsonValue first_occurrence(const std::string& answer) {
 // The filled paints of page 1 of output.
 std::vector<pdfkit::text::FigureRecord::Paint> fills(const std::string& output) {
   std::vector<pdfkit::text::FigureRecord::Paint> out;
-  for (const pdfkit::text::FigureRecord& figure :
-       pdfkit::test::read_pages(output).front().content.figures) {
+  // The pages are held in a named value, because a range over a member of a
+  // temporary ends that temporary's life before the loop body reads it.
+  const auto pages = pdfkit::test::read_pages(output);
+  for (const pdfkit::text::FigureRecord& figure : pages.front().content.figures) {
     for (const pdfkit::text::FigureRecord::Paint& paint : figure.paints) {
       if (paint.filled) {
         out.push_back(paint);
