@@ -32,11 +32,14 @@ GLUE = {"CMakeLists.txt"}
 
 def tree_sha256(folder: Path) -> str:
     """SHA-256 over every vendored file of folder: for each file in sorted
-    POSIX-path order, the line '<path>\\0<sha256 of its bytes>\\n'."""
+    POSIX-path order, the line '<path>\\0<sha256 of its bytes>\\n'. The order
+    is that of the relative POSIX path's text, code point by code point, and
+    never of Path objects, which compare case-insensitively on Windows and
+    case-sensitively elsewhere, so one tree would hash two ways."""
     digest = hashlib.sha256()
-    files = sorted(p for p in folder.rglob("*") if p.is_file() and p.name not in GLUE)
-    for path in files:
-        relative = path.relative_to(folder).as_posix()
+    files = sorted((p.relative_to(folder).as_posix(), p) for p in folder.rglob("*")
+                   if p.is_file() and p.name not in GLUE)
+    for relative, path in files:
         digest.update(f"{relative}\0{hashlib.sha256(path.read_bytes()).hexdigest()}\n".encode())
     return digest.hexdigest()
 
