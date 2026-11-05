@@ -20,6 +20,7 @@
 #include "platform/crypto/sha2.hpp"
 #include "platform/utf8_sequence.hpp"
 #include "redact/support/redaction.hpp"
+#include "support/require_value.hpp"
 #include "syntax/document.hpp"
 #include "syntax/limits.hpp"
 #include "text/support/text_document.hpp"
@@ -119,12 +120,11 @@ TEST_CASE("the subset's cmap and hmtx agree with the codes and the widths") {
   for (const Face face : {Face::regular, Face::bold}) {
     const PlaceholderFont::Metrics& metrics = PlaceholderFont::metrics(face);
     pdfkit::platform::Budget budget;
-    const auto tables = pdfkit::fonts::TrueTypeTables::parse(
+    const auto tables = pdfkit::test::require_value(pdfkit::fonts::TrueTypeTables::parse(
         pdfkit::platform::ByteSpan(reinterpret_cast<const std::byte*>(metrics.program.data()),
                                    metrics.program.size()),
-        budget);
-    REQUIRE(tables.has_value());
-    const double units = tables->units_per_em();
+        budget));
+    const double units = tables.units_per_em();
     for (const char32_t code_point : PlaceholderFont::alphabet()) {
       std::string text;
       pdfkit::platform::append_utf8(text, code_point);
@@ -133,10 +133,9 @@ TEST_CASE("the subset's cmap and hmtx agree with the codes and the widths") {
       const auto gid = (static_cast<std::uint32_t>(static_cast<unsigned char>(codes[0])) << 8U) |
                        static_cast<unsigned char>(codes[1]);
       INFO("code point " << static_cast<std::uint32_t>(code_point));
-      CHECK(tables->lookup(3, 1, code_point) == gid);
-      const auto advance = tables->advance(gid);
-      REQUIRE(advance.has_value());
-      CHECK(PlaceholderFont::width(text, face) == std::round(*advance * 1000.0 / units));
+      CHECK(tables.lookup(3, 1, code_point) == gid);
+      const auto advance = pdfkit::test::require_value(tables.advance(gid));
+      CHECK(PlaceholderFont::width(text, face) == std::round(advance * 1000.0 / units));
     }
   }
 }
