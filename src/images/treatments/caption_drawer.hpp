@@ -2,7 +2,7 @@
 // Copyright 2026 The pdfkit authors
 //
 // CaptionDrawer draws a box's caption into the image's samples,
-// docs/DESIGN.md section 14: the caption, from the placeholder alphabet ([, ],
+// docs/DESIGN.md section 14: the caption, from the caption alphabet ([, ],
 // _, 0-9, A-Z), centred in the box at the largest height of the bitmap font
 // (src/images/bitmap_font_data.inc, rasterised from Liberation Sans by
 // build/fonts/bitmap_font.py) whose line fits inside it, in one ink chosen by

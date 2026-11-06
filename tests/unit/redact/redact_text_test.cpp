@@ -7,8 +7,19 @@
 // rectangles and the self-check's pass; the cases a producer writes (two
 // /Contents pieces, a two-byte font, hidden text, a fake-bold duplicate, a
 // page selection) and the refusals of a glyph range (another document's
-// fingerprint, a range past its page) and of malformed matches.
+// fingerprint, a range past its page) and of malformed matches. A
+// placeholder of lower case, spaces, punctuation and accented letters, and a
+// mask of asterisks, read back where the match was; a placeholder drawn into
+// a line, whatever its width against the name's and however the producer
+// placed the words, read where the name stood as a word of its own, and the
+// space after a narrower one reaching the next word. A box match removes the
+// glyphs and paints one opaque filled rectangle per reading line inside the
+// reported rectangles, before the text object so its clip does not cut the
+// box, in the colour asked, and none over a run whose glyphs are all hidden;
+// a malformed style or colour is refused with the three parts.
 
+#include "platform/json_reader.hpp"
+#include "platform/json_value.hpp"
 #include "redact/support/redaction.hpp"
 #include "support/pdf_builder.hpp"
 #include "text/support/text_document.hpp"
@@ -25,6 +36,49 @@ namespace {
 using pdfkit::test::page_text;
 using pdfkit::test::redact;
 using pdfkit::test::search;
+
+using pdfkit::platform::JsonReader;
+using pdfkit::platform::JsonValue;
+
+// A rectangle of the answer, [left, bottom, right, top].
+pdfkit::text::Rect rect_of(const JsonValue& value) {
+  const JsonValue::Array& items = value.as_array();
+  return pdfkit::text::Rect::of(items[0].as_number(), items[1].as_number(), items[2].as_number(),
+                                items[3].as_number());
+}
+
+// The first occurrence of the first match of an answer.
+JsonValue first_occurrence(const std::string& answer) {
+  const JsonValue parsed = JsonReader::parse(answer);
+  return parsed.find("matches")->as_array().front().find("occurrences")->as_array().front();
+}
+
+// The filled paints of page 1 of output.
+std::vector<pdfkit::text::FigureRecord::Paint> fills(const std::string& output) {
+  std::vector<pdfkit::text::FigureRecord::Paint> out;
+  // The pages are held in a named value, because a range over a member of a
+  // temporary ends that temporary's life before the loop body reads it.
+  const auto pages = pdfkit::test::read_pages(output);
+  for (const pdfkit::text::FigureRecord& figure : pages.front().content.figures) {
+    for (const pdfkit::text::FigureRecord::Paint& paint : figure.paints) {
+      if (paint.filled) {
+        out.push_back(paint);
+      }
+    }
+  }
+  return out;
+}
+
+// Whether inner lies inside outer, to a hundredth of a point.
+bool inside(const pdfkit::text::Rect& inner, const pdfkit::text::Rect& outer) {
+  return inner.left >= outer.left - 0.01 && inner.right <= outer.right + 0.01 &&
+         inner.bottom >= outer.bottom - 0.01 && inner.top <= outer.top + 0.01;
+}
+
+// A box match of the search text with extra keys.
+std::string box(const std::string& text, const std::string& extra = "") {
+  return R"({"matches": [{"search": ")" + text + R"(", "style": "box")" + extra + "}]}";
+}
 
 // The origins of the glyphs of page 1 whose text is not in dropped, in
 // draw order.
@@ -247,4 +301,290 @@ TEST_CASE("an unknown keyword and an unterminated string that spell the string g
   INFO(result.report);
   CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
   CHECK(page_text(result.pdf) == "kept");
+}
+
+TEST_CASE("realistic text and a mask are drawn as placeholders and read back") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (Report by Zebulon Quarterfield today) Tj ET");
+  for (const std::string placeholder : {"Jérôme Łukasz-O'Brien & Co.", "*****"}) {
+    INFO(placeholder);
+    const pdfkit::test::Redaction result =
+        redact(fixture.bytes(), search("Zebulon Quarterfield", placeholder));
+    REQUIRE(result.match_status == PDFKIT_OK);
+    REQUIRE(result.write_status == PDFKIT_OK);
+    const std::string text = page_text(result.pdf);
+    CHECK(text.find(placeholder) != std::string::npos);
+    CHECK(text.find("Zebulon") == std::string::npos);
+    CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
+    CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
+  }
+}
+
+TEST_CASE("a placeholder reads where the name stood, as a word of its own") {
+  // "Signed by Jonathan Smithson today." as producers write it: one string
+  // with its spaces, words placed by TJ numbers with no space glyph, and a
+  // text object per piece (a marked-content span's own).
+  const std::vector<std::string> lines = {
+      "BT /F1 12 Tf 72 700 Td (Signed by Jonathan Smithson today.) Tj ET",
+      "BT /F1 12 Tf 72 700 Td [(Signed) -250 (by) -250 (Jonathan) -250 (Smithson) -250 "
+      "(today.)] TJ ET",
+      "BT /F1 12 Tf 72 700 Td (Signed by) Tj ET BT /F1 12 Tf 132 700 Td (Jonathan Smithson) Tj "
+      "ET BT /F1 12 Tf 240 700 Td (today.) Tj ET"};
+  // Realistic text, a bracketed name, a mask, and a name wide enough to be
+  // narrowed into the hole.
+  const std::vector<std::string> placeholders = {"Huisman", "[PERSON_1]", "[P_1]", "*****",
+                                                 "Bartholomew Huismanns"};
+  for (const std::string& line : lines) {
+    pdfkit::test::TextDocument fixture;
+    fixture.page(line);
+    const std::string file = fixture.bytes();
+    for (const std::string& placeholder : placeholders) {
+      INFO(line);
+      INFO(placeholder);
+      const pdfkit::test::Redaction result = redact(file, search("Jonathan Smithson", placeholder));
+      REQUIRE(result.match_status == PDFKIT_OK);
+      REQUIRE(result.write_status == PDFKIT_OK);
+      CHECK(page_text(result.pdf) == "Signed by " + placeholder + " today.");
+      CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
+    }
+  }
+}
+
+TEST_CASE("a placeholder over a short name drawn on its own reads as a word of its own") {
+  // The shape a marked-content span gives: "SJ" in a text object of its own
+  // between "Signed by" and "today.", so a placeholder wider than "SJ" may
+  // fill the white space up to "today." and, wider still, run over it.
+  pdfkit::test::TextDocument fixture;
+  fixture.page(
+      "BT /F1 12 Tf 72 700 Td (Signed by) Tj ET BT /F1 12 Tf 136 700 Td (SJ) Tj ET "
+      "BT /F1 12 Tf 166 700 Td (today.) Tj ET");
+  const std::string file = fixture.bytes();
+  // Natural, narrowed, at the floor and past it, and realistic text.
+  for (const std::string placeholder :
+       {"*****", "[P_1]", "Huisman", "[PERSON]", "[PERSON_1]", "Bartholomew Huismanns"}) {
+    INFO(placeholder);
+    const pdfkit::test::Redaction result = redact(file, search("SJ", placeholder));
+    REQUIRE(result.match_status == PDFKIT_OK);
+    REQUIRE(result.write_status == PDFKIT_OK);
+    INFO(result.matches);
+    CHECK(page_text(result.pdf) == "Signed by " + placeholder + " today.");
+  }
+}
+
+TEST_CASE("placeholders of one string read in place beside the words they were glued to") {
+  // A value standing as a word, glued to digits and glued to a word: the
+  // three placeholders, drawn one after another, fill gaps of the kept text.
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 12 Tf 72 700 Td (Contoso23 sold ContosoFood to Contoso.) Tj ET");
+  const pdfkit::test::Redaction result = redact(
+      fixture.bytes(), R"({"matches": [{"search": "Contoso", "placeholder": "[ENTITY_2]"}]})");
+  REQUIRE(result.write_status == PDFKIT_OK);
+  CHECK(page_text(result.pdf) == "[ENTITY_2]23 sold [ENTITY_2]Food to [ENTITY_2].");
+  // Realistic text too wide for each hole runs over the kept text after it,
+  // which was drawn first: each reads in place, a word of its own.
+  const pdfkit::test::Redaction wide =
+      redact(fixture.bytes(),
+             R"({"matches": [{"search": "Contoso", "placeholder": "Nelvulon Systems"}]})");
+  REQUIRE(wide.write_status == PDFKIT_OK);
+  CHECK(wide.matches.find("\"fitting\":\"overflow\"") != std::string::npos);
+  CHECK(page_text(wide.pdf) ==
+        "Nelvulon Systems 23 sold Nelvulon Systems Food to Nelvulon Systems .");
+}
+
+TEST_CASE("an overflowing placeholder and a later one of the same string read in place") {
+  // "[PERSON_1]" runs from "Li" over "at th"; "[ENTITY_2]" fills "Contoso"
+  // further on, drawn just after it in the same face.
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 12 Tf 72 700 Td (Signed by Li at the office of Contoso-) Tj ET");
+  const pdfkit::test::Redaction result =
+      redact(fixture.bytes(), R"({"matches": [{"search": "Li", "placeholder": "[PERSON_1]"}, )"
+                              R"({"search": "Contoso", "placeholder": "[ENTITY_2]"}]})");
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.matches);
+  CHECK(result.matches.find("\"fitting\":\"overflow\"") != std::string::npos);
+  CHECK(page_text(result.pdf) == "Signed by [PERSON_1] at the office of [ENTITY_2]-");
+}
+
+TEST_CASE("a placeholder narrower than its hole ends in a space that reaches the next word") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page(
+      "BT /F1 12 Tf 72 700 Td [(Signed) -250 (by) -250 (Jonathan) -250 (Smithson) -250 "
+      "(today.)] TJ ET");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), search("Jonathan Smithson", "*"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  const auto pages = pdfkit::test::read_pages(result.pdf);
+  double bridge_end = 0.0;
+  double today = 0.0;
+  for (const pdfkit::text::GlyphRecord& record : pages.front().content.glyphs) {
+    const bool placeholder =
+        record.font != nullptr && record.font->name().find("LiberationSans") != std::string::npos;
+    if (placeholder && record.is_space()) {
+      bridge_end = record.advance_end.x;
+    } else if (!placeholder && record.text == "t") {
+      today = record.origin.x;
+    }
+  }
+  CHECK(bridge_end == doctest::Approx(today).epsilon(1e-4));
+  // The bridge paints nothing, and the line reads as one line.
+  CHECK(page_text(result.pdf) == "Signed by * today.");
+}
+
+TEST_CASE("a box match removes the glyphs and paints a box inside the rectangles") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (Report on Zebulon today) Tj ET");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), box("Zebulon"));
+  REQUIRE(result.match_status == PDFKIT_OK);
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.matches);
+  const JsonValue match = JsonReader::parse(result.matches).find("matches")->as_array().front();
+  CHECK(match.find("style")->as_string() == "box");
+  CHECK(match.find("placeholder")->as_string().empty());
+  const JsonValue occurrence = first_occurrence(result.matches);
+  CHECK_FALSE(occurrence.find("placeholder_drawn")->as_bool());
+  CHECK(occurrence.find("fitting")->kind() == JsonValue::Kind::null);
+  REQUIRE(occurrence.find("boxes")->as_array().size() == 1);
+  const pdfkit::text::Rect drawn = rect_of(occurrence.find("boxes")->as_array().front());
+  const pdfkit::text::Rect changed = rect_of(occurrence.find("rectangles")->as_array().front());
+  CHECK(inside(drawn, changed));
+  CHECK(drawn.width() > 30.0);
+  // The glyphs are gone and no text took their place.
+  const std::string text = page_text(result.pdf);
+  CHECK(text.find("Zebulon") == std::string::npos);
+  CHECK(text.find("Report on") != std::string::npos);
+  CHECK(text.find("today") != std::string::npos);
+  CHECK(text.find("[REDACTED]") == std::string::npos);
+  CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
+  CHECK(result.pdf.find("/FontFile2") == std::string::npos);
+  // One filled rectangle, the one the answer names, in black by default.
+  const auto painted = fills(result.pdf);
+  REQUIRE(painted.size() == 1);
+  CHECK(painted.front().rectangular);
+  CHECK(painted.front().opaque);
+  CHECK(inside(painted.front().box, changed));
+  CHECK(std::abs(painted.front().box.left - drawn.left) < 0.01);
+  CHECK(std::abs(painted.front().box.right - drawn.right) < 0.01);
+  const std::string bytes = pdfkit::test::everything(result.pdf);
+  CHECK(bytes.find("0 0 0 rg") != std::string::npos);
+  CHECK(bytes.find(" re\nf\n") != std::string::npos);
+  CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
+}
+
+TEST_CASE("a box match over two lines paints two boxes") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (the Zebulon) Tj 0 -14 Td (Quarterfield here) Tj ET");
+  const pdfkit::test::Redaction result =
+      redact(fixture.bytes(), box("Zebulon Quarterfield", R"(, "folding": {"whitespace": true})"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.matches);
+  const JsonValue occurrence = first_occurrence(result.matches);
+  REQUIRE(occurrence.find("boxes")->as_array().size() == 2);
+  CHECK(fills(result.pdf).size() == 2);
+  const std::string text = page_text(result.pdf);
+  CHECK(text.find("Zebulon") == std::string::npos);
+  CHECK(text.find("Quarterfield") == std::string::npos);
+}
+
+TEST_CASE("a run whose glyphs are all hidden draws no box") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT 3 Tr /F1 10 Tf 72 600 Td (hidden Zebulon layer) Tj ET");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), box("Zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.matches);
+  CHECK(first_occurrence(result.matches).find("boxes")->as_array().empty());
+  CHECK(fills(result.pdf).empty());
+  CHECK(page_text(result.pdf).find("Zebulon") == std::string::npos);
+}
+
+TEST_CASE("a box takes the colour asked") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (Report on Zebulon today) Tj ET");
+  const pdfkit::test::Redaction result =
+      redact(fixture.bytes(), box("Zebulon", R"(, "colour": [0.2, 0.4, 0.6])"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  const std::string bytes = pdfkit::test::everything(result.pdf);
+  CHECK(bytes.find("0.2 0.4 0.6 rg") != std::string::npos);
+  CHECK(bytes.find("0 0 0 rg") == std::string::npos);
+  CHECK(fills(result.pdf).size() == 1);
+}
+
+TEST_CASE("a box under a translucent graphics state is painted opaque") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("/G1 gs BT /F1 10 Tf 72 700 Td (Report on Zebulon today) Tj ET",
+               "/ExtGState << /G1 << /Type /ExtGState /ca 0.3 /CA 0.3 /BM /Multiply >> >>");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), box("Zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  const std::string bytes = pdfkit::test::everything(result.pdf);
+  CHECK(bytes.find("/PdfkitBoxGS gs") != std::string::npos);
+  const auto painted = fills(result.pdf);
+  REQUIRE(painted.size() == 1);
+  CHECK(painted.front().opaque);
+  // The state is named in the page's resources and resets what a box
+  // inherits.
+  const auto document = pdfkit::test::reopen(result.pdf);
+  const pdfkit::syntax::Object resources = document->resolve(document->pages().front().resources);
+  const pdfkit::syntax::Object states = document->resolve(resources.dictionary()->get("ExtGState"));
+  REQUIRE(states.dictionary() != nullptr);
+  const pdfkit::syntax::Object state = document->resolve(states.dictionary()->get("PdfkitBoxGS"));
+  REQUIRE(state.dictionary() != nullptr);
+  CHECK(state.dictionary()->get("ca").number() == 1.0);
+  CHECK(state.dictionary()->get("CA").number() == 1.0);
+  CHECK(state.dictionary()->get("BM").is_name("Normal"));
+  CHECK(state.dictionary()->get("SMask").is_name("None"));
+}
+
+TEST_CASE("a box in a clipping text object is not cut away by the text clip") {
+  pdfkit::test::TextDocument fixture;
+  // Render mode 4 fills the glyphs and adds them to the clip at ET: a box
+  // painted after that ET would be clipped to the kept letters.
+  fixture.page("BT 4 Tr /F1 10 Tf 72 700 Td (Report on Zebulon today) Tj ET");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), box("Zebulon"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.matches);
+  const JsonValue occurrence = first_occurrence(result.matches);
+  REQUIRE(occurrence.find("boxes")->as_array().size() == 1);
+  const pdfkit::text::Rect drawn = rect_of(occurrence.find("boxes")->as_array().front());
+  const auto painted = fills(result.pdf);
+  REQUIRE(painted.size() == 1);
+  CHECK_FALSE(painted.front().box.is_empty());
+  CHECK(painted.front().box.width() == doctest::Approx(drawn.width()).epsilon(0.001));
+  CHECK(painted.front().box.height() == doctest::Approx(drawn.height()).epsilon(0.001));
+  CHECK(JsonReader::parse(result.matches).find("warnings")->as_array().empty());
+}
+
+TEST_CASE("a box match keeps its placeholder for the marked-content strings") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("/Span << /Alt (Zebulon) >> BDC BT /F1 10 Tf 72 700 Td (Zebulon) Tj ET EMC");
+  const pdfkit::test::Redaction result =
+      redact(fixture.bytes(), box("Zebulon", R"(, "placeholder": "[X]")"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  const auto pages = pdfkit::test::read_pages(result.pdf);
+  REQUIRE(pages.front().content.spans.size() == 1);
+  CHECK(pages.front().content.spans.front().alt == std::optional<std::string>("[X]"));
+  CHECK(page_text(result.pdf).find("[X]") == std::string::npos);
+  CHECK(fills(result.pdf).size() == 1);
+}
+
+TEST_CASE("a malformed style, colour or placeholder is refused with the three parts") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (Zebulon) Tj ET");
+  const std::string file = fixture.bytes();
+  for (const std::string& bad : std::vector<std::string>{
+           R"({"matches": [{"search": "Zebulon", "style": "blur"}]})",
+           R"({"matches": [{"search": "Zebulon", "style": 1}]})",
+           R"({"matches": [{"search": "Zebulon", "colour": [0, 0, 0]}]})",
+           R"({"matches": [{"search": "Zebulon", "style": "text", "colour": [0, 0, 0]}]})",
+           R"({"matches": [{"search": "Zebulon", "style": "box", "colour": [1.5, 0, 0]}]})",
+           R"({"matches": [{"search": "Zebulon", "style": "box", "colour": [-0.1, 0, 0]}]})",
+           R"({"matches": [{"search": "Zebulon", "style": "box", "colour": [0, 0]}]})",
+           R"({"matches": [{"search": "Zebulon", "style": "box", "colour": "black"}]})",
+           std::string(R"({"matches": [{"search": "Zebulon", "placeholder": "J)") + "\xC3" +
+               R"(r"}]})"}) {
+    INFO(bad);
+    const pdfkit::test::Redaction result = redact(file, bad);
+    CHECK(result.match_status == PDFKIT_E_INVALID_ARGUMENT);
+    CHECK(result.matches.find("\"code\":\"invalid_argument\"") != std::string::npos);
+    CHECK(result.matches.find("\"failed\"") != std::string::npos);
+    CHECK(result.matches.find("\"expected\"") != std::string::npos);
+    CHECK(result.matches.find("\"fix\"") != std::string::npos);
+  }
 }

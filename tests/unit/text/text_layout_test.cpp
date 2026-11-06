@@ -5,8 +5,11 @@
 // words by gap, lines by baseline, two and three columns in reading order, a
 // rotated block, a vertical (Identity-V) column, right-to-left lines drawn in
 // visual and in logical order, a ruled table's cells as blocks, hyphenation
-// both ways, a duplicate folded, an overprinted string kept whole, and
-// order_is_stable: the glyphs given in ten shuffled orders lay out the same.
+// both ways, a duplicate folded, an overprinted string kept whole, a string
+// drawn later into a gap of another read where it stands, a string in
+// another font run over the next word read as a word of its own while an
+// accent in another font stays in its word, and order_is_stable: the
+// glyphs given in ten shuffled orders lay out the same.
 
 #include "text/text_layout.hpp"
 
@@ -168,6 +171,51 @@ TEST_CASE("a string drawn over another is read after it, not interleaved") {
   const PageText page =
       read("BT /F1 10 Tf 72 700 Td (Jane Doe) Tj ET BT /F1 10 Tf 72 700 Td (XXXXXXXX) Tj ET");
   CHECK(page.text() == "Jane Doe XXXXXXXX");
+}
+
+TEST_CASE("a string drawn later into a gap of another reads where it stands") {
+  // A form's labels drawn first, its value drawn afterwards into the space
+  // left between them; then its two values in one text object, each into
+  // the space after its label.
+  const PageText one = read(
+      "BT /F1 10 Tf 72 700 Td (Name:) Tj 100 0 Td (Date:) Tj ET "
+      "BT /F1 10 Tf 110 700 Td (Jane Doe) Tj ET");
+  CHECK(one.text() == "Name: Jane Doe Date:");
+  const PageText two = read(
+      "BT /F1 10 Tf 72 700 Td (Name:) Tj 100 0 Td (Date:) Tj ET "
+      "BT /F1 10 Tf 110 700 Td (Jane Doe) Tj 100 0 Td (2026) Tj ET");
+  CHECK(two.text() == "Name: Jane Doe Date: 2026");
+}
+
+TEST_CASE("a string in another font that runs over the next word is a word of its own") {
+  // "Huisman" in Times runs 6 pt over "today.", drawn after it in
+  // Helvetica, and a mask of asterisks 3 pt over it.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  for (const auto& [over, start] :
+       std::vector<std::pair<std::string, std::string>>{{"Huisman", "150"}, {"*****", "142"}}) {
+    INFO(over);
+    std::string content = "BT /F1 10 Tf 72 700 Td (Signed by) Tj ET BT /F4 10 Tf 120 700 Td (";
+    content += over;
+    content += ") Tj ET BT /F1 10 Tf ";
+    content += start;
+    content += " 700 Td (today.) Tj ET";
+    TextDocument document;
+    document.page(content, "", "", times);
+    std::string expected = "Signed by ";
+    expected += over;
+    expected += " today.";
+    CHECK(document.read().text() == expected);
+  }
+}
+
+TEST_CASE("an accent drawn in another font over its letter stays in the word") {
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page("BT /F1 10 Tf 72 700 Td (cafe) Tj ET BT /F4 10 Tf 87 700 Td (\\264) Tj ET", "", "",
+                times);
+  CHECK(document.read().text() == "cafe\xC2\xB4");
 }
 
 TEST_CASE("order_is_stable") {

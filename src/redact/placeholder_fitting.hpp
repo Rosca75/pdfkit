@@ -9,11 +9,20 @@
 // run's font size and horizontal scaling when it fits (natural), else
 // narrowed with Tz down to a floor of 60 percent (scaled), else at the floor
 // running past the hole to the right (overflow), because an overflow is
-// visible and a placeholder squeezed over the next word would hide it. The
-// placeholder is drawn bold when the removed glyph's font is bold (the
+// visible and a placeholder squeezed over the next word would hide it.
+// Where a word break stood between the removed text and the next kept word
+// (a space glyph, or a gap the layout reads as one), the placeholder keeps
+// it: one that ends at or before that word is followed by a space glyph
+// whose advance runs from the placeholder's end to the word's start (the
+// bridge), which draws nothing and reads as the break, also across a hole
+// wide enough to end a line; an overflow runs over the word's start by at
+// least an overprint, so it reads as drawn over that word rather than glued
+// to it (text::TextLayout's word gap and overprint rules, with a margin).
+// The placeholder is drawn bold when the removed glyph's font is bold (the
 // descriptor's /FontWeight 600 or more, the ForceBold flag, a Core 14 bold
 // face, or "Bold", "Black" or "Heavy" in its name, as fonts::PdfFont reads
-// it). Lengths are measured in device space along the run's direction.
+// it). Lengths are measured in device space along the run's direction, and
+// a placeholder's natural length is the sum of its code points' widths.
 
 #ifndef PDFKIT_REDACT_PLACEHOLDER_FITTING_HPP
 #define PDFKIT_REDACT_PLACEHOLDER_FITTING_HPP
@@ -42,6 +51,11 @@ class PlaceholderFitting {
     // The hole and the placeholder's natural length, in device space.
     double hole = 0.0;
     double natural = 0.0;
+    // Whether a space glyph follows the placeholder to the next kept word,
+    // and its character spacing (Tc, in unscaled text space units), which
+    // makes its advance end where that word starts.
+    bool bridge = false;
+    double bridge_spacing = 0.0;
     // The removed glyph the placeholder starts at.
     const text::GlyphRecord* anchor = nullptr;
     writer::PlaceholderFont::Face face = writer::PlaceholderFont::Face::regular;
@@ -64,8 +78,9 @@ class PlaceholderFitting {
 
   [[nodiscard]] static writer::PlaceholderFont::Face face_for(const text::GlyphRecord& anchor);
 
-  // Throws platform::Error (invalid_argument) naming the first character of
-  // placeholder outside the alphabet; where names the match.
+  // Throws platform::Error (invalid_argument) naming, as U+XXXX, the first
+  // character of placeholder outside the alphabet, or an ill-formed UTF-8
+  // sequence; where names the match.
   static void require_alphabet(std::string_view placeholder, std::string_view where);
 
   [[nodiscard]] static std::string_view name(Outcome outcome) noexcept;

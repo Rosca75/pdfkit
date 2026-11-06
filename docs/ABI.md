@@ -5,8 +5,8 @@ outputs, its status codes, the JSON error object, the versioning rule, and the
 command-line tool's verbs and exit codes. The header is
 `include/pdfkit/pdfkit.h`; `CLAUDE.md` §2 owns which functions exist, and this
 file owns how they are called. This build implements every catalogue
-function; the version of the library is 0.2.1-preview (the text
-`pdfkit_version` reports, its release label included) and of the ABI 2.
+function; the version of the library is 0.3.0-preview (the text
+`pdfkit_version` reports, its release label included) and of the ABI 3.
 
 ## 1. Calling rules
 
@@ -102,7 +102,7 @@ string, malformed JSON), then does its work. An optional JSON argument may be
 
 | Symbol | Signature | Behaviour |
 |---|---|---|
-| `pdfkit_abi_version` | `uint32_t pdfkit_abi_version(void)` | the ABI version, 2 |
+| `pdfkit_abi_version` | `uint32_t pdfkit_abi_version(void)` | the ABI version, 3 |
 | `pdfkit_version` | `pdfkit_status pdfkit_version(pdfkit_buffer* out)` | the version object below |
 | `pdfkit_buffer_free` | `void pdfkit_buffer_free(pdfkit_buffer* buffer)` | frees and zeroes the buffer; a zeroed buffer or `NULL` is a no-op |
 | `pdfkit_close` | `void pdfkit_close(pdfkit_document* doc)` | destroys the document; `NULL` is a no-op |
@@ -113,8 +113,8 @@ The version object:
 
 ```json
 {
-  "version": "0.2.1-preview",
-  "abi": 2,
+  "version": "0.3.0-preview",
+  "abi": 3,
   "build": "gcc 16.1.0, Release",
   "catalogue": [
     {"number": "1.1", "function": "Open", "symbol": "pdfkit_open", "verb": "inspect",
@@ -513,6 +513,20 @@ written. `matches_json` is `{"matches": [...]}`, each match one of:
 | occurrence | `occurrence`: `{"text", "page", optional "folding", and at least one of "index", "near", "before", "after"}`, optional `placeholder`: the one occurrence of `text` on `page`, in `pdfkit_find`'s order, that every narrowing given matches |
 | string | `string`: `{"page", "list", "path", "first", "last"}`, the entry of a value's `strings` in `pdfkit_find` (§4.16), whose other keys (`occurrence`, `surface`, `stream`, `operator`, `properties`, `object`, `string`, `text`, `glued_before`, `glued_after`) may ride along and, but for `occurrence`, must agree with the document; `fingerprint`; optional `placeholder`: that range of code points of that marked-content string replaced by the placeholder, at that operator alone (`docs/DESIGN.md` §12) |
 
+Every form also takes these optional keys, which say how the place of the
+removed glyphs is marked:
+
+| Key | Default | Holds |
+|---|---|---|
+| `style` | `"text"` | `"text"`: the placeholder is drawn where the glyphs were (`docs/DESIGN.md` §13). `"box"`: a filled rectangle is painted over the removed glyphs, one per reading line and content stream, and no text is drawn (`docs/DESIGN.md` §12) |
+| `colour` | `[0, 0, 0]` | with `"style": "box"` only: the box's fill, `[r, g, b]`, DeviceRGB components from 0 to 1 |
+
+```json
+{"matches": [{"search": "Jane Doe", "placeholder": "Jérôme Martin"},
+             {"search": "4111 1111 1111 1111", "placeholder": "*******************"},
+             {"search": "Project Falcon", "style": "box", "colour": [0, 0, 0]}]}
+```
+
 **The folding** is an object of optional keys, the same in the search and
 occurrence forms, in `pdfkit_find` and in `pdfkit_check`. pdfkit folds only
 what it is asked to: a folding left out, or a key left out of it, folds
@@ -570,9 +584,22 @@ a glyph centred in a removed glyph's box, `docs/DESIGN.md` §18), because a
 copy left there leaves the word readable at the location. A search still
 removes every draw of a form, because a value is removed wherever it occurs.
 
-The placeholder defaults to `[REDACTED]`, holds only the characters `[`, `]`,
-`_`, `0` to `9` and `A` to `Z`, and may be empty, which removes the text and
-draws nothing. A search runs over every page's text as `pdfkit_text` writes it,
+The placeholder is UTF-8 text over the placeholder alphabet, printable ASCII
+(U+0020 to U+007E), the Latin-1 Supplement (U+00A0 to U+00FF) and Latin
+Extended-A (U+0100 to U+017F), so it may be a bracketed name, a mask of
+asterisks or realistic text with lower case, spaces, punctuation and
+accented letters. It defaults to `[REDACTED]`, and to the empty string under
+`"style": "box"`, and may be empty, which removes the text and draws nothing.
+Under `box` it is never drawn: it replaces the text in the `/ActualText`,
+`/Alt` and `/E` of marked content and in a string match's string, as a text
+placeholder does. A box is painted only over glyphs a viewer sees: a reading
+line whose removed glyphs are all hidden (any hidden class but `duplicate`)
+paints none, because a bar over a hidden word reveals that a word was there.
+It is opaque (it sets its own alpha, blend mode and soft mask) and painted
+before the text object that held the glyphs, so a clipping render mode does
+not cut it. A line no box can be placed for (its text object does not open
+with a `BT` under the transformation its glyphs were drawn with, or its text
+matrix is singular) keeps its glyphs removed and is named in `warnings`. A search runs over every page's text as `pdfkit_text` writes it,
 hidden blocks included, and over the other orders a reader reads the page in
 (the glyphs as drawn, and each baseline of the page read from either end,
 `docs/DESIGN.md` §11), and matches inside words; an occurrence found only in
@@ -598,18 +625,27 @@ earlier entry of `matches`).
 ```json
 {"fingerprint": "83ce7c...",
  "matches": [{"match": 0, "kind": "search", "search": "Jane Doe", "placeholder": "[REDACTED]",
-              "count": 1,
+              "style": "text", "count": 1,
               "occurrences": [{"page": 1, "glyphs": [10, 18], "text": "Jane Doe",
-                               "rectangles": [[70.17, 696.26, 109.8, 708.85]],
+                               "rectangles": [[70.17, 696.26, 109.8, 708.85]], "boxes": [],
                                "placeholder_drawn": true, "fitting": "scaled", "scale": 0.762,
-                               "codes": ["4a616e6520446f65"]}]}]}
+                               "codes": ["4a616e6520446f65"]}]},
+             {"match": 1, "kind": "search", "search": "Falcon", "placeholder": "",
+              "style": "box", "count": 1,
+              "occurrences": [{"page": 1, "glyphs": [30, 36], "text": "Falcon",
+                               "rectangles": [[112.4, 696.26, 160.2, 708.85]],
+                               "boxes": [[114.07, 697.93, 145.2, 707.18]],
+                               "placeholder_drawn": false, "fitting": null, "scale": 1,
+                               "codes": ["46616c636f6e"]}]}],
+ "warnings": []}
 ```
 
 | Key | Holds |
 |---|---|
 | `fingerprint` | the document fingerprint |
-| `match` | the match's index in this call; `kind` `search` (with `search`), `glyphs` or `occurrence` |
-| `count`, `occurrences` | per occurrence found (zero is an answer, not a failure): `page`, `glyphs` (its range in the page's glyph list), `text` (as the extraction reads it), `rectangles` (the device boxes it changes), `placeholder_drawn`, `fitting` (`natural`, `scaled` or `overflow`, `null` when nothing is drawn) and `scale` (the share of the run's horizontal scaling the placeholder is drawn at), `codes` (the removed codes per font run, hexadecimal) |
+| `match` | the match's index in this call; `kind` `search` (with `search`), `glyphs`, `occurrence` or `string`; `placeholder`; `style` (`text` or `box`) |
+| `count`, `occurrences` | per occurrence found (zero is an answer, not a failure): `page`, `glyphs` (its range in the page's glyph list), `text` (as the extraction reads it), `rectangles` (the device boxes it changes), `boxes` (under `box`, the device bound of each box painted, one per reading line and stream, inside `rectangles`; empty under `text`), `placeholder_drawn` (always false under `box`), `fitting` (`natural`, `scaled` or `overflow`, `null` when nothing is drawn) and `scale` (the share of the run's horizontal scaling the placeholder is drawn at), `codes` (the removed codes per font run, hexadecimal) |
+| `warnings` | `box_not_drawn` per reading line of a box match that a viewer sees and no box could be placed for, with `code`, `message` (the page and the place), `page` and `match` |
 
 | Failure | Status | `code` |
 |---|---|---|
@@ -618,7 +654,8 @@ earlier entry of `matches`).
 | an occurrence without a non-empty `text` and a `page`, without a narrowing, with a page outside the document, a negative or fractional `index`, a `near` that is not four numbers with left not past right and bottom not above top, or a `folding` beside it rather than inside it | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | an occurrence whose narrowings leave no occurrence | `PDFKIT_E_INVALID_ARGUMENT` | `occurrence_not_found` |
 | an occurrence whose narrowings leave several (`failed` names how many and their indices) | `PDFKIT_E_INVALID_ARGUMENT` | `occurrence_ambiguous` |
-| a placeholder with a character outside the alphabet (the message names it) | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a placeholder with a character outside the alphabet (the message names it as `U+XXXX`) or that is not well-formed UTF-8 | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
+| a `style` other than `text` and `box`, a `colour` without `"style": "box"`, or a `colour` that is not three numbers from 0 to 1 | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a glyph range whose fingerprint is not this document's, a page outside the document, a range empty or past the page's glyphs | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | an array of ranges that is empty, names two pages or holds overlapping ranges | `PDFKIT_E_INVALID_ARGUMENT` | `invalid_argument` |
 | a limit met while a page is read | `PDFKIT_E_REFUSED` | `limit_exceeded` |
@@ -727,7 +764,7 @@ object:
 | `rectangle` | four numbers: in pixels `[left, top, right, bottom]` from the image's top-left corner (right and bottom exclusive, rounded outward); in page space `[left, bottom, right, top]` in default user space. Absent: the whole image (not for `region`); not with `remove` |
 | `space` | `image` (default) or `page`; `page` needs `page` and `rectangle`, and the rectangle is mapped through the inverse of the CTM of every draw of the image on that page, each mapped rectangle being treated |
 | `page` | the page of a page-space rectangle, from 1 |
-| `caption` | `box` and `region` only: a caption drawn in the box from the placeholder alphabet (`[`, `]`, `_`, `0` to `9`, `A` to `Z`), centred, at the largest height of the caption font (8 to 64 pixels) that fits, in white or black, whichever contrasts with the fill; a box too small for 8 pixels draws none |
+| `caption` | `box` and `region` only: a caption drawn in the box from the caption alphabet (`[`, `]`, `_`, `0` to `9`, `A` to `Z`), centred, at the largest height of the caption font (8 to 64 pixels) that fits, in white or black, whichever contrasts with the fill; a box too small for 8 pixels draws none |
 | `colour` | `box` and `region` only: `[red, green, blue]` in 0 to 1 (default black); the fill is the sample value of the image's own colour space and `/Decode` that reads nearest to it (an Indexed image's nearest palette entry), never one a colour-key `/Mask` hides |
 
 One identity takes one `box`, `blur` or `remove`; a second is refused naming
@@ -857,6 +894,7 @@ named), optionally `pdfkit_check` on the bytes, and `pdfkit_buffer_free`,
 |---|---|---|
 | 1 | `0.1.0-preview` | the catalogue of `CLAUDE.md` §2 |
 | 2 | `0.2.0-preview` | `glued_before`, `glued_after` and `strings` in `pdfkit_find`; the `string` match of `pdfkit_redact_text`; `equivalents` and `ignore` in a folding; **changed meaning**: a folding left out folds nothing (it folded everything in ABI 1), ordered by the owner because pdfkit applies no rule it was not asked for; the overlap rule's tie stated |
+| 3 | `0.3.0-preview` | in `pdfkit_redact_text`: a placeholder over the wider alphabet (printable ASCII, the Latin-1 Supplement and Latin Extended-A, as UTF-8); a match's `style` (`text` or `box`) and a box's `colour`; in the answer, each match's `style`, each occurrence's `boxes` and the answer's `warnings` (`box_not_drawn`). No meaning changes: a match without `style` draws its placeholder as before |
 - A caller checks `pdfkit_abi_version() >= N` for the version whose symbols it
   binds, and reads `pdfkit_version`'s `catalogue` to learn which functions this
   build implements.

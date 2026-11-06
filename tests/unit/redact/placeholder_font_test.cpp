@@ -3,16 +3,24 @@
 //
 // Tests of writer::PlaceholderFont (docs/DESIGN.md section 13): the embedded
 // font opens through the library's own font loader, every character of the
-// alphabet decodes through its ToUnicode to itself with the width its hmtx
-// gives, the compiled program's hash equals the one the generator recorded,
-// and an output embeds each face once however many placeholders it draws.
+// alphabet (printable ASCII, the Latin-1 Supplement and Latin Extended-A)
+// decodes through its ToUnicode to itself with the width its hmtx gives, no
+// ToUnicode block holds more than 100 entries, /W agrees with hmtx for every
+// glyph it lists, the compiled program's hash equals the one the generator
+// recorded, a placeholder is read as UTF-8 and a character outside the
+// alphabet is named as U+XXXX, and an output embeds each face once however
+// many placeholders it draws.
 
 #include "writer/placeholder_font.hpp"
 
 #include "fonts/font_loader.hpp"
+#include "fonts/true_type_tables.hpp"
+#include "platform/budget.hpp"
 #include "platform/byte_span.hpp"
 #include "platform/crypto/sha2.hpp"
+#include "platform/utf8_sequence.hpp"
 #include "redact/support/redaction.hpp"
+#include "support/require_value.hpp"
 #include "syntax/document.hpp"
 #include "syntax/limits.hpp"
 #include "text/support/text_document.hpp"
@@ -22,7 +30,9 @@
 
 #include <doctest.h>
 
+#include <cmath>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -65,12 +75,69 @@ TEST_CASE("the compiled programs are the bytes the generator hashed") {
   CHECK(PlaceholderFont::metrics(Face::bold).weight == 700);
 }
 
-TEST_CASE("the alphabet is the placeholder alphabet") {
+TEST_CASE("the alphabet is printable ASCII, the Latin-1 Supplement and Latin Extended-A") {
+  const std::u32string alphabet = PlaceholderFont::alphabet();
+  CHECK(alphabet.size() == 319);
+  CHECK(alphabet.front() == U' ');
+  CHECK(alphabet.back() == U'\u017F');
   CHECK(PlaceholderFont::in_alphabet("[REDACTED]"));
   CHECK(PlaceholderFont::in_alphabet("[NAME_12]"));
-  CHECK_FALSE(PlaceholderFont::in_alphabet("[redacted]"));
-  CHECK(PlaceholderFont::outside("[A B]") == ' ');
+  CHECK(PlaceholderFont::in_alphabet("Jérôme Łukasz-O'Brien & Co."));
+  CHECK(PlaceholderFont::in_alphabet("*****"));
+  CHECK(PlaceholderFont::in_alphabet("[redacted]"));
+  CHECK_FALSE(PlaceholderFont::in_alphabet("\u0180"));
+  CHECK(PlaceholderFont::outside("ab\u0180c") == "U+0180");
+  CHECK(PlaceholderFont::outside("a \u2014 b") == "U+2014");
+  CHECK(PlaceholderFont::outside(std::string("a\xC3", 2)) == "an ill-formed UTF-8 sequence");
+  CHECK_FALSE(PlaceholderFont::outside("Jérôme").has_value());
   CHECK(PlaceholderFont::codes("AB", Face::regular).size() == 4);
+  CHECK(PlaceholderFont::codes("\u00E9\u0141", Face::regular).size() == 4);
+}
+
+TEST_CASE("no ToUnicode block holds more than 100 entries") {
+  for (const Face face : {Face::regular, Face::bold}) {
+    const std::string cmap = PlaceholderFont::to_unicode(face);
+    std::size_t entries = 0;
+    std::size_t blocks = 0;
+    for (std::size_t at = cmap.find(" beginbfchar\n"); at != std::string::npos;
+         at = cmap.find(" beginbfchar\n", at + 1)) {
+      const std::size_t line = cmap.rfind('\n', at) + 1;
+      const std::size_t stated = std::stoul(cmap.substr(line, at - line));
+      CHECK(stated <= 100);
+      const std::size_t end = cmap.find("endbfchar", at);
+      REQUIRE(end != std::string::npos);
+      const std::string body = cmap.substr(at, end - at);
+      CHECK(count(body, "\n<") == stated);
+      entries += stated;
+      ++blocks;
+    }
+    CHECK(entries == 319);
+    CHECK(blocks == 4);
+  }
+}
+
+TEST_CASE("the subset's cmap and hmtx agree with the codes and the widths") {
+  for (const Face face : {Face::regular, Face::bold}) {
+    const PlaceholderFont::Metrics& metrics = PlaceholderFont::metrics(face);
+    pdfkit::platform::Budget budget;
+    const auto tables = pdfkit::test::require_value(pdfkit::fonts::TrueTypeTables::parse(
+        pdfkit::platform::ByteSpan(reinterpret_cast<const std::byte*>(metrics.program.data()),
+                                   metrics.program.size()),
+        budget));
+    const double units = tables.units_per_em();
+    for (const char32_t code_point : PlaceholderFont::alphabet()) {
+      std::string text;
+      pdfkit::platform::append_utf8(text, code_point);
+      const std::string codes = PlaceholderFont::codes(text, face);
+      REQUIRE(codes.size() == 2);
+      const auto gid = (static_cast<std::uint32_t>(static_cast<unsigned char>(codes[0])) << 8U) |
+                       static_cast<unsigned char>(codes[1]);
+      INFO("code point " << static_cast<std::uint32_t>(code_point));
+      CHECK(tables.lookup(3, 1, code_point) == gid);
+      const auto advance = pdfkit::test::require_value(tables.advance(gid));
+      CHECK(PlaceholderFont::width(text, face) == std::round(advance * 1000.0 / units));
+    }
+  }
 }
 
 TEST_CASE("the embedded font reads back through the font loader") {
@@ -104,16 +171,42 @@ TEST_CASE("the embedded font reads back through the font loader") {
     CHECK(font->name() == PlaceholderFont::metrics(face).base_font);
     CHECK(font->is_bold() == (face == Face::bold));
     CHECK(font->is_embedded());
-    const std::string alphabet(PlaceholderFont::alphabet);
+    std::string alphabet;
+    for (const char32_t code_point : PlaceholderFont::alphabet()) {
+      pdfkit::platform::append_utf8(alphabet, code_point);
+    }
     const std::string codes = PlaceholderFont::codes(alphabet, face);
     const auto decoded = font->decode(pdfkit::platform::as_bytes(codes));
-    REQUIRE(decoded.size() == alphabet.size());
-    for (std::size_t i = 0; i < alphabet.size(); ++i) {
-      INFO("character " << alphabet[i]);
-      CHECK(decoded[i].text == std::string(1, alphabet[i]));
+    const std::u32string expected = PlaceholderFont::alphabet();
+    REQUIRE(decoded.size() == expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+      std::string character;
+      pdfkit::platform::append_utf8(character, expected[i]);
+      INFO("code point " << static_cast<std::uint32_t>(expected[i]));
+      CHECK(decoded[i].text == character);
       CHECK(decoded[i].byte_length == 2);
       CHECK(font->width(decoded[i].code) ==
-            doctest::Approx(PlaceholderFont::width(std::string(1, alphabet[i]), face)));
+            doctest::Approx(PlaceholderFont::width(character, face)));
+    }
+    // /W lists every mapped glyph from glyph 1 with the hmtx width the
+    // codes are measured by.
+    const pdfkit::syntax::Object type0 =
+        document->resolve(catalog->get(std::string("Font") + (face == Face::bold ? "B" : "R")));
+    const pdfkit::syntax::Object descendant = document->resolve(
+        document->resolve(type0.dictionary()->get("DescendantFonts")).array()->front());
+    const pdfkit::syntax::Object widths = document->resolve(descendant.dictionary()->get("W"));
+    REQUIRE(widths.array() != nullptr);
+    REQUIRE(widths.array()->size() == 2);
+    CHECK(widths.array()->front().number() == 1.0);
+    const pdfkit::syntax::Object::Array& run = *widths.array()->back().array();
+    REQUIRE(run.size() == expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+      std::string character;
+      pdfkit::platform::append_utf8(character, expected[i]);
+      const std::string code = PlaceholderFont::codes(character, face);
+      CHECK(static_cast<unsigned char>(code[1]) + (static_cast<unsigned char>(code[0]) * 256U) ==
+            i + 1);
+      CHECK(run[i].number() == PlaceholderFont::width(character, face));
     }
   }
 }

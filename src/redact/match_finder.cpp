@@ -185,7 +185,8 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find(const Match& match, std::
       }
     }
     if (first != none) {
-      found.push_back({index, page_->page, first, last, match.placeholder});
+      found.push_back(
+          {index, page_->page, first, last, match.placeholder, match.style, match.colour});
     }
     from = end;
   }
@@ -496,7 +497,7 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_orders(const Match& match
                                                               std::span<const Occurrence> known) {
   std::vector<Occurrence> found;
   for (const Located& run : order_runs(match, known)) {
-    flatten(run, index, match.placeholder, found);
+    flatten(run, index, match, found);
   }
   return found;
 }
@@ -695,7 +696,7 @@ std::vector<MatchFinder::Occurrence> MatchFinder::find_codes(const Match& match,
                                                              std::size_t index) {
   std::vector<Occurrence> found;
   for (const Located& run : code_runs(match)) {
-    flatten(run, index, match.placeholder, found);
+    flatten(run, index, match, found);
   }
   return found;
 }
@@ -788,7 +789,8 @@ std::vector<MatchFinder::Occurrence> MatchFinder::merge(std::vector<Occurrence> 
   for (Occurrence& next : occurrences) {
     if (!merged.empty()) {
       Occurrence& current = merged.back();
-      if (next.first <= current.last && next.placeholder == current.placeholder) {
+      if (next.first <= current.last && next.placeholder == current.placeholder &&
+          next.style == current.style && next.colour == current.colour) {
         current.last = std::max(current.last, next.last);
         continue;
       }
@@ -804,11 +806,12 @@ std::vector<MatchFinder::Occurrence> MatchFinder::merge(std::vector<Occurrence> 
   return merged;
 }
 
-void MatchFinder::flatten(const Located& located, std::size_t index, const std::string& placeholder,
+void MatchFinder::flatten(const Located& located, std::size_t index, const Match& match,
                           std::vector<Occurrence>& out) {
   for (std::size_t i = 0; i < located.ranges.size(); ++i) {
     out.push_back({index, located.page, located.ranges[i].first, located.ranges[i].second,
-                   i == 0 && located.lead ? placeholder : std::string()});
+                   i == 0 && located.lead ? match.placeholder : std::string(), match.style,
+                   match.colour});
   }
 }
 
@@ -865,7 +868,7 @@ std::vector<MatchFinder::Located> MatchFinder::locate(const Match& match) {
   // The string in another reader's order of the page.
   for (Located& run : order_runs(match, here)) {
     for (const auto& [first, last] : run.ranges) {
-      here.push_back({0, page_->page, first, last, std::string()});
+      here.push_back({0, page_->page, first, last, std::string(), Style::text, Colour{}});
     }
     out.push_back(std::move(run));
   }
@@ -885,7 +888,7 @@ std::vector<MatchFinder::Located> MatchFinder::locate(const Match& match) {
         continue;
       }
       kept.ranges.emplace_back(first, last);
-      here.push_back({0, page_->page, first, last, std::string()});
+      here.push_back({0, page_->page, first, last, std::string(), Style::text, Colour{}});
     }
     if (kept.ranges.empty()) {
       continue;
@@ -908,7 +911,7 @@ std::vector<MatchFinder::Occurrence> MatchFinder::occurrences(const Match& match
                                                               std::size_t index) {
   std::vector<Occurrence> out;
   for (const Located& located : locate(match)) {
-    flatten(located, index, match.placeholder, out);
+    flatten(located, index, match, out);
   }
   return out;
 }

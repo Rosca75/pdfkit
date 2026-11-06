@@ -96,7 +96,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_check(const std::uint8_t* bytes, std:
     }
     const pdfkit::platform::ByteSpan data(reinterpret_cast<const std::byte*>(bytes), size);
     const pdfkit::redact::SelfCheck::Result result =
-        pdfkit::redact::SelfCheck::run(data, pdfkit::syntax::Limits{}, needles, {});
+        pdfkit::redact::SelfCheck::run(data, pdfkit::syntax::Limits{}, needles);
 
     pdfkit::platform::JsonWriter writer;
     writer.begin_object();

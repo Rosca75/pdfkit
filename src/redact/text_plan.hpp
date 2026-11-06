@@ -10,8 +10,9 @@
 // text-showing operators holding a removed glyph, with every record of each
 // such operator (a code is cut by walking the whole operand), the removed
 // codes by their operator and first byte, the placeholders to draw after an
-// operator, and the marked-content operators to write again. It also names
-// the resource dictionaries that gain the placeholder font or a rewritten
+// operator and the boxes to paint before one, and the marked-content
+// operators to write again. It also names the resource dictionaries that
+// gain the placeholder font, the box's graphics state or a rewritten
 // property list, the property lists to replace by object number, the device
 // rectangles the redaction changes on the page and the placeholders drawn.
 // A glyph-range match is an expression at a location (docs/DESIGN.md
@@ -59,9 +60,14 @@ class TextPlan {
   // An operator's place in a stream: its index and the first byte of a code.
   using Key = std::pair<std::size_t, std::size_t>;
 
+  // Operators added to a stream: a placeholder drawn after the ET that
+  // closes the text object holding its first glyph, or a box painted before
+  // the BT that opens the text object holding its line's first glyph.
   struct Insertion {
-    // The operation the placeholder is drawn after.
-    std::size_t after = 0;
+    // The operation the operators are written after, or before when before
+    // is set.
+    std::size_t at = 0;
+    bool before = false;
     std::string operators;
   };
 
@@ -71,7 +77,7 @@ class TextPlan {
     std::map<std::size_t, std::vector<text::GlyphRecord>> operations;
     // The removed codes.
     std::set<Key> removed;
-    // The placeholders, by the key of the glyph they start at.
+    // The placeholders and the boxes, by the key of the glyph they start at.
     std::map<Key, Insertion> insertions;
     // Marked-content operations written again.
     std::map<std::size_t, std::string> replaced;
@@ -120,6 +126,11 @@ class TextPlan {
     // The faces a form without resources of its own draws, which every page
     // drawing the form must name.
     std::map<std::uint32_t, std::set<writer::PlaceholderFont::Face>> form_fonts;
+    // The holders a box is painted under, which name the box's graphics
+    // state, and the forms without resources of their own that paint one,
+    // whose drawing pages must name it.
+    std::set<Holder> box_states;
+    std::set<std::uint32_t> form_box_states;
     // Property lists set directly in a holder's /Properties, by name.
     std::map<std::pair<Holder, std::string>, syntax::Dictionary> properties;
     // Property lists replaced by object number.

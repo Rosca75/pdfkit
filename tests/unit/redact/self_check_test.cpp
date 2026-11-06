@@ -5,8 +5,10 @@
 // in each surface (page text, hidden text, /ActualText, /Alt, /E, the Info
 // dictionary, the XMP packet, a string object, a content stream's string
 // operand, the raw bytes of another stream in UTF-16BE) is found and named
-// by page and surface; a clean file passes; the placeholder font's own glyphs
-// and the placeholders cut out of a surface are not survivors; the refusal
+// by page and surface; a clean file passes; text drawn in the placeholder
+// font (its glyphs on the page, the codes of its string operands) is not a
+// survivor, and nothing else is dismissed, so a placeholder that spells a
+// value never hides a survivor in another surface; the refusal
 // carries the three parts; pdfkit_check answers over bytes. A glyph range is
 // verified at its location only: a second occurrence elsewhere stays and the
 // write passes, an array of ranges is one expression with one placeholder,
@@ -23,6 +25,7 @@
 #include "redact/support/redaction.hpp"
 #include "syntax/limits.hpp"
 #include "text/support/text_document.hpp"
+#include "writer/placeholder_font.hpp"
 
 #include <doctest.h>
 
@@ -41,11 +44,9 @@ MatchFinder::Match needle(const std::string& text) {
   return match;
 }
 
-SelfCheck::Result check(const std::string& file, const std::string& text,
-                        const std::vector<std::string>& placeholders = {}) {
+SelfCheck::Result check(const std::string& file, const std::string& text) {
   const std::vector<MatchFinder::Match> needles{needle(text)};
-  return SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{}, needles,
-                        placeholders);
+  return SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{}, needles);
 }
 
 bool found(const SelfCheck::Result& result, const std::string& surface,
@@ -119,15 +120,70 @@ TEST_CASE("another stream's bytes are scanned in UTF-16BE") {
   CHECK(found(result, "stream"));
 }
 
-TEST_CASE("placeholders are cut out of every surface") {
+TEST_CASE("a placeholder's text in a document font or a property is not cut out") {
   pdfkit::test::TextDocument fixture;
   fixture.page("BT /F1 10 Tf 72 700 Td ([REDACTED]) Tj ET /Span << /Alt ([REDACTED]) >> BDC EMC");
-  CHECK_FALSE(check(fixture.bytes(), "RED", {"[REDACTED]"}).survivors.empty());
-  // Drawn in a document font, the placeholder's text on the page is still
-  // text; in a property it is cut.
-  const SelfCheck::Result result = check(fixture.bytes(), "RED", {"[REDACTED]"});
-  CHECK_FALSE(found(result, "alt"));
-  CHECK_FALSE(found(result, "stream"));
+  const SelfCheck::Result result = check(fixture.bytes(), "RED");
+  CHECK(found(result, "text", 1));
+  CHECK(found(result, "alt", 1));
+  CHECK(found(result, "stream", 1));
+}
+
+TEST_CASE("a placeholder that spells the value hides no survivor in a property") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page(
+      "BT /F1 10 Tf 72 700 Td (Jean de la Fontaine) Tj ET "
+      "/Figure << /Alt (Jean de la Fontaine) >> BDC EMC");
+  const std::string file = fixture.bytes();
+  // The /Alt keeps "de": the placeholder "de" written over it is no excuse.
+  MatchFinder::Match de;
+  de.search = "de";
+  de.folding = MatchFinder::Folding::literal();
+  de.placeholder = "de";
+  const std::vector<MatchFinder::Match> needles{de};
+  CHECK(found(SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{}, needles),
+              "alt", 1));
+  const pdfkit::test::Redaction result =
+      pdfkit::test::redact(file, R"({"matches": [{"search": "de", "placeholder": "de"}]})");
+  REQUIRE(result.match_status == PDFKIT_OK);
+  CHECK(result.write_status == PDFKIT_E_SELF_CHECK);
+  CHECK(result.report.find("in the alt of page 1") != std::string::npos);
+}
+
+TEST_CASE("a placeholder that spells the value hides no survivor in the raw bytes") {
+  pdfkit::test::TextDocument fixture;
+  const std::uint32_t blob = fixture.add_stream("/Type /Unknown", "the note");
+  fixture.page(
+      "/G1 gs BT /F1 10 Tf 72 700 Td (Abe) Tj ET",
+      "/ExtGState << /G1 << /Type /ExtGState /Blob " + std::to_string(blob) + " 0 R >> >>");
+  const std::string file = fixture.bytes();
+  MatchFinder::Match e;
+  e.search = "e";
+  e.folding = MatchFinder::Folding::literal();
+  e.placeholder = "e";
+  const std::vector<MatchFinder::Match> needles{e};
+  CHECK(found(SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{}, needles),
+              "stream"));
+  const pdfkit::test::Redaction result =
+      pdfkit::test::redact(file, R"({"matches": [{"search": "e", "placeholder": "e"}]})");
+  REQUIRE(result.match_status == PDFKIT_OK);
+  CHECK(result.write_status == PDFKIT_E_SELF_CHECK);
+  CHECK(result.report.find("in the stream") != std::string::npos);
+}
+
+TEST_CASE("a placeholder whose glyph codes spell the value is not a survivor") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 72 700 Td (Plan A) Tj ET");
+  // The grave accent is glyph 0x0041 of the placeholder font: its codes are
+  // the bytes 00 41, which hold "A".
+  REQUIRE(pdfkit::writer::PlaceholderFont::codes(
+              "`", pdfkit::writer::PlaceholderFont::Face::regular) == std::string("\0A", 2));
+  const pdfkit::test::Redaction result = pdfkit::test::redact(
+      fixture.bytes(), R"({"matches": [{"search": "A", "placeholder": "`"}]})");
+  REQUIRE(result.match_status == PDFKIT_OK);
+  INFO(result.report);
+  CHECK(result.write_status == PDFKIT_OK);
+  CHECK(pdfkit::test::page_text(result.pdf) == "Plan `");
 }
 
 TEST_CASE("a placeholder drawn by a redaction does not count as a survivor") {
@@ -268,7 +324,7 @@ pdfkit::test::Redaction rewrite(const std::string& file, const std::string& fiel
 SelfCheck::Result check_located(const std::string& file, const SelfCheck::Located& entry) {
   const std::vector<SelfCheck::Located> entries{entry};
   return SelfCheck::run(pdfkit::platform::as_bytes(file), pdfkit::syntax::Limits{},
-                        SelfCheck::Needles{{}, entries, {}, {}}, std::vector<std::string>{});
+                        SelfCheck::Needles{{}, entries, {}, {}});
 }
 
 }  // namespace

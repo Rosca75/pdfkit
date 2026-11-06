@@ -6,12 +6,16 @@
 // 32000-1 section 9.8.2, read); the bold face states /FontWeight 700 and a
 // name ending in "-Bold", which is how the library's own reader (and every
 // viewer) tells it is bold. The CIDs run from 1 in the order the subset
-// holds its glyphs, so /W is one run of widths.
+// holds its glyphs (the generator checks the mapped ones are 1 to the
+// alphabet's size), so /W is one run of widths. The glyph table is sorted by
+// code point, so a character is found by binary search.
 
 #include "writer/placeholder_font.hpp"
 
 #include "platform/byte_span.hpp"
 #include "platform/error.hpp"
+#include "platform/unicode/folding.hpp"
+#include "platform/utf8_sequence.hpp"
 #include "syntax/dictionary.hpp"
 #include "writer/stream_copier.hpp"
 
@@ -23,7 +27,7 @@ namespace pdfkit::writer {
 namespace {
 
 struct SubsetGlyph {
-  char character;
+  char32_t code_point;
   std::uint16_t gid;
   std::uint16_t width;
 };
@@ -52,14 +56,29 @@ using syntax::Object;
   return face == PlaceholderFont::Face::bold ? bold_face : regular_face;
 }
 
-[[nodiscard]] const SubsetGlyph* glyph(PlaceholderFont::Face face, char character) noexcept {
-  for (const SubsetGlyph& entry : face_data(face).glyphs) {
-    if (entry.character == character) {
-      return &entry;
-    }
-  }
-  return nullptr;
+[[nodiscard]] const SubsetGlyph* glyph(PlaceholderFont::Face face, char32_t code_point) noexcept {
+  const std::span<const SubsetGlyph> glyphs = face_data(face).glyphs;
+  const auto found = std::ranges::lower_bound(glyphs, code_point, {}, &SubsetGlyph::code_point);
+  return found != glyphs.end() && found->code_point == code_point ? &*found : nullptr;
 }
+
+// The code points of UTF-8 text; no value when it is ill-formed.
+[[nodiscard]] std::optional<std::u32string> decode(std::string_view text) {
+  std::u32string out;
+  for (std::size_t at = 0; at < text.size();) {
+    const platform::Utf8Sequence sequence = platform::next_utf8_sequence(text, at);
+    if (!sequence.valid) {
+      return std::nullopt;
+    }
+    out.push_back(sequence.code_point);
+    at += sequence.length;
+  }
+  return out;
+}
+
+// The bfchar entries a CMap block may hold (Adobe Technical Note 5099,
+// recalled).
+constexpr std::size_t block_limit = 100;
 
 [[nodiscard]] std::string hex4(unsigned value) {
   constexpr std::string_view digits = "0123456789ABCDEF";
@@ -84,29 +103,57 @@ using syntax::Object;
 
 }  // namespace
 
-bool PlaceholderFont::in_alphabet(std::string_view text) noexcept {
+std::u32string PlaceholderFont::alphabet() {
+  std::u32string out;
+  for (const SubsetGlyph& entry : face_data(Face::regular).glyphs) {
+    out.push_back(entry.code_point);
+  }
+  return out;
+}
+
+bool PlaceholderFont::in_alphabet(char32_t code_point) noexcept {
+  return glyph(Face::regular, code_point) != nullptr;
+}
+
+bool PlaceholderFont::in_alphabet(std::string_view text) {
   return !outside(text).has_value();
 }
 
-std::optional<char> PlaceholderFont::outside(std::string_view text) noexcept {
-  for (const char value : text) {
-    if (alphabet.find(value) == std::string_view::npos) {
-      return value;
+std::optional<std::string> PlaceholderFont::outside(std::string_view text) {
+  const std::optional<std::u32string> code_points = decode(text);
+  if (!code_points) {
+    return "an ill-formed UTF-8 sequence";
+  }
+  for (const char32_t code_point : *code_points) {
+    if (!in_alphabet(code_point)) {
+      // Four hexadecimal digits, more past the Basic Multilingual Plane.
+      std::string digits = hex4(code_point >> 16U) + hex4(code_point & 0xFFFFU);
+      while (digits.size() > 4 && digits.front() == '0') {
+        digits.erase(0, 1);
+      }
+      return "U+" + digits;
     }
   }
   return std::nullopt;
 }
 
 std::string PlaceholderFont::codes(std::string_view text, Face face) {
+  const auto missing = [] {
+    return platform::Error(platform::ErrorCode::internal,
+                           "the placeholder font has no glyph for a character it was given",
+                           "UTF-8 text of the placeholder alphabet",
+                           "report this defect; placeholders are checked before writing");
+  };
+  const std::optional<std::u32string> code_points = decode(text);
+  if (!code_points) {
+    throw missing();
+  }
   std::string out;
-  out.reserve(text.size() * 2);
-  for (const char value : text) {
-    const SubsetGlyph* entry = glyph(face, value);
+  out.reserve(code_points->size() * 2);
+  for (const char32_t code_point : *code_points) {
+    const SubsetGlyph* entry = glyph(face, code_point);
     if (entry == nullptr) {
-      throw platform::Error(platform::ErrorCode::internal,
-                            "the placeholder font has no glyph for a character it was given",
-                            "a character of the placeholder alphabet",
-                            "report this defect; placeholders are checked before writing");
+      throw missing();
     }
     out.push_back(static_cast<char>(entry->gid >> 8U));
     out.push_back(static_cast<char>(entry->gid & 0xFFU));
@@ -116,8 +163,8 @@ std::string PlaceholderFont::codes(std::string_view text, Face face) {
 
 double PlaceholderFont::width(std::string_view text, Face face) {
   double total = 0.0;
-  for (const char value : text) {
-    const SubsetGlyph* entry = glyph(face, value);
+  for (const char32_t code_point : platform::unicode::Folding::decode(text)) {
+    const SubsetGlyph* entry = glyph(face, code_point);
     total += entry != nullptr ? entry->width : face_data(face).notdef_width;
   }
   return total;
@@ -152,12 +199,17 @@ std::string PlaceholderFont::to_unicode(Face face) {
       "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n"
       "/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n"
       "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n";
-  out += std::to_string(sorted.size()) + " beginbfchar\n";
-  for (const SubsetGlyph* entry : sorted) {
-    out +=
-        "<" + hex4(entry->gid) + "> <" + hex4(static_cast<unsigned char>(entry->character)) + ">\n";
+  for (std::size_t first = 0; first < sorted.size(); first += block_limit) {
+    const std::size_t last = std::min(sorted.size(), first + block_limit);
+    out += std::to_string(last - first) + " beginbfchar\n";
+    for (std::size_t i = first; i < last; ++i) {
+      // Every character of the alphabet is in the Basic Multilingual Plane,
+      // so its UTF-16BE is one unit.
+      out += "<" + hex4(sorted[i]->gid) + "> <" + hex4(sorted[i]->code_point) + ">\n";
+    }
+    out += "endbfchar\n";
   }
-  out += "endbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
+  out += "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
   return out;
 }
 

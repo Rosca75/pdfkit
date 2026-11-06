@@ -163,7 +163,7 @@ std::vector<ImageTreatmentPlan::Answer> ImageTreatmentPlan::add(
     if (request.caption) {
       if (const std::string bad = CaptionDrawer::outside(*request.caption); !bad.empty()) {
         refuse(where + " has the caption \"" + *request.caption + "\", which holds '" +
-                   bad.substr(0, 1) + "', a character outside the placeholder alphabet",
+                   bad.substr(0, 1) + "', a character outside the caption alphabet",
                "a caption of the characters [, ], _, 0 to 9 and A to Z, which the caption font "
                "draws",
                "write the caption in capitals, digits, brackets and underscores, for example "

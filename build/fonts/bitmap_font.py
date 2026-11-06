@@ -5,7 +5,7 @@
 # 14) from Liberation Sans Regular (third_party/liberation-fonts/, SIL OFL 1.1,
 # whose FAQ permits bitmaps derived from the font) and writes
 # src/images/bitmap_font_data.inc: per pixel height (8, 12, 16, 24, 32, 48 and
-# 64) and per character of the placeholder alphabet ([, ], _, 0-9, A-Z) a
+# 64) and per character of the caption alphabet ([, ], _, 0-9, A-Z) a
 # bitmap one cell high and one advance wide, its rows packed most significant
 # bit first, with the SHA-256 of the canonical lines the unit tier recomputes
 # from the compiled table. A caption is drawn in one colour, so the outlines
@@ -35,6 +35,10 @@ import cpp_table  # noqa: E402
 import subset  # noqa: E402
 
 HEIGHTS = (8, 12, 16, 24, 32, 48, 64)
+# The caption alphabet: the characters an image box's caption may hold
+# (docs/DESIGN.md section 14). It is the bitmap font's own decision and stays
+# narrower than the placeholder alphabet the text redaction draws.
+CAPTION_ALPHABET = "[]_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 SOURCE = cpp_table.ROOT / "third_party" / "liberation-fonts" / "LiberationSans-Regular.ttf"
 TARGET = Path("src") / "images" / "bitmap_font_data.inc"
 # Straight segments per quadratic curve: at 64 pixels a Liberation Sans curve
@@ -130,7 +134,7 @@ def rasterise() -> tuple[list[str], list[tuple[int, str, int, int, bytes]]]:
     lines = []
     for height in HEIGHTS:
         scale = height / (ascent - descent)
-        for ch in subset.ALPHABET:
+        for ch in CAPTION_ALPHABET:
             name = cmap[ord(ch)]
             advance = font["hmtx"][name][0]
             width = max(1, round(advance * scale))
@@ -166,7 +170,7 @@ def generate() -> str:
         entries.append((height, ch, width, stride, len(data)))
         data += rows
     out = [cpp_table.header([
-        "The caption font of the image box: the placeholder alphabet rasterised",
+        "The caption font of the image box: the caption alphabet rasterised",
         "from Liberation Sans 2.1.5 Regular (third_party/liberation-fonts/, SIL OFL",
         "1.1, read; the licence is third_party/liberation-fonts/LICENSE and",
         "THIRD-PARTY-NOTICES.md) at the pixel heights below, one bit per pixel, rows",

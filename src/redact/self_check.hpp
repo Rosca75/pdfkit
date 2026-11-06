@@ -45,11 +45,15 @@
 //     document's;
 //     every other stream whole, except a font program or a font's CMap,
 //     image samples, an ICC profile, a function, and the XMP packet, which is
-//     searched as text above.
-// Before a surface is searched, every placeholder of the plan is cut out of
-// it, so a placeholder that happens to contain a redacted string is not a
-// survivor. The re-read is bounded by the limits the input was opened with.
-// pdfkit_check runs the same search over any bytes with no placeholders.
+//     searched as text above; the strings a text-showing operator shows
+//     while the current font is a resource naming a placeholder face are
+//     the placeholder's codes and are left out.
+// Nothing is cut out of a surface before it is searched: an occurrence is
+// dismissed only where it lies wholly inside text drawn in the placeholder
+// font, because a placeholder is arbitrary text, and one cut out of a
+// surface would hide a survivor that holds it ("de" in "Jean de la
+// Fontaine"). The re-read is bounded by the limits the input was opened
+// with. pdfkit_check runs the same search over any bytes.
 
 #ifndef PDFKIT_REDACT_SELF_CHECK_HPP
 #define PDFKIT_REDACT_SELF_CHECK_HPP
@@ -112,8 +116,8 @@ class SelfCheck {
     // Searched with every folding on.
     std::span<const std::string> metadata;
     // The values the caller wrote into the metadata fields, cut out of the
-    // metadata surfaces before the originals are searched, as placeholders
-    // are.
+    // metadata surfaces before the originals are searched, because they are
+    // the caller's own.
     std::span<const std::string> written;
     std::span<const StringCheck> strings{};
   };
@@ -130,8 +134,8 @@ class SelfCheck {
     std::size_t pages_read = 0;
   };
 
-  // Searches pdf for needles; placeholders are cut out of every surface
-  // first. Throws the document's refusal when pdf does not open.
+  // Searches pdf for needles. Throws the document's refusal when pdf does
+  // not open.
   // pages, when given, names the output pages whose text is read; the
   // others are known to read as their input did, which the redaction
   // already searched with every needle (the write pipeline gives it only
@@ -139,12 +143,11 @@ class SelfCheck {
   // full.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                   std::span<const MatchFinder::Match> needles,
-                                  std::span<const std::string> placeholders,
                                   const std::set<std::uint32_t>* pages = nullptr);
   // The same with every kind of request; the pages of the located and the
   // string matches are read whatever pages names.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
-                                  const Needles& needles, std::span<const std::string> placeholders,
+                                  const Needles& needles,
                                   const std::set<std::uint32_t>* pages = nullptr);
 
   // The self-check stage of the write pipeline: verifies pdf, the output of
