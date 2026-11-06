@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | implemented on the branch claude/inspiring-ptolemy-6ahsex, awaiting the merge into `main` |
+| Status | done, merged into `main`; the release (tag `v0.3.0-preview`) waits on the owner's laptop gates: the full check, the sanitizer, dataset and PDFium tiers |
 | Owner approval | 2026-11-05, through `doc-anonymiser-for-.NET:docs/change-18.md` (D2: build ABI 3 and merge it to `main`; the tag and the release stay the owner's) |
 | Depends on | nothing |
 | Supersedes | nothing |
