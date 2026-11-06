@@ -9,7 +9,10 @@
 // page selection) and the refusals of a glyph range (another document's
 // fingerprint, a range past its page) and of malformed matches. A
 // placeholder of lower case, spaces, punctuation and accented letters, and a
-// mask of asterisks, read back where the match was. A box match removes the
+// mask of asterisks, read back where the match was; a placeholder drawn into
+// a line, whatever its width against the name's and however the producer
+// placed the words, read where the name stood as a word of its own, and the
+// space after a narrower one reaching the next word. A box match removes the
 // glyphs and paints one opaque filled rectangle per reading line inside the
 // reported rectangles, before the text object so its clip does not cut the
 // box, in the colour asked, and none over a run whose glyphs are all hidden;
@@ -315,6 +318,115 @@ TEST_CASE("realistic text and a mask are drawn as placeholders and read back") {
     CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
     CHECK_FALSE(pdfkit::test::contains_marker(result.pdf, "Zebulon"));
   }
+}
+
+TEST_CASE("a placeholder reads where the name stood, as a word of its own") {
+  // "Signed by Jonathan Smithson today." as producers write it: one string
+  // with its spaces, words placed by TJ numbers with no space glyph, and a
+  // text object per piece (a marked-content span's own).
+  const std::vector<std::string> lines = {
+      "BT /F1 12 Tf 72 700 Td (Signed by Jonathan Smithson today.) Tj ET",
+      "BT /F1 12 Tf 72 700 Td [(Signed) -250 (by) -250 (Jonathan) -250 (Smithson) -250 "
+      "(today.)] TJ ET",
+      "BT /F1 12 Tf 72 700 Td (Signed by) Tj ET BT /F1 12 Tf 132 700 Td (Jonathan Smithson) Tj "
+      "ET BT /F1 12 Tf 240 700 Td (today.) Tj ET"};
+  // Realistic text, a bracketed name, a mask, and a name wide enough to be
+  // narrowed into the hole.
+  const std::vector<std::string> placeholders = {"Huisman", "[PERSON_1]", "[P_1]", "*****",
+                                                 "Bartholomew Huismanns"};
+  for (const std::string& line : lines) {
+    pdfkit::test::TextDocument fixture;
+    fixture.page(line);
+    const std::string file = fixture.bytes();
+    for (const std::string& placeholder : placeholders) {
+      INFO(line);
+      INFO(placeholder);
+      const pdfkit::test::Redaction result = redact(file, search("Jonathan Smithson", placeholder));
+      REQUIRE(result.match_status == PDFKIT_OK);
+      REQUIRE(result.write_status == PDFKIT_OK);
+      CHECK(page_text(result.pdf) == "Signed by " + placeholder + " today.");
+      CHECK(result.report.find("\"self_check\":{\"status\":\"passed\"") != std::string::npos);
+    }
+  }
+}
+
+TEST_CASE("a placeholder over a short name drawn on its own reads as a word of its own") {
+  // The shape a marked-content span gives: "SJ" in a text object of its own
+  // between "Signed by" and "today.", so a placeholder wider than "SJ" may
+  // fill the white space up to "today." and, wider still, run over it.
+  pdfkit::test::TextDocument fixture;
+  fixture.page(
+      "BT /F1 12 Tf 72 700 Td (Signed by) Tj ET BT /F1 12 Tf 136 700 Td (SJ) Tj ET "
+      "BT /F1 12 Tf 166 700 Td (today.) Tj ET");
+  const std::string file = fixture.bytes();
+  // Natural, narrowed, at the floor and past it, and realistic text.
+  for (const std::string placeholder :
+       {"*****", "[P_1]", "Huisman", "[PERSON]", "[PERSON_1]", "Bartholomew Huismanns"}) {
+    INFO(placeholder);
+    const pdfkit::test::Redaction result = redact(file, search("SJ", placeholder));
+    REQUIRE(result.match_status == PDFKIT_OK);
+    REQUIRE(result.write_status == PDFKIT_OK);
+    INFO(result.matches);
+    CHECK(page_text(result.pdf) == "Signed by " + placeholder + " today.");
+  }
+}
+
+TEST_CASE("placeholders of one string read in place beside the words they were glued to") {
+  // A value standing as a word, glued to digits and glued to a word: the
+  // three placeholders, drawn one after another, fill gaps of the kept text.
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 12 Tf 72 700 Td (Contoso23 sold ContosoFood to Contoso.) Tj ET");
+  const pdfkit::test::Redaction result = redact(
+      fixture.bytes(), R"({"matches": [{"search": "Contoso", "placeholder": "[ENTITY_2]"}]})");
+  REQUIRE(result.write_status == PDFKIT_OK);
+  CHECK(page_text(result.pdf) == "[ENTITY_2]23 sold [ENTITY_2]Food to [ENTITY_2].");
+  // Realistic text too wide for each hole runs over the kept text after it,
+  // which was drawn first: each reads in place, a word of its own.
+  const pdfkit::test::Redaction wide =
+      redact(fixture.bytes(),
+             R"({"matches": [{"search": "Contoso", "placeholder": "Nelvulon Systems"}]})");
+  REQUIRE(wide.write_status == PDFKIT_OK);
+  CHECK(wide.matches.find("\"fitting\":\"overflow\"") != std::string::npos);
+  CHECK(page_text(wide.pdf) ==
+        "Nelvulon Systems 23 sold Nelvulon Systems Food to Nelvulon Systems .");
+}
+
+TEST_CASE("an overflowing placeholder and a later one of the same string read in place") {
+  // "[PERSON_1]" runs from "Li" over "at th"; "[ENTITY_2]" fills "Contoso"
+  // further on, drawn just after it in the same face.
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 12 Tf 72 700 Td (Signed by Li at the office of Contoso-) Tj ET");
+  const pdfkit::test::Redaction result =
+      redact(fixture.bytes(), R"({"matches": [{"search": "Li", "placeholder": "[PERSON_1]"}, )"
+                              R"({"search": "Contoso", "placeholder": "[ENTITY_2]"}]})");
+  REQUIRE(result.write_status == PDFKIT_OK);
+  INFO(result.matches);
+  CHECK(result.matches.find("\"fitting\":\"overflow\"") != std::string::npos);
+  CHECK(page_text(result.pdf) == "Signed by [PERSON_1] at the office of [ENTITY_2]-");
+}
+
+TEST_CASE("a placeholder narrower than its hole ends in a space that reaches the next word") {
+  pdfkit::test::TextDocument fixture;
+  fixture.page(
+      "BT /F1 12 Tf 72 700 Td [(Signed) -250 (by) -250 (Jonathan) -250 (Smithson) -250 "
+      "(today.)] TJ ET");
+  const pdfkit::test::Redaction result = redact(fixture.bytes(), search("Jonathan Smithson", "*"));
+  REQUIRE(result.write_status == PDFKIT_OK);
+  const auto pages = pdfkit::test::read_pages(result.pdf);
+  double bridge_end = 0.0;
+  double today = 0.0;
+  for (const pdfkit::text::GlyphRecord& record : pages.front().content.glyphs) {
+    const bool placeholder =
+        record.font != nullptr && record.font->name().find("LiberationSans") != std::string::npos;
+    if (placeholder && record.is_space()) {
+      bridge_end = record.advance_end.x;
+    } else if (!placeholder && record.text == "t") {
+      today = record.origin.x;
+    }
+  }
+  CHECK(bridge_end == doctest::Approx(today).epsilon(1e-4));
+  // The bridge paints nothing, and the line reads as one line.
+  CHECK(page_text(result.pdf) == "Signed by * today.");
 }
 
 TEST_CASE("a box match removes the glyphs and paints a box inside the rectangles") {

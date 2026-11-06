@@ -809,8 +809,8 @@ void remove_unshown(const PageText& page, const std::vector<MatchFinder::Match>&
     const text::ContentStream& stream = content.streams[anchor.stream];
     TextPlan::Insertion insertion;
     insertion.at = insertion_point(stream, anchor.operation);
-    insertion.operators = PlaceholderDrawing::operators(
-        anchor, occurrence.placeholder, found.fit.face, found.fit.scale, found.invisible);
+    insertion.operators =
+        PlaceholderDrawing::operators(found.fit, occurrence.placeholder, found.invisible);
     change_target(document, work, content, anchor.stream, here)
         .insertions.try_emplace({anchor.operation, anchor.code_start}, std::move(insertion));
     const TextPlan::Holder holder = holder_of(document, content, anchor.stream);

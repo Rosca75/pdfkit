@@ -478,24 +478,43 @@ visible set first and the hidden set after (§8).
 
 - **Words**: two consecutive glyphs on one line are one word when the gap
   between the first's advance end and the second's origin is under 0.1 of the
-  font size on a line that draws no space glyph (pdfminer's `word_margin`),
-  under 0.3 on a line that draws space glyphs (its other gaps are letter
-  spacing and kerning), and under 1.0 between two ideographic, kana, hangul or
+  font size (pdfminer's `word_margin`), under 0.3 when both glyphs' fonts
+  draw space glyphs on that line (their other gaps are letter spacing and
+  kerning), and under 1.0 between two ideographic, kana, hangul or
   full-width glyphs (scripts written without spaces); beyond 2.0 of the font
-  size the line ends there, a block boundary. A decoded space or a `TJ`
-  adjustment wider than the word gap both end a word, because a space glyph is
-  routinely absent and kerning numbers routinely split words. The dataset
-  measured the gaps: inside words they lie within 0.07 of the size, between
-  positioned words from 0.15 up.
+  size the line ends there, a block boundary. The spaced gap is a property
+  of the font pair rather than of the line, because a font placing its words
+  by position alone keeps its narrow gaps beside one that draws spaces (a
+  placeholder of realistic text drawn into a line set without space glyphs).
+  A decoded space or a `TJ` adjustment wider than the word gap both end a
+  word, because a space glyph is routinely absent and kerning numbers
+  routinely split words. A glyph in another font (by name) that starts more
+  than 0.1 of the size before the advance of the glyph read ahead of it ends
+  (on a right-to-left line, whose advance overlaps it by that much) also
+  ends a word, because it was drawn over that glyph rather than after it (a
+  placeholder running over the next word, a stamp over a line); an accent
+  (a combining mark, a spacing modifier or a spacing accent of ASCII or
+  Latin-1) drawn over its letter in another font stays in the letter's
+  word. The dataset measured the gaps: inside words they lie within 0.07 of
+  the size, between positioned words from 0.15 up.
 - **Lines**: glyphs whose baselines (the text line, the rise left out) agree
   within a fifth of the font size, in the direction their advance runs (a
   negative font size or scaling runs it backwards), so rotated text forms its
   own lines along its rotation; vertical text (`Identity-V` or a text matrix
   rotated by 90°) forms vertical lines read top to bottom. Along one baseline
-  the content's runs (glyphs drawn one after another, each at or after the one
-  before) are kept whole and ordered by where they start, so a string drawn
-  over another reads as two strings rather than as their letters interleaved;
-  a run of one or two glyphs takes its place by position.
+  the content's runs (glyphs drawn one after another, each at or after the
+  one before, none in another font starting more than 0.1 of the size
+  before the advance of the glyph drawn ahead of it ends) are placed in the
+  order they were drawn, each cut where a glyph placed before it stands in
+  a gap between two of its glyphs (text drawn later into several spaces
+  left for it: a form's values, a redaction's placeholders). A piece drawn
+  over glyphs placed before it (a glyph's middle in a placed glyph's
+  advance: a name overprinted with X, a shadow offset, a placeholder
+  running over the next word) is kept whole, so a string drawn over another
+  reads as two strings rather than as their letters interleaved: it takes
+  its place where it starts when that is in a gap of the placed glyphs, and
+  otherwise follows them. Every other piece, and a run of one or two glyphs,
+  takes its place by position.
 - **Direction**: a line whose strong characters are mostly right-to-left
   (Hebrew, Arabic) reads from its far end, its left-to-right runs (Latin words,
   numbers) kept left to right; a left-to-right line reads its right-to-left
@@ -1014,7 +1033,8 @@ position the original gave it (CLAUDE.md §5).
   placed after the `ET` that closes the text object holding the removed run's
   first glyph, in the same stream, so it is under the same CTM and clip; at
   that glyph's text matrix (origin and rotation), font size, `Ts` and `Tz`, with
-  `Tc` and `Tw` zero, in its fill colour when that is a device colour (else the
+  `Tc` and `Tw` zero (the bridge below sets its own `Tc` after the
+  placeholder's codes), in its fill colour when that is a device colour (else the
   colour in force there), an invisible run's placeholder in render mode 3; in
   bold when the removed font's descriptor has the force-bold flag, a
   `/FontWeight` of 600 or more, or a name containing `Bold`, `Black` or `Heavy`.
@@ -1033,6 +1053,24 @@ position the original gave it (CLAUDE.md §5).
 - **Fitting** reads the placeholder's code points, each at its own `hmtx`
   width, so realistic text fits, narrows or overflows by its width as a
   bracketed name does.
+- **The word break after the placeholder**: where the original read a word
+  break between the removed text and the next kept glyph of the line (a
+  space glyph, removed or kept, or a gap past the word gap of §7), the
+  placeholder keeps it. One drawn natural or scaled is followed, in its text
+  object, by one space of its face under a `Tc` that makes the space's
+  advance, `(w0 × Tfs + Tc) × Th` (ISO 32000-1 section 9.4.4, read), run
+  from the placeholder's end to that glyph's origin (the bridge): the space
+  paints nothing, so the page shows what it showed, and it reads as the
+  word break whatever the placeholder's width, also across a hole wider
+  than the 2.0 that ends a line. Such a placeholder fits into the hole less
+  0.02 pt (two of the 0.01 pt steps the layout rounds positions to), so the
+  bridge starts before that glyph and is read ahead of it. An overflow that at the floor would end
+  less than 0.15 of the size past that glyph's origin (in the word gap
+  before it, or barely over it) is drawn just wide enough to run 0.15 of
+  the size past it, never wider than its natural width, so the reader reads
+  it as drawn over that word (§7) rather than glued to it. A match inside a
+  word (no break before the next kept glyph) and a run at its line's end
+  draw neither.
 - A placeholder with a character outside the alphabet (named as `U+XXXX`), or
   that is not well-formed UTF-8, is refused before anything is written.
 

@@ -14,7 +14,10 @@
 // drawn, which is the glyph's unless the content changed it after the glyph.
 // A run whose glyphs were all invisible (render mode 3 or 7) draws its
 // placeholder in render mode 3, so an invisible layer stays invisible;
-// every other run draws it filled (render mode 0).
+// every other run draws it filled (render mode 0). A placeholder followed by
+// a bridge (PlaceholderFitting) ends with one space of its face shown under
+// the bridge's character spacing, which paints nothing and carries the word
+// break that stood before the next kept word.
 // box() writes the operators of a box match instead: a filled rectangle
 // inside a saved graphics state (q, the box's graphics state, the fill
 // colour, cm with the anchor glyph's text matrix, re, f, Q), placed before
@@ -32,6 +35,7 @@
 #define PDFKIT_REDACT_PLACEHOLDER_DRAWING_HPP
 
 #include "redact/match_finder.hpp"
+#include "redact/placeholder_fitting.hpp"
 #include "syntax/dictionary.hpp"
 #include "text/glyph_record.hpp"
 #include "text/matrix.hpp"
@@ -45,12 +49,11 @@ namespace pdfkit::redact {
 
 class PlaceholderDrawing {
  public:
-  // The operators drawing placeholder at anchor in face, its horizontal
-  // scaling scale times the anchor's; invisible draws in render mode 3.
-  [[nodiscard]] static std::string operators(const text::GlyphRecord& anchor,
-                                             std::string_view placeholder,
-                                             writer::PlaceholderFont::Face face, double scale,
-                                             bool invisible);
+  // The operators drawing fit's placeholder at its anchor, in its face and
+  // at its scale times the anchor's horizontal scaling, followed by its
+  // bridge when it has one; invisible draws in render mode 3.
+  [[nodiscard]] static std::string operators(const PlaceholderFitting::Result& fit,
+                                             std::string_view placeholder, bool invisible);
 
   // The operator setting colour as the fill colour, empty for a colour
   // outside the device spaces.

@@ -10,6 +10,7 @@
 #include "redact/placeholder_fitting.hpp"
 
 #include "platform/error.hpp"
+#include "text/text_layout.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -45,6 +46,14 @@ struct Axis {
   return {vector.x / length, vector.y / length};
 }
 
+// The share of the font size added to the layout's overprint threshold, so
+// a placeholder drawn at a rounded scaling still crosses it.
+constexpr double margin = 0.05;
+// The device length a bridged placeholder stops short of the next kept word
+// at the least: two of the 0.01 pt steps the layout rounds positions to, so
+// the bridge starts before that word and is read ahead of it.
+constexpr double bridge_minimum = 0.02;
+
 // The device length of one text-space unit along the run's x axis.
 [[nodiscard]] double unit_length(const text::GlyphRecord& record) noexcept {
   const text::Matrix::Point vector = placement(record).apply_vector(1.0, 0.0);
@@ -71,17 +80,30 @@ PlaceholderFitting::Result PlaceholderFitting::fit(
     end = std::max({end, axis.along(record->origin), axis.along(record->advance_end)});
   }
   const double start = axis.along(anchor->origin);
+  // The end of the removed text's last glyph that is not a space, so a
+  // removed space after it counts as the white space it is.
+  double ink = start;
+  bool spaced_before = false;
+  for (const text::GlyphRecord* record : removed) {
+    if (record->is_space()) {
+      spaced_before = true;
+    } else {
+      ink = std::max({ink, axis.along(record->origin), axis.along(record->advance_end)});
+    }
+  }
   double stop = end;
-  bool found = false;
+  const text::GlyphRecord* next = nullptr;
+  bool spaced_after = false;
   for (const text::GlyphRecord* record : line_kept) {
     // A kept space is part of the white space the hole runs over.
     if (record->is_space()) {
+      spaced_after = true;
       continue;
     }
     const double at = axis.along(record->origin);
-    if (at >= end - 0.01 && (!found || at < stop)) {
+    if (at >= end - 0.01 && (next == nullptr || at < stop)) {
       stop = at;
-      found = true;
+      next = record;
     }
   }
   result.anchor = anchor;
@@ -90,15 +112,55 @@ PlaceholderFitting::Result PlaceholderFitting::fit(
   result.natural = PlaceholderFont::width(placeholder, result.face) / 1000.0 *
                    std::abs(anchor->font_size) * std::abs(anchor->horizontal_scaling / 100.0) *
                    unit_length(*anchor);
-  if (result.natural <= result.hole || result.natural <= 0.0) {
+  // Whether the original read a word break between the removed text and the
+  // next kept word: a space glyph between them, or a gap the layout reads
+  // as one on that line.
+  double size = 0.0;
+  bool broken = false;
+  if (next != nullptr) {
+    size = std::max(anchor->size, next->size);
+    const bool spaced = spaced_before || spaced_after;
+    bool space_between = ink < end - 0.01;
+    for (const text::GlyphRecord* record : line_kept) {
+      const double at = axis.along(record->origin);
+      space_between = space_between || (record->is_space() && at >= ink - 0.01 && at < stop);
+    }
+    const double limit = spaced ? text::TextLayout::spaced_word_gap : text::TextLayout::word_gap;
+    broken = space_between || stop - ink > limit * size;
+  }
+  // A placeholder the bridge will follow fits into the hole less the
+  // bridge's least length.
+  const double fill = broken ? std::max(0.0, result.hole - bridge_minimum) : result.hole;
+  if (result.natural <= fill || result.natural <= 0.0) {
     result.outcome = Outcome::natural;
     result.scale = 1.0;
-  } else if (result.hole >= result.natural * floor) {
+  } else if (fill >= result.natural * floor) {
     result.outcome = Outcome::scaled;
-    result.scale = result.hole / result.natural;
+    result.scale = fill / result.natural;
   } else {
     result.outcome = Outcome::overflow;
     result.scale = floor;
+    // An overflow that would end in the word gap before the next word, or
+    // barely over it, reads glued to it: it is drawn wide enough to run
+    // over that word's start by an overprint, never wider than natural.
+    const double over = result.hole + ((text::TextLayout::overprint_gap + margin) * size);
+    if (broken && result.natural * floor < over) {
+      result.scale = std::min(1.0, over / result.natural);
+    }
+  }
+  // A placeholder that ends at or before the next kept word is followed by
+  // the bridge: a space of the placeholder face whose advance, (w0 * Tfs +
+  // Tc) * Th along the run's axis, is the white space left (ISO 32000-1
+  // section 9.4.4, read), so Tc takes the sign of the font size.
+  const double length = result.natural * result.scale;
+  const double th = std::abs(anchor->horizontal_scaling / 100.0 * result.scale);
+  const double unit = unit_length(*anchor);
+  if (broken && length <= fill + 0.01 && th > 0.0 && unit > 0.0) {
+    const double sign = anchor->font_size < 0.0 ? -1.0 : 1.0;
+    const double white = std::max(0.0, result.hole - length);
+    result.bridge = true;
+    result.bridge_spacing = (sign * white / (unit * th)) -
+                            (PlaceholderFont::width(" ", result.face) / 1000.0 * anchor->font_size);
   }
   result.box = box(*anchor, placeholder, result.face, result.scale);
   return result;

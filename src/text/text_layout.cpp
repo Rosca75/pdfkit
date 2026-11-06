@@ -14,21 +14,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace pdfkit::text {
 
 namespace {
 
-// A gap ends a word from this many font sizes on a line that draws no space
-// glyph (words set apart by position alone), and from spaced_word_gap on a
-// line that marks its words with space glyphs, whose other gaps are letter
-// spacing and kerning.
-constexpr double word_gap = 0.1;
-constexpr double spaced_word_gap = 0.3;
 // Between two ideographic, kana, hangul or full-width glyphs, which no space
 // separates in the scripts that use them, a gap ends a word only from this
 // many font sizes.
@@ -151,6 +147,24 @@ struct RawLine {
 
 [[nodiscard]] bool letter(char32_t c) noexcept {
   return left_to_right_letter(c) || right_to_left_letter(c);
+}
+
+// The name of a glyph's font, so one face stated as two font objects is one
+// font; empty for a glyph without one.
+[[nodiscard]] std::string_view font_name(const GlyphRecord& glyph) noexcept {
+  return glyph.font != nullptr ? std::string_view(glyph.font->name()) : std::string_view();
+}
+
+// An accent a producer may draw over its letter on its own: a combining mark
+// (the combining diacritical marks and their extensions, the half marks and
+// the marks for symbols), a spacing modifier letter, or a spacing accent of
+// ASCII or Latin-1 (grave, circumflex, tilde, diaeresis, macron, acute,
+// cedilla); the Unicode blocks, recalled.
+[[nodiscard]] bool accent(char32_t c) noexcept {
+  return (c >= 0x0300 && c <= 0x036F) || (c >= 0x1AB0 && c <= 0x1AFF) ||
+         (c >= 0x1DC0 && c <= 0x1DFF) || (c >= 0x20D0 && c <= 0x20FF) ||
+         (c >= 0xFE20 && c <= 0xFE2F) || (c >= 0x02B0 && c <= 0x02FF) || c == U'`' || c == U'^' ||
+         c == U'~' || c == 0xA8 || c == 0xAF || c == 0xB4 || c == 0xB8;
 }
 
 class Builder {
@@ -281,13 +295,37 @@ class Builder {
     }
   }
 
+  // Whether item, in another font than before, starts more than
+  // TextLayout::overprint_gap of the size before before's advance ends: it
+  // was placed over before rather than after it (a placeholder running over
+  // the next word, a stamp over a line). An accent drawn over its letter is
+  // left to its letter.
+  [[nodiscard]] bool drawn_over(const Item& before, const Item& item) const {
+    const GlyphRecord& first = glyphs_[before.draw];
+    const GlyphRecord& second = glyphs_[item.draw];
+    if (font_name(first) == font_name(second) || accent(first_code_point(first.text)) ||
+        accent(first_code_point(second.text))) {
+      return false;
+    }
+    return item.low < before.high - (TextLayout::overprint_gap * std::max(before.size, item.size));
+  }
+
   // The glyphs of one baseline in visual order along it. The content's runs
-  // (glyphs drawn one after another, each at or after the one before) are kept
-  // whole and ordered by where they start, so a string drawn over another
-  // (a name overprinted with X, a shadow offset) reads as two strings rather
-  // than as their letters interleaved; a run of one or two glyphs (an accent,
-  // a glyph drawn out of turn, right-to-left text drawn in logical order)
-  // takes its place by position.
+  // (glyphs drawn one after another, each at or after the one before) are
+  // placed in the order they were drawn, each cut where a glyph placed before
+  // it stands in a gap between two of its glyphs (text drawn later into
+  // several spaces left for it: a form's values, a redaction's
+  // placeholders). A piece drawn over glyphs placed before it (one of its
+  // glyphs' middle lies in a placed glyph's advance: a name overprinted with
+  // X, a shadow offset, a placeholder running over the next word) is kept
+  // whole, so it reads as a string of its own rather than as letters
+  // interleaved with the other's: it takes its place where it starts when
+  // that is in a gap of the placed glyphs, else follows them. Every other
+  // piece, and a run of one or two glyphs (an accent, a glyph drawn out of
+  // turn, right-to-left text drawn in logical order), takes its place by
+  // position. A glyph in another font drawn over the one drawn just ahead of
+  // it starts a run, so a string run over the next word is not shuffled into
+  // it.
   [[nodiscard]] std::vector<std::size_t> visual_sequence(std::vector<std::size_t> cluster) const {
     std::ranges::stable_sort(cluster, {}, [&](std::size_t i) { return items_[i].draw; });
     std::vector<std::vector<std::size_t>> runs;
@@ -297,35 +335,87 @@ class Builder {
         runs.emplace_back();
       } else {
         const Item& before = items_[runs.back().back()];
-        if (item.low < before.low - (run_backstep * std::max(before.size, item.size))) {
+        if (item.low < before.low - (run_backstep * std::max(before.size, item.size)) ||
+            drawn_over(before, item)) {
           runs.emplace_back();
         }
       }
       runs.back().push_back(i);
     }
     const auto by_position = [&](std::size_t a, std::size_t b) {
-      return std::pair(items_[a].low, items_[a].draw) < std::pair(items_[b].low, items_[b].draw);
+      return ahead(a, b);
     };
     for (std::vector<std::size_t>& run : runs) {
       std::ranges::stable_sort(run, by_position);
     }
-    std::ranges::stable_sort(
-        runs, [&](const std::vector<std::size_t>& a, const std::vector<std::size_t>& b) {
-          return by_position(a.front(), b.front());
-        });
     std::vector<std::size_t> sequence;
     sequence.reserve(cluster.size());
     for (const std::vector<std::size_t>& run : runs) {
-      if (run.size() > short_run || sequence.empty()) {
-        sequence.insert(sequence.end(), run.begin(), run.end());
+      if (run.size() <= short_run) {
+        for (const std::size_t i : run) {
+          sequence.insert(std::ranges::upper_bound(sequence, i, by_position), i);
+        }
         continue;
       }
-      for (const std::size_t i : run) {
-        const auto at = std::ranges::upper_bound(sequence, i, by_position);
-        sequence.insert(at, i);
+      for (const std::vector<std::size_t>& piece : pieces(sequence, run)) {
+        const bool over =
+            std::ranges::any_of(piece, [&](std::size_t i) { return covered(sequence, i); });
+        if (!over) {
+          for (const std::size_t i : piece) {
+            sequence.insert(std::ranges::upper_bound(sequence, i, by_position), i);
+          }
+          continue;
+        }
+        const auto at = covered(sequence, piece.front())
+                            ? sequence.end()
+                            : std::ranges::upper_bound(sequence, piece.front(), by_position);
+        sequence.insert(at, piece.begin(), piece.end());
       }
     }
     return sequence;
+  }
+
+  // run, in position order, cut between two of its glyphs where the first
+  // glyph of sequence after the first of them by position has its middle in
+  // the gap between them.
+  [[nodiscard]] std::vector<std::vector<std::size_t>> pieces(
+      const std::vector<std::size_t>& sequence, const std::vector<std::size_t>& run) const {
+    std::vector<std::vector<std::size_t>> out(1);
+    for (std::size_t k = 0; k < run.size(); ++k) {
+      if (k > 0) {
+        const Item& left = items_[run[k - 1]];
+        const Item& right = items_[run[k]];
+        const auto next = std::ranges::upper_bound(
+            sequence, run[k - 1], [&](std::size_t a, std::size_t b) { return ahead(a, b); });
+        if (next != sequence.end()) {
+          const double middle = (items_[*next].low + items_[*next].high) / 2.0;
+          if (left.high < middle && middle < right.low) {
+            out.emplace_back();
+          }
+        }
+      }
+      out.back().push_back(run[k]);
+    }
+    return out;
+  }
+
+  // Whether glyph a goes before glyph b by position (where it starts, then
+  // the draw order).
+  [[nodiscard]] bool ahead(std::size_t a, std::size_t b) const {
+    return std::pair(items_[a].low, items_[a].draw) < std::pair(items_[b].low, items_[b].draw);
+  }
+
+  // Whether glyph's middle lies in the advance of one of the two glyphs of
+  // sequence either side of where it goes by position.
+  [[nodiscard]] bool covered(const std::vector<std::size_t>& sequence, std::size_t glyph) const {
+    const auto at = std::ranges::upper_bound(
+        sequence, glyph, [&](std::size_t a, std::size_t b) { return ahead(a, b); });
+    const double middle = (items_[glyph].low + items_[glyph].high) / 2.0;
+    const auto covers = [&](std::size_t placed) {
+      return items_[placed].low < middle && middle < items_[placed].high;
+    };
+    return (at != sequence.end() && covers(*at)) ||
+           (at != sequence.begin() && covers(*std::prev(at)));
   }
 
   // The reading direction of each glyph's text: right to left, left to
@@ -400,10 +490,24 @@ class Builder {
     }
   }
 
+  // Splits a line into words: a space glyph ends one, and so does a gap past
+  // the word gap of the two glyphs either side of it, which is the spaced
+  // one when both their fonts draw space glyphs on the line (so a font that
+  // places its words by position alone keeps its narrower gap beside one
+  // that draws spaces, a placeholder of realistic text for one), or a glyph
+  // drawn over the one read ahead of it.
   void split_words(RawLine& line) const {
-    const bool spaced = std::ranges::any_of(
-        line.items, [&](std::size_t i) { return glyphs_[items_[i].draw].is_space(); });
-    const double gap_limit = spaced ? spaced_word_gap : word_gap;
+    std::vector<std::string_view> spacing_fonts;
+    for (const std::size_t i : line.items) {
+      const GlyphRecord& glyph = glyphs_[items_[i].draw];
+      if (glyph.is_space() &&
+          std::ranges::find(spacing_fonts, font_name(glyph)) == spacing_fonts.end()) {
+        spacing_fonts.push_back(font_name(glyph));
+      }
+    }
+    const auto draws_spaces = [&](const Item& item) {
+      return std::ranges::find(spacing_fonts, font_name(glyphs_[item.draw])) != spacing_fonts.end();
+    };
     // The word under way starts at start when open; previous is its last
     // glyph.
     bool open = false;
@@ -423,7 +527,16 @@ class Builder {
         const double gap = std::max(item.low - before.high, before.low - item.high);
         const bool unspaced = ideographic(first_code_point(glyphs_[item.draw].text)) &&
                               ideographic(first_code_point(glyphs_[before.draw].text));
-        if (gap > (unspaced ? ideographic_gap : gap_limit) * std::max(before.size, item.size)) {
+        // On a right-to-left line the reading runs against the positions, so
+        // a glyph drawn over the one read ahead of it is one whose advance
+        // overlaps it.
+        const bool over = line.right_to_left ? drawn_over(before, item) && drawn_over(item, before)
+                                             : drawn_over(before, item);
+        const double gap_limit = draws_spaces(before) && draws_spaces(item)
+                                     ? TextLayout::spaced_word_gap
+                                     : TextLayout::word_gap;
+        if (over ||
+            gap > (unspaced ? ideographic_gap : gap_limit) * std::max(before.size, item.size)) {
           line.words.emplace_back(start, k);
           open = false;
         }

@@ -32,10 +32,11 @@ std::string PlaceholderDrawing::fill(const text::Colour& colour) {
   return {};
 }
 
-std::string PlaceholderDrawing::operators(const text::GlyphRecord& anchor,
-                                          std::string_view placeholder,
-                                          writer::PlaceholderFont::Face face, double scale,
-                                          bool invisible) {
+std::string PlaceholderDrawing::operators(const PlaceholderFitting::Result& fit,
+                                          std::string_view placeholder, bool invisible) {
+  const text::GlyphRecord& anchor = *fit.anchor;
+  const writer::PlaceholderFont::Face face = fit.face;
+  const double scale = fit.scale;
   std::string out = "\nq\n";
   out += fill(anchor.fill);
   out += "BT\n/" + writer::PlaceholderFont::resource_name(face) + " " +
@@ -44,7 +45,12 @@ std::string PlaceholderDrawing::operators(const text::GlyphRecord& anchor,
   out += ContentSyntax::number(anchor.horizontal_scaling * scale) + " Tz\n";
   out += ContentSyntax::number(anchor.rise) + " Ts\n0 Tc\n0 Tw\n";
   out += invisible ? "3 Tr\n" : "0 Tr\n";
-  out += ContentSyntax::hex(writer::PlaceholderFont::codes(placeholder, face)) + " Tj\nET\nQ\n";
+  out += ContentSyntax::hex(writer::PlaceholderFont::codes(placeholder, face)) + " Tj\n";
+  if (fit.bridge) {
+    out += ContentSyntax::number(fit.bridge_spacing) + " Tc\n" +
+           ContentSyntax::hex(writer::PlaceholderFont::codes(" ", face)) + " Tj\n";
+  }
+  out += "ET\nQ\n";
   return out;
 }
 
