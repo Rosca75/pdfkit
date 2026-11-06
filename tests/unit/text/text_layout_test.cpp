@@ -195,11 +195,17 @@ TEST_CASE("a string in another font that runs over the next word is a word of it
   for (const auto& [over, start] :
        std::vector<std::pair<std::string, std::string>>{{"Huisman", "150"}, {"*****", "142"}}) {
     INFO(over);
+    std::string content = "BT /F1 10 Tf 72 700 Td (Signed by) Tj ET BT /F4 10 Tf 120 700 Td (";
+    content += over;
+    content += ") Tj ET BT /F1 10 Tf ";
+    content += start;
+    content += " 700 Td (today.) Tj ET";
     TextDocument document;
-    document.page("BT /F1 10 Tf 72 700 Td (Signed by) Tj ET BT /F4 10 Tf 120 700 Td (" + over +
-                      ") Tj ET BT /F1 10 Tf " + start + " 700 Td (today.) Tj ET",
-                  "", "", times);
-    CHECK(document.read().text() == "Signed by " + over + " today.");
+    document.page(content, "", "", times);
+    std::string expected = "Signed by ";
+    expected += over;
+    expected += " today.";
+    CHECK(document.read().text() == expected);
   }
 }
 
