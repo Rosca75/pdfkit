@@ -234,6 +234,47 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(self.measure(report, "identity write: pages pixel-identical")["shown"], "1 / 1 = 100.00%")
         self.assertNotIn("not compared", phase7.markdown(report))
 
+    def test_a_hung_multi_page_file_counts_its_kept_pages_against_the_selection_rows(self):
+        # The run hung on a-0002 (three pages in the manifest): its selection is the one the
+        # contract draws for that id and count, two pages, which stay in the denominator and
+        # are named, and its missing selection fails the page-count row.
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row("a-0001", pages="2", set_name="qpdf"), row("a-0002", pages="3", set_name="qpdf")]
+            report = self.judge(self.folder(tmp, ["a-0001"], {"hangs": ["a-0002"]}, multi=("a-0001",)), rows)
+        self.assertEqual(self.measure(report, "page selection: kept pages")["shown"],
+                         "2 / 4 = 50.00% (2 pages not compared, listed below)")
+        self.assertEqual(self.measure(report, "page selection, files of two")["shown"], "1 / 2 = 50.00%")
+        self.assertEqual(report["uncompared_pages"]["select"],
+                         [{"file": "a-0002", "pages": 2, "compared": 0,
+                           "cause": "no outcome: the run hung on the file; kept pages drawn for the "
+                                    "manifest's 3 pages"}])
+        text = phase7.markdown(report)
+        self.assertIn("## Pages of the select check not compared (2)", text)
+        self.assertIn("| a-0002 | 2 | 0 | no outcome: the run hung on the file;", text)
+
+    def test_a_selection_that_failed_counts_the_pages_it_would_keep(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row("qpdf-0001", pages="7", set_name="qpdf")]
+            run_dir = self.folder(tmp, ["qpdf-0001"], multi=("qpdf-0001",))
+            outcome = json.loads((run_dir / "outcomes" / "qpdf-0001.json").read_text(encoding="utf-8"))
+            outcome["open"]["pages"] = 7
+            outcome["select"] = {"status": "refused", "code": "limit_exceeded"}
+            (run_dir / "outcomes" / "qpdf-0001.json").write_text(json.dumps(outcome), encoding="utf-8")
+            (run_dir / "pdfium-select.json").write_text(json.dumps({"files": {}}), encoding="utf-8")
+            report = self.judge(run_dir, rows)
+        self.assertEqual(self.measure(report, "page selection: kept pages")["shown"],
+                         "0 / 2 = 0.00% (2 pages not compared, listed below)")
+        self.assertEqual(report["uncompared_pages"]["select"],
+                         [{"file": "qpdf-0001", "pages": 2, "compared": 0,
+                           "cause": "page selection refused (limit_exceeded)"}])
+
+    def test_a_clean_selection_run_names_no_page(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row("a-0001", pages="2", set_name="qpdf")]
+            report = self.judge(self.folder(tmp, ["a-0001"], multi=("a-0001",)), rows)
+        self.assertEqual(report["uncompared_pages"]["select"], [])
+        self.assertEqual(self.measure(report, "page selection: kept pages")["shown"], "2 / 2 = 100.00%")
+
     def test_one_run_does_not_measure_determinism(self):
         with tempfile.TemporaryDirectory() as tmp:
             report = self.judge(self.folder(tmp, ["a-0001"], {"runs": 1}), [row("a-0001", set_name="qpdf")])
@@ -258,6 +299,24 @@ class JudgeTest(unittest.TestCase):
         text = phase7.markdown(report)
         self.assertIn("| Measure | Value | Threshold | Result |", text)
         self.assertEqual(text.count("| pass |") + text.count("| FAIL |"), 13)
+
+
+class SelectionPagesTest(unittest.TestCase):
+    # The expected lists come from the contract's algorithm compiled apart in C++.
+    def test_the_drawn_pages_match_the_contract(self):
+        self.assertEqual(phase7.selection_pages("a-0002", 3), [2, 3])
+        self.assertEqual(phase7.selection_pages("a-0001", 2), [2])
+        self.assertEqual(phase7.selection_pages("qpdf-0001", 7), [2, 1])
+        self.assertEqual(len(phase7.selection_pages("dccc-0129", 394)), 200)
+        self.assertEqual(phase7.selection_pages("dccc-0129", 394)[:5], [141, 318, 136, 243, 207])
+
+    def test_a_selection_is_a_proper_subset_of_distinct_pages(self):
+        for pages in range(2, 12):
+            for name in ("x-0001", "x-0002", "x-0003"):
+                kept = phase7.selection_pages(name, pages)
+                self.assertTrue(0 < len(kept) < pages)
+                self.assertEqual(len(set(kept)), len(kept))
+                self.assertTrue(all(1 <= p <= pages for p in kept))
 
 
 class OptionalContentTest(unittest.TestCase):
