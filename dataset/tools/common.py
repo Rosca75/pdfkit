@@ -59,7 +59,8 @@ EXPECTATIONS = {
     "expect_find": ("find", ("agree", "known_gap:", "n/a")),
     # The pages pdfkit_inspect names as not read in full (docs/ABI.md
     # damaged_pages), which pdfkit_text names alike: none, exactly these
-    # pages, at least one page not yet recorded, a known gap, or n/a.
+    # pages, at least one page whose number the manifest does not hold, a
+    # known gap, or n/a.
     "expect_damage": ("inspect", ("none", "pages:", "some", "known_gap:", "n/a")),
 }
 

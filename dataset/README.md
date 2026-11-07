@@ -66,7 +66,7 @@ one row per file, sorted by `id`. No cell holds a tab or a line end.
 | `expect_set_metadata` | `clean` (the metadata rewrite of `tests/dataset/outcome.md` passes the self-check, re-opens without repair with the input's page count, and its Info dictionary and XMP packet carry the written values; PDFium's text and Info fields and the output's bytes hold no original value, which `tests/pdfium/leak.py --metadata` measures), `known_gap:<reason>` or `n/a` (no field present, or a file pdfkit refuses) |
 | `expect_redact_images` | `clean` (the seeded image treatment of `tests/dataset/outcome.md` writes an output that re-opens without repair with the input's page count and still lists none of the treated or removed identities; PDFium's bitmaps hold no original sample inside a treated rectangle, the output holds no original's encoded bytes and the pages are pixel-stable outside the treated draws' rectangles, which `tests/pdfium/` measures), `known_gap:<reason>` or `n/a` (a file with no image the job can treat, or one pdfkit refuses) |
 | `expect_find` | `agree` (the redaction job's words found by `pdfkit_find` name the same glyph ranges as the occurrences `pdfkit_redact_text` answers for the same searches, and an occurrence sent back as a located match removes exactly that one, which `tests/dataset/gates/phase12.py` judges), `known_gap:<reason>` or `n/a` (a file pdfkit refuses) |
-| `expect_damage` | the pages `pdfkit_inspect` names in `damaged_pages` (`docs/ABI.md` §4.4.1), which `pdfkit_text` must name alike: `none` (every page read in full), `pages:<n>,<n>...` (exactly those pages, ascending), `some` (at least one page, which ones not yet recorded), `known_gap:<reason>` (inspect and text must still agree) or `n/a` (a file pdfkit refuses) |
+| `expect_damage` | the pages `pdfkit_inspect` names in `damaged_pages` (`docs/ABI.md` §4.4.1), which `pdfkit_text` must name alike: `none` (every page read in full), `pages:<n>,<n>...` (exactly those pages, ascending), `some` (at least one page, whose numbers the row does not hold), `known_gap:<reason>` (inspect and text must still agree) or `n/a` (a file pdfkit refuses) |
 | `notes` | free text: what a generated file plants, why PDFium refused it (`pdfium:<error>`) |
 
 A new catalogue function adds its expectation column here and in
@@ -135,7 +135,7 @@ overrides them from provenance:
   `add.py`); `python tests/dataset/run.py --write-damage` writes every run
   row's value from its inspect answer (`pages:<list>` or `none`), keeping
   `n/a` and the known gaps, and a run's failures in this column are the files
-  whose damage the manifest does not record yet. The column sits before
+  whose damage the manifest does not record. The column sits before
   `notes`, after `expect_find`.
 
 ## 4. The licence rule
