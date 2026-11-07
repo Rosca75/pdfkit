@@ -37,6 +37,27 @@ hours and $20 to $40. **Alternative: leave it** and keep doc-anonymiser's
 rule of never removing a mode-7 glyph as hidden text; no cost, and a page
 whose clip text is redacted may show an image in full.
 
+### 1.3 Text on a damaged page that PDFium reads and pdfkit does not is not redacted
+
+Found on 2026-11-07 while measuring 0.3.0-preview against 0.2.1-preview; both
+versions behave alike. The content stream of page 13 of `opf-0019` (and of its
+mutation `mutate-0046`) is damaged in the corpus file itself: its Flate data
+fails its checksum and part of it decodes to garbage. pdfkit reads 699
+characters of that page (a `damaged_stream` warning); PDFium reads the page
+almost whole. A word only PDFium reads is neither found nor removed by pdfkit,
+and the self-check, which reads as pdfkit does, passes: a search for "Large"
+left one "Large" on that page that PDFium reads in the output, and "Most"
+likewise in `mutate-0046`.
+
+**Recommended: refuse to write a text redaction of a page whose content
+stream is damaged**, naming the page, so doc-anonymiser falls back to its
+other route for that file; about 1 to 2 hours and $20 to $40. **Alternative:
+read past the damage as PDFium does**, recovering at the next operator, then
+measure the dataset; about 6 to 12 hours and $120 to $250, and a reader that
+guesses at garbage may still miss what another reader shows. **Alternative:
+leave it**; no cost, and such a page can keep a word the caller asked to
+remove.
+
 ## 2. Answered on 2026-10-28
 
 The section numbers are those of the file before this date; its full text is

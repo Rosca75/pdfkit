@@ -479,24 +479,33 @@ visible set first and the hidden set after (§8).
 - **Words**: two consecutive glyphs on one line are one word when the gap
   between the first's advance end and the second's origin is under 0.1 of the
   font size (pdfminer's `word_margin`), under 0.3 when both glyphs' fonts
-  draw space glyphs on that line (their other gaps are letter spacing and
-  kerning), and under 1.0 between two ideographic, kana, hangul or
-  full-width glyphs (scripts written without spaces); beyond 2.0 of the font
-  size the line ends there, a block boundary. The spaced gap is a property
-  of the font pair rather than of the line, because a font placing its words
-  by position alone keeps its narrow gaps beside one that draws spaces (a
-  placeholder of realistic text drawn into a line set without space glyphs).
-  A decoded space or a `TJ` adjustment wider than the word gap both end a
-  word, because a space glyph is routinely absent and kerning numbers
-  routinely split words. A glyph in another font (by name) that starts more
-  than 0.1 of the size before the advance of the glyph read ahead of it ends
-  (on a right-to-left line, whose advance overlaps it by that much) also
-  ends a word, because it was drawn over that glyph rather than after it (a
-  placeholder running over the next word, a stamp over a line); an accent
-  (a combining mark, a spacing modifier or a spacing accent of ASCII or
-  Latin-1) drawn over its letter in another font stays in the letter's
-  word. The dataset measured the gaps: inside words they lie within 0.07 of
-  the size, between positioned words from 0.15 up.
+  mark their words with space glyphs where they are drawn (their other gaps
+  are letter spacing and kerning), and under 1.0 between two ideographic,
+  kana, hangul or full-width glyphs (scripts written without spaces); beyond
+  2.0 of the font size the line ends there, a block boundary. A font marks
+  its words with spaces in a segment of the line drawn in one go when a
+  space glyph of any font is drawn there straight after one of its glyphs:
+  a producer that draws every space in one face and every letter in another
+  keeps its letter spacing inside words (`dccc-0077`), while spaces drawn
+  apart from a line's words (hyphens set later between a hymn's syllables)
+  and a placeholder's own spaces leave a line set by position with its
+  narrow gaps. A font is named without its subset tag and without a `+`
+  and digits suffix, so two subsets or two encodings of one face are one
+  font. A decoded space or a `TJ` adjustment wider than the word gap both
+  end a word, because a space glyph is routinely absent and kerning numbers
+  routinely split words. A glyph in another font on the same baseline
+  (within 0.05 of the size) that starts more than 0.1 of the size before the
+  glyph read ahead of it ends (where its advance or its width ends,
+  whichever comes first, so character spacing a `TJ` number takes back is
+  no overlap; on a right-to-left line, whose advance overlaps it by that
+  much) also ends a word, because it was drawn over that glyph rather than
+  after it (a placeholder running over the next word, a stamp over a line).
+  A space is never drawn over; an accent (a combining mark, a spacing
+  modifier or a spacing accent of ASCII or Latin-1) drawn over its letter in
+  another font stays in the letter's word, a subscript or superscript is off
+  the baseline, and the same text drawn again where the glyph starts is a
+  bold made of two faces. The dataset measured the gaps: inside words they
+  lie within 0.07 of the size, between positioned words from 0.15 up.
 - **Lines**: glyphs whose baselines (the text line, the rise left out) agree
   within a fifth of the font size, in the direction their advance runs (a
   negative font size or scaling runs it backwards), so rotated text forms its
@@ -513,8 +522,10 @@ visible set first and the hidden set after (§8).
   running over the next word) is kept whole, so a string drawn over another
   reads as two strings rather than as their letters interleaved: it takes
   its place where it starts when that is in a gap of the placed glyphs, and
-  otherwise follows them. Every other piece, and a run of one or two glyphs,
-  takes its place by position.
+  otherwise follows them. Every other piece stays whole too and takes its
+  place where it starts, since no placed glyph stands in its gaps, so a
+  space of another column set inside one of its glyphs does not cut a word;
+  a run of one or two glyphs takes its place glyph by glyph by position.
 - **Direction**: a line whose strong characters are mostly right-to-left
   (Hebrew, Arabic) reads from its far end, its left-to-right runs (Latin words,
   numbers) kept left to right; a left-to-right line reads its right-to-left
