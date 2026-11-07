@@ -258,7 +258,7 @@ class JudgeTest(unittest.TestCase):
             run_dir = self.folder(tmp, ["qpdf-0001"], multi=("qpdf-0001",))
             outcome = json.loads((run_dir / "outcomes" / "qpdf-0001.json").read_text(encoding="utf-8"))
             outcome["open"]["pages"] = 7
-            outcome["select"] = {"status": "refused", "code": "limit_exceeded"}
+            outcome["select"] = {"status": "refused", "code": "limit_exceeded", "pages": [2, 1]}
             (run_dir / "outcomes" / "qpdf-0001.json").write_text(json.dumps(outcome), encoding="utf-8")
             (run_dir / "pdfium-select.json").write_text(json.dumps({"files": {}}), encoding="utf-8")
             report = self.judge(run_dir, rows)
@@ -267,6 +267,32 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(report["uncompared_pages"]["select"],
                          [{"file": "qpdf-0001", "pages": 2, "compared": 0,
                            "cause": "page selection refused (limit_exceeded)"}])
+
+    def failed_selection(self, tmp: str, select: dict) -> dict:
+        """The report of a run whose one seven-page file has the given selection member."""
+        rows = [row("qpdf-0001", pages="7", set_name="qpdf")]
+        run_dir = self.folder(tmp, ["qpdf-0001"], multi=("qpdf-0001",))
+        outcome = json.loads((run_dir / "outcomes" / "qpdf-0001.json").read_text(encoding="utf-8"))
+        outcome["open"]["pages"] = 7
+        outcome["select"] = select
+        (run_dir / "outcomes" / "qpdf-0001.json").write_text(json.dumps(outcome), encoding="utf-8")
+        (run_dir / "pdfium-select.json").write_text(json.dumps({"files": {}}), encoding="utf-8")
+        return self.judge(run_dir, rows)
+
+    def test_a_failed_selection_counts_the_pages_its_outcome_names(self):
+        # The verb writes the kept pages into a selection that failed; those count, not a new draw.
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self.failed_selection(tmp, {"status": "error", "code": "internal", "pages": [5, 1, 3]})
+        self.assertEqual(self.measure(report, "page selection: kept pages")["shown"],
+                         "0 / 3 = 0.00% (3 pages not compared, listed below)")
+
+    def test_a_selection_whose_output_was_not_stored_counts_the_drawn_pages(self):
+        # An output the verb could not store names no pages: the contract's draw counts.
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self.failed_selection(tmp, {"status": "error", "code": "output_failed"})
+        self.assertEqual(report["uncompared_pages"]["select"],
+                         [{"file": "qpdf-0001", "pages": 2, "compared": 0,
+                           "cause": "page selection error (output_failed)"}])
 
     def test_a_clean_selection_run_names_no_page(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -302,7 +328,8 @@ class JudgeTest(unittest.TestCase):
 
 
 class SelectionPagesTest(unittest.TestCase):
-    # The expected lists come from the contract's algorithm compiled apart in C++.
+    # The expected lists are the C++ verb's own draws, pinned by the unit tier's
+    # tests/unit/cli/dataset_selection_test.cpp, so a change to either copy fails a test.
     def test_the_drawn_pages_match_the_contract(self):
         self.assertEqual(phase7.selection_pages("a-0002", 3), [2, 3])
         self.assertEqual(phase7.selection_pages("a-0001", 2), [2])

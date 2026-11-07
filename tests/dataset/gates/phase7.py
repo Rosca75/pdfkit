@@ -23,7 +23,9 @@
 # or selection that failed, a page of the manifest's count PDFium does not render).
 # A file with no outcome is judged for page selection on the manifest's page count,
 # and the pages its selection keeps are the ones the outcome contract draws for its
-# id, so a hang counts against both selection rows rather than leaving them. The text
+# id, so a hang counts against both selection rows rather than leaving them; a
+# selection that failed counts the pages it would keep, as its outcome names them
+# or, when it names none, as the contract draws them. The text
 # agreement of an identity write leaves out the input's text of its switched-off
 # optional-content layers, which every write removes (places.py), read only for
 # a file under 1.0.
@@ -305,11 +307,12 @@ def uncompared_kept_pages(multi: list[dict], outcomes: dict, entries: dict, summ
 
 
 def kept_count(row: dict, outcome: dict | None) -> int:
-    """How many pages the file's selection keeps: those it names when it was written, else those
-    the contract draws from the page count the selection is judged on."""
+    """How many pages the file's selection keeps: those its outcome names, written or failed,
+    else (no outcome, or an output that could not be stored) those the contract draws from the
+    page count the selection is judged on."""
     select = (outcome or {}).get("select")
-    if select and select.get("status") == "ok":
-        return len(select.get("pages") or [])
+    if select and isinstance(select.get("pages"), list):
+        return len(select["pages"])
     return len(selection_pages(row["id"], selection_source_pages(row, outcome)))
 
 
