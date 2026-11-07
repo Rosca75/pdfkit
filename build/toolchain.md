@@ -371,3 +371,121 @@ sanitizer report and no crash; `--timeout-scale 5` lets every file finish with
 room for a loaded machine. Run as documented (`bs-final-asan`): all 960 files
 in 1,039 s, every expectation held, no sanitizer report, the slowest at 3.6
 times its release limit.
+
+## 7. Linux (test only)
+
+The test tiers also run on a Linux host, for the reference readers that are
+packaged for Linux and for sessions that have no Windows machine. Linux is a
+test platform only: no Linux artefact is packaged, released or budgeted,
+`build/package.py`, `build/check_artefact.py` and the Windows presets are
+unchanged, and every rule of sections 1 to 6 stays the laptop's. The versions
+below are what the commands printed on Ubuntu 24.04.5 LTS (x86_64, four
+logical processors) on 2026-11-07.
+
+| Tool | Command | What it printed |
+|---|---|---|
+| GCC (C and C++), `linux-debug` | `gcc --version` | `gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0` |
+| clang (C and C++), `linux-release` | `clang --version` | `Ubuntu clang version 18.1.3 (1ubuntu1)` |
+| MinGW-w64 GCC, for clang-tidy's target headers only | `x86_64-w64-mingw32-g++ --version` | `x86_64-w64-mingw32-g++ (GCC) 13-posix` |
+| CMake, from PyPI in a virtual environment | `cmake --version` | `cmake version 4.3.2` |
+| Ninja, from PyPI | `ninja --version` | `1.13.2.git.kitware.jobserver-pipe-1` |
+| ccache | `ccache --version` | `ccache version 4.9.1` |
+| clang-format, from PyPI | `clang-format --version` | `clang-format version 23.1.3` |
+| clang-tidy, from PyPI | `clang-tidy --version` | `LLVM version 23.1.3` |
+| fontTools, from PyPI | `python3 -c "import fontTools; print(fontTools.version)"` | `4.67.0` |
+| Python | `python3 --version` | `Python 3.13.18` |
+| git | `git --version` | `git version 2.43.0` |
+| .NET SDK | `dotnet --version` | `10.0.114` |
+| Rust, through rustup | `rustc --version`, `cargo --version` | `rustc 1.97.0 (2d8144b78 2026-07-07)`, `cargo 1.97.0 (c980f4866 2026-06-30)` |
+
+The reference readers come from the distribution's packages, each binary named
+with its SHA-256 as installed:
+
+| Package | Version | Binary | SHA-256 |
+|---|---|---|---|
+| `poppler-utils` | `24.02.0-1ubuntu9.11` | `/usr/bin/pdftotext` | `46e5639c4096edd4bb06963cc7219401f9b91e0390fe40b3ba1482d1b5386c63` |
+| | | `/usr/bin/pdfimages` | `6cc39af8f3a4a4ec65d60d9ea48b21e8736db8c3d9ab0fafc8fb8b613bab06bd` |
+| | | `/usr/bin/pdftoppm` | `43a3c46cc7c98ab3741050d805dc35153f9b5d2bbe045fd3cc2701d9bc79387d` |
+| | | `/usr/bin/pdfinfo` | `a77b2df7a2461aba1f33706daaf5ba4d78304e971686173b6db3b10a9fe44d65` |
+| `mupdf-tools` | `1.23.10+ds1-1build3` | `/usr/bin/mutool` | `9203440040cc38ee412aeedbfe57f452d6b85709c5b1600ca6ab2aa05478ab73` |
+| `qpdf` (with `libqpdf29t64`) | `11.9.0-1.1ubuntu0.1` | `/usr/bin/qpdf` | `10fc302c4ca9860f24b8d2cb7f8a4cc454ba59d4a91e7a8e40f6b2c229486df7` |
+
+PDFium is bblanchon's `pdfium-linux-x64.tgz` of the same release as the
+laptop's (chromium/8111), SHA-256
+`bdc60126399f39fe768566a18d4be055a7b3681bc9e248e8a6656b4f6cae0aa2`, computed
+from the download because the release page and the GitHub API answer 403
+through this host's proxy; the same download route served the Windows asset
+with the digest read on the release page. `tests/pdfium/fetch.py` picks the
+asset by platform and extracts the archive's lib/libpdfium.so into
+`build/cache/pdfium/chromium-8111-linux-x64/`, beside and never inside the
+Windows folder, and the answers cache is keyed by the archive digest, so the
+two binaries' answers never mix.
+
+The presets, which exist only on a Linux host (each carries a host condition):
+
+| Preset | Compiler | What it is for |
+|---|---|---|
+| `linux-debug` (configure and build), `unit-linux` (test) | GCC, Debug | the unit tier |
+| `linux-release` (configure and build), `unit-linux-release` (test) | clang, Release | the CLI, the shared library `pdfkit.so` and the image census the dataset, PDFium and ABI tiers run |
+
+Both compile position-independent code, since the shared library is linked
+from the static core's objects, and pass `-D_GNU_SOURCE
+-DOPJ_HAVE_POSIX_MEMALIGN` to the C compiler: OpenJPEG's configuration
+(`third_party/openjpeg/CMakeLists.txt`) records MinGW-w64's `_aligned_malloc`,
+which glibc lacks, so the define makes its allocator take `posix_memalign`
+first, and `_GNU_SOURCE` declares that function under C11 without extensions.
+They compile through ccache like every other preset, but ccache 4.9.1 keeps
+its objects in its default folder (`~/.cache/ccache`, which `ccache -s`
+counts) rather than in the `cache_dir` its command line names, so the main
+checkout's `build/cache/ccache/` stays absent on this host; every worktree of
+the host still shares that one default folder. The release preset is clang because GCC 13 at `-O2` stops on a
+`-Wmaybe-uninitialized` in `src/syntax/object_streams.cpp` (the `std::variant`
+of `syntax::Object`), a warning the pinned GCC 16 does not give; the GCC Debug
+build is unaffected.
+
+The commands, with the virtual environment's `bin` first on `PATH`:
+
+```
+cmake --preset linux-debug && cmake --build --preset linux-debug -j3
+ctest --preset unit-linux
+cmake --preset linux-release && cmake --build --preset linux-release -j3
+ctest --preset unit-linux-release
+python3 dataset/tools/fetch.py && python3 dataset/tools/synth/run.py --check && python3 dataset/tools/mutate.py --restore
+python3 dataset/tools/fetch.py --verify --no-materialise
+python3 tests/dataset/run.py --run-id <run-id>
+python3 tests/pdfium/fetch.py && python3 tests/pdfium/text_agreement.py --run <run-id>
+python3 tests/abi/run.py
+python3 build/check.py --fast
+```
+
+The dataset, PDFium and ABI tiers find the Linux builds through
+`common.build_presets()` (`dataset/tools/common.py`): `out/linux-release`
+first, then `out/linux-debug`, with suffix-less executables and `pdfkit.so`.
+`build/check.py --fast` is unchanged: it configures `mingw-debug` with the host
+GCC only for its compile database, and clang-tidy analyses that database for
+the Windows target (`--target=x86_64-w64-mingw32`), which is why the MinGW-w64
+headers are installed. The ABI tier runs both halves: the .NET caller loads
+the library by path and is built for the machine read from its ELF header.
+
+Not run on Linux: the `mingw-*`, `clang-sanitize` and `arm64-*` builds and
+their tiers, `build/check.py` routine and `--full` (they build `mingw-release`
+and read a PE import table), `build/check_artefact.py` and `build/package.py`.
+The 7 `office` rows of the manifest have no file here, since only the laptop's
+Office applications make them.
+
+The proxy of this host is set through `HTTPS_PROXY` and its own CA bundle, and
+behaved so on 2026-11-07:
+
+| Request | Outcome |
+|---|---|
+| GitHub release assets (`https://github.com/<owner>/<repo>/releases/download/...`), through `curl` and Python's `urllib` | download |
+| `https://github.com/bblanchon/pdfium-binaries/releases/tag/...`, its `expanded_assets` page and `api.github.com` for that repository | 403 |
+| `https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz` (the `liberation` row of `dataset/sources.tsv`) | 403 |
+| `git clone` of a public repository over HTTPS, PyPI, raw.githubusercontent.com, digitalcorpora.org | answer |
+| crates.io | answers when the request carries a `User-Agent` |
+
+The synthesiser reads Liberation Sans from `dataset/cache/liberation/`, so with
+the archive refused the two faces are copied there from
+`third_party/liberation-fonts/`, which holds the same members of the same
+archive (`third_party/inventory.tsv`); `python3 dataset/tools/synth/run.py
+--check` then reproduces every synthesised row byte for byte.
