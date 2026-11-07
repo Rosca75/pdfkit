@@ -12,8 +12,10 @@
 # text; the input's text of its switched-off optional-content layers, which
 # every write removes, is left out), and writes the table of every measure (measure, value, threshold,
 # pass or fail) with the files behind each failure into a markdown and a JSON
-# file named after this script in the run folder. A treated rectangle that
-# keeps an original sample, a removed or treated identity still drawn, or an
+# file named after this script in the run folder; a file that fails the re-open
+# row is named with the reason (no outcome because the run hung on it or crashed,
+# no output written, or an output that re-opens with a repair or other pages).
+# A treated rectangle that keeps an original sample, a removed or treated identity still drawn, or an
 # original's encoded bytes anywhere in an output is a survival, and one stops
 # the line. With --write-manifest it fills the manifest's expect_redact_images
 # column from the run instead: `clean` for a file whose job treated an image,
@@ -34,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import common  # noqa: E402
 import places  # noqa: E402
-from phase7 import Measures, dataset_run, read_json  # noqa: E402
+from phase7 import Measures, dataset_run, missing_cause, read_json  # noqa: E402
 
 PIXELS = 0.99
 REOPEN = 1.0
@@ -145,7 +147,13 @@ def judge(run_dir: Path, rows: list[dict], workers: int, with_text: bool) -> dic
                 and not reopen.get("repairs") and reopen.get("pages") == opened.get("pages")):
             good.append(row["id"])
         else:
-            bad.append({"id": row["id"], "status": part.get("status"), "code": part.get("code"),
+            if row["id"] not in outcomes:
+                cause = missing_cause(row["id"], summary)
+            elif part.get("status") != "ok" or not part.get("output"):
+                cause = f"no output written: {part.get('status') or 'not run'}"
+            else:
+                cause = "the output re-opens with a repair or other pages"
+            bad.append({"id": row["id"], "cause": cause, "status": part.get("status"), "code": part.get("code"),
                         "message": (part.get("message") or "")[:300], "reopen": reopen})
     measures.share("outputs written that re-open without repair with the input's pages (known gaps apart)",
                    len(good), len(judged), REOPEN, {"failed": bad, "known_gaps": gaps})

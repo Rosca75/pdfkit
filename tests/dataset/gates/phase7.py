@@ -18,15 +18,24 @@
 # file holding optional content must hold no /OCProperties and no /OC name. The result is a markdown table of every
 # measure (measure, value, threshold, pass or fail), written into the run folder
 # as a markdown and a JSON file named after this script, with every differing
-# page listed by file, page and cause. The text agreement of an identity write
-# leaves out the input's text of its switched-off optional-content layers,
-# which every write removes (places.py), read only for a file under 1.0.
+# page listed by file, page and cause, and every page of the population PDFium did
+# not compare listed by file with the reason (a run that hung on the file, a write
+# or selection that failed, a page of the manifest's count PDFium does not render).
+# A file with no outcome is judged for page selection on the manifest's page count,
+# and the pages its selection keeps are the ones the outcome contract draws for its
+# id, so a hang counts against both selection rows rather than leaving them; a
+# selection that failed counts the pages it would keep, as its outcome names them
+# or, when it names none, as the contract draws them. The text
+# agreement of an identity write leaves out the input's text of its switched-off
+# optional-content layers, which every write removes (places.py), read only for
+# a file under 1.0.
 # A page whose comparison names no cause is `unclassified` until the analyst
 # writes its cause into <run>/causes.json, a map from "<id>:<page>" to the text.
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -156,6 +165,40 @@ def pages_of(row: dict) -> int:
     return int(row["pages"]) if row["pages"].isdigit() else 0
 
 
+def selection_pages(row_id: str, pages: int) -> list[int]:
+    """The source pages the dataset verb keeps for a file of `pages` pages, in output order, as
+    tests/dataset/outcome.md defines them: SplitMix64 seeded with the first eight bytes of the
+    SHA-256 of `7:<id>` keeps each page whose draw has its top bit set (page 1 when none, all but
+    the last when all), then Fisher-Yates shuffles them from the last index down."""
+    state = int.from_bytes(hashlib.sha256(f"7:{row_id}".encode("utf-8")).digest()[:8], "big")
+    mask = (1 << 64) - 1
+
+    def draw() -> int:
+        nonlocal state
+        state = (state + 0x9E3779B97F4A7C15) & mask
+        z = state
+        z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & mask
+        z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & mask
+        return z ^ (z >> 31)
+
+    kept = [page for page in range(1, pages + 1) if draw() >> 63]
+    if not kept:
+        kept = [1]
+    elif len(kept) == pages:
+        kept.pop()
+    for i in range(len(kept) - 1, 0, -1):
+        j = draw() % (i + 1)
+        kept[i], kept[j] = kept[j], kept[i]
+    return kept
+
+
+def selection_source_pages(row: dict, outcome: dict | None) -> int:
+    """The page count a selection of the file draws from: pdfkit's when the run wrote an outcome,
+    the manifest's when it wrote none (a hang or a crash), so such a file stays in the selection
+    rows and fails them."""
+    return pdfkit_pages(outcome) if outcome is not None else pages_of(row)
+
+
 def pdfkit_pages(outcome: dict | None) -> int:
     """pdfkit's page count of a file, 0 when it did not open: the pages a selection draws from.
     PDFium's count can differ (it trusts a root /Count the tree does not hold), and a selection
@@ -196,9 +239,10 @@ class Measures:
         self.rows.append({"measure": name, "value": value, "shown": shown, "threshold": threshold,
                           "pass": bool(passed), "detail": detail or {}})
 
-    def share(self, name: str, count: int, total: int, minimum: float, detail=None) -> None:
+    def share(self, name: str, count: int, total: int, minimum: float, detail=None, note: str = "") -> None:
         value = share(count, total)
         shown = "not measured" if value is None else f"{count} / {total} = {value:.2%}"
+        shown += f" ({note})" if note and value is not None else ""
         self.add(name, value, shown, f">= {minimum:.1%}" if minimum < 1 else "100%",
                  value is not None and value >= minimum, detail)
 
@@ -216,6 +260,77 @@ def differing_pages(entries: dict | None, ids: set, causes: dict) -> list[dict]:
             key = f"{row_id}:{diff['page']}"
             out.append({"file": row_id, "page": diff["page"], "pixels": diff.get("pixels"),
                         "cause": causes.get(key) or diff.get("cause") or "unclassified"})
+    return out
+
+
+def missing_cause(row_id: str, summary: dict) -> str:
+    """Why a file of the population has no outcome, as the run's summary records it."""
+    if row_id in summary.get("hangs", []):
+        return "no outcome: the run hung on the file"
+    if any(c.get("id") == row_id for c in summary.get("crashes", [])):
+        return "no outcome: the run crashed or erred"
+    return "no outcome"
+
+
+def gap_cause(row: dict, outcome: dict | None, kind: str, entry: dict | None, summary: dict) -> str:
+    """Why the pages of one file were not compared by the `kind` check (write or select)."""
+    part = (outcome or {}).get(kind) or {}
+    if outcome is None:
+        cause = missing_cause(row["id"], summary)
+        return cause + (f"; kept pages drawn for the manifest's {pages_of(row)} pages" if kind == "select" else "")
+    if part.get("status") != "ok" or not part.get("output"):
+        code = f" ({part['code']})" if part.get("code") else ""
+        name = "identity write" if kind == "write" else "page selection"
+        return f"{name} {part.get('status') or 'not run'}{code}"
+    if entry is None:
+        return f"no entry in pdfium-{kind}.json: run compare.py --check {kind}"
+    if not entry.get("input_opens"):
+        return "PDFium does not open the input"
+    return ""
+
+
+def uncompared_kept_pages(multi: list[dict], outcomes: dict, entries: dict, summary: dict) -> list[dict]:
+    """The kept pages of each judged selection that the select check rendered no pair for, with
+    pages left out, pages compared and why; they stay in the share's denominator."""
+    out = []
+    for row in multi:
+        outcome = outcomes.get(row["id"])
+        entry = entries.get(row["id"])
+        expected = kept_count(row, outcome)
+        compared = entry.get("pages", 0) if entry and entry.get("input_opens") else 0
+        if compared >= expected:
+            continue
+        cause = (gap_cause(row, outcome, "select", entry, summary)
+                 or f"PDFium compared {compared} of the {expected} kept pages")
+        out.append({"file": row["id"], "pages": expected - compared, "compared": compared, "cause": cause})
+    return out
+
+
+def kept_count(row: dict, outcome: dict | None) -> int:
+    """How many pages the file's selection keeps: those its outcome names, written or failed,
+    else (no outcome, or an output that could not be stored) those the contract draws from the
+    page count the selection is judged on."""
+    select = (outcome or {}).get("select")
+    if select and isinstance(select.get("pages"), list):
+        return len(select["pages"])
+    return len(selection_pages(row["id"], selection_source_pages(row, outcome)))
+
+
+def uncompared_pages(opened: list[dict], outcomes: dict, entries: dict, summary: dict) -> list[dict]:
+    """The pages of each file PDFium opens as input that the write check rendered no pair for:
+    file, pages left out, pages compared and why. They stay in the share's denominator, because
+    a page with no output is not reproduced, and are named here because no differing-page entry
+    names them."""
+    out = []
+    for row in opened:
+        expected = pages_of(row)
+        entry = entries.get(row["id"])
+        compared = entry.get("pages", 0) if entry and entry.get("input_opens") else 0
+        if compared >= expected:
+            continue
+        cause = (gap_cause(row, outcomes.get(row["id"]), "write", entry, summary)
+                 or f"PDFium renders {compared} of the manifest's {expected} pages")
+        out.append({"file": row["id"], "pages": expected - compared, "compared": compared, "cause": cause})
     return out
 
 
@@ -286,8 +401,11 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
     total_pages = sum(pages_of(r) for r in opened)
     identical = sum(write_entries.get(r["id"], {}).get("identical", 0) for r in opened)
     write_diffs = differing_pages(write_entries, ids, causes)
+    write_uncompared = uncompared_pages(opened, outcomes, write_entries, summary)
+    left_out = sum(u["pages"] for u in write_uncompared)
     measures.share("identity write: pages pixel-identical to the input (annotations off)", identical,
-                   total_pages, WRITE_PIXELS, {"differing_pages": len(write_diffs)})
+                   total_pages, WRITE_PIXELS, {"differing_pages": len(write_diffs), "pages_not_compared": left_out},
+                   f"{left_out} pages not compared, listed below" if left_out else "")
 
     text_entries = text_write.get("files", {})
     perfect, adjusted = text_perfect(run_dir, opened, text_entries, outcomes)
@@ -319,7 +437,7 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
                  f"{len(planted['oc_named'])} of {named['files'] + family['files']}", "0",
                  not planted["oc_named"] and not family["failed"], {"files": planted["oc_named"][:50]})
 
-    multi = [r for r in opened if pdfkit_pages(outcomes.get(r["id"])) >= 2]
+    multi = [r for r in opened if selection_source_pages(r, outcomes.get(r["id"])) >= 2]
     counted = [r["id"] for r in multi if select_count_right(r, outcomes.get(r["id"]), pixel_select)]
     measures.share("page selection, files of two or more pages: output page count right", len(counted),
                    len(multi), SELECT_COUNT, {"failing": sorted({r["id"] for r in multi} - set(counted))[:50]})
@@ -327,13 +445,18 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
     select_entries = pixel_select.get("files", {})
     kept_pages, kept_identical = 0, 0
     for r in multi:
-        select = (outcomes.get(r["id"]) or {}).get("select")
+        outcome = outcomes.get(r["id"])
+        kept_pages += kept_count(r, outcome)
+        select = (outcome or {}).get("select")
         if select and select.get("status") == "ok":
-            kept_pages += len(select.get("pages") or [])
             kept_identical += select_entries.get(r["id"], {}).get("identical", 0)
     select_diffs = differing_pages(select_entries, ids, causes)
+    select_uncompared = uncompared_kept_pages(multi, outcomes, select_entries, summary)
+    kept_left_out = sum(u["pages"] for u in select_uncompared)
     measures.share("page selection: kept pages pixel-identical to their source pages", kept_identical,
-                   kept_pages, SELECT_PIXELS, {"differing_pages": len(select_diffs)})
+                   kept_pages, SELECT_PIXELS, {"differing_pages": len(select_diffs),
+                                               "pages_not_compared": kept_left_out},
+                   f"{kept_left_out} pages not compared, listed below" if kept_left_out else "")
 
     measures.zero("page selection leak test over the planted multi-page files", len(planted["leaks"]),
                   {"files": planted["leak_files"], "violations": planted["leaks"][:50]})
@@ -352,6 +475,7 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
 
     return {"run": run_dir.name, "population": len(population), "outcomes": len(outcomes),
             "rows": measures.rows, "differing_pages": {"write": write_diffs, "select": select_diffs},
+            "uncompared_pages": {"write": write_uncompared, "select": select_uncompared},
             "planted": {k: v for k, v in planted.items()}, "passed": all(m["pass"] for m in measures.rows)}
 
 
@@ -467,6 +591,12 @@ def markdown(report: dict) -> str:
                       "| File | Page | Pixels | Cause |", "|---|---|---|---|"]
             lines += [f"| {d['file']} | {d['page']} | {'' if d['pixels'] is None else d['pixels']} | {d['cause']} |"
                       for d in diffs]
+    for kind in ("write", "select"):
+        uncompared = report.get("uncompared_pages", {}).get(kind, [])
+        if uncompared:
+            lines += ["", f"## Pages of the {kind} check not compared ({sum(u['pages'] for u in uncompared)})", "",
+                      "| File | Pages | Compared | Cause |", "|---|---|---|---|"]
+            lines += [f"| {u['file']} | {u['pages']} | {u['compared']} | {u['cause']} |" for u in uncompared]
     planted = report["planted"]
     for key, title in (("surviving", "Markers of stripped channels found in an output"),
                        ("off_surviving", "Markers of optional-content layers turned off found in an output"),

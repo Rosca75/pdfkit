@@ -7,7 +7,13 @@
 
 add_executable(pdfkit_tests
   main.cpp
+  ../../cli/arguments.cpp
+  ../../cli/json_text.cpp
+  ../../cli/output.cpp
   ../../cli/sha256.cpp
+  ../../cli/support.cpp
+  ../../cli/verbs/dataset_write.cpp
+  cli/dataset_selection_test.cpp
   cli/sha256_test.cpp
   images/arithmetic_decoder_test.cpp
   images/ccitt_decoder_test.cpp
@@ -120,10 +126,13 @@ add_executable(pdfkit_tests
   text/text_layout_test.cpp)
 # Fixtures are written by the support library, included as "support/...".
 # The CLI's own SHA-256 is compiled in too, as "cli/sha256.hpp", to check it
-# against the library's.
+# against the library's, and the dataset verb's page selection with the CLI
+# sources it reads, to pin its seeded draw; those sources include their own
+# headers by bare name, so the cli folder is on the include path.
 target_include_directories(pdfkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
                                                 "${CMAKE_CURRENT_SOURCE_DIR}/fonts"
-                                                "${PROJECT_SOURCE_DIR}")
+                                                "${PROJECT_SOURCE_DIR}"
+                                                "${PROJECT_SOURCE_DIR}/cli")
 target_link_libraries(pdfkit_tests PRIVATE pdfkit_core doctest)
 pdfkit_warnings(pdfkit_tests)
 pdfkit_sanitize(pdfkit_tests)

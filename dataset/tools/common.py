@@ -160,6 +160,18 @@ def pdfium_cache_dir() -> Path:
     return main_checkout() / "build" / "cache" / "pdfium"
 
 
+def build_presets() -> tuple[str, ...]:
+    """The build folders under out/ a test tier takes pdfkit from, release first.
+
+    The Windows presets, or on a Linux host the test-only Linux presets
+    (build/toolchain.md, "Linux (test only)"), whose executables carry no suffix
+    and whose shared library is pdfkit.so.
+    """
+    if sys.platform.startswith("linux"):
+        return ("linux-release", "linux-debug")
+    return ("mingw-release", "mingw-debug")
+
+
 def manifest_path() -> Path:
     return committed_dataset_dir() / "manifest.tsv"
 

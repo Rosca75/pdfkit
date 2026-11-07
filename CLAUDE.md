@@ -544,7 +544,9 @@ out was analysed in full when its last change entered main.
 - **CMake with Ninja**, driven by `CMakePresets.json`: `mingw-debug`,
   `mingw-release`, `mingw-sanitize`, `clang-sanitize` (llvm-mingw, for
   AddressSanitizer), and `arm64-debug` and `arm64-release` (llvm-mingw's
-  aarch64 clang, for Windows ARM64). Targets: `pdfkit` (the shared library), `pdfkit_core` (the
+  aarch64 clang, for Windows ARM64), and, on a Linux host for the test tiers
+  only, `linux-debug` (GCC) and `linux-release` (clang), which ship nothing
+  (`build/toolchain.md`, "Linux (test only)"). Targets: `pdfkit` (the shared library), `pdfkit_core` (the
   static library every test links), `pdfkit_cli` (the `pdfkit` executable),
   `pdfkit_tests` (the unit tier), `pdfkit_image_census` (the image decoders'
   dataset census), and one target per vendored component.
