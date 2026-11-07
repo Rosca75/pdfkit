@@ -123,7 +123,7 @@ class ContentLexer {
   std::size_t faults_ = 0;
   std::vector<Loss> losses_;
   // The BX sections open, inside which an unknown operator is no loss
-  // (ISO 32000-1 section 7.8.2, read).
+  // (ISO 32000-1 section 7.8.2, recalled).
   std::size_t compatibility_ = 0;
   bool string_lost_ = false;
 };

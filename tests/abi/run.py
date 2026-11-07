@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT / "dataset" / "tools"))
 
 import common  # noqa: E402
 
-EXPECTED_ABI = 3
+EXPECTED_ABI = 4
 # The COFF machine field of a PE file and the PlatformTarget a .NET process loading it needs
 # (the PE and COFF specification, recalled; a library of each build reads back as named).
 MACHINES = {0x8664: "x64", 0xAA64: "ARM64"}
