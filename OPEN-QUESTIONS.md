@@ -49,14 +49,27 @@ and the self-check, which reads as pdfkit does, passes: a search for "Large"
 left one "Large" on that page that PDFium reads in the output, and "Most"
 likewise in `mutate-0046`.
 
-**Recommended: refuse to write a text redaction of a page whose content
-stream is damaged**, naming the page, so doc-anonymiser falls back to its
-other route for that file; about 1 to 2 hours and $20 to $40. **Alternative:
-read past the damage as PDFium does**, recovering at the next operator, then
-measure the dataset; about 6 to 12 hours and $120 to $250, and a reader that
-guesses at garbage may still miss what another reader shows. **Alternative:
-leave it**; no cost, and such a page can keep a word the caller asked to
-remove.
+**Answered 2026-11-07: refuse to write a text redaction of a page whose
+content stream is damaged**, naming the page, so doc-anonymiser falls back to
+its other route for that file, because pdfkit serves an anonymiser first and
+must never let a caller believe text was read and removed when it was not.
+The same refusal covers the bytes such a stream copies as they were (a word
+of the damaged data that no reader shows but a byte search finds, `budget` in
+`mutate-0046`). The extraction of such a page carries the warning a caller
+can act on. Action: a session implements the refusal with its tests, its
+`docs/ABI.md` and `docs/DESIGN.md` rows and the dataset expectations.
+
+### 1.4 Word cuts that differ from the reference readers
+
+Answered 2026-11-07 by the owner: for an anonymiser, a word cut where the
+document has none (`Re cue i l`, `06 51`) or two words glued (`Lordfromheav'n`)
+can hide a name or a number from the caller's detection, so a drop of text
+agreement against the reference readers is never accepted as small. Action:
+a session examines each file whose agreement is below 0.2.1-preview
+(`dccc-0124`, `dccc-0139`, `dccc-0097`, `pdfpig-0005`) and the Latin digits
+glued to ideographs of `dccc-0073`, judges each cut by the reader panel
+(§2.2), fixes what the panel calls wrong with a test seen red first, and
+reports a case the panel splits on.
 
 ## 2. Answered on 2026-10-28
 
