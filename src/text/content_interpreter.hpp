@@ -52,8 +52,13 @@ class ContentInterpreter {
   ContentInterpreter(syntax::Document& document, fonts::FontLoader& loader,
                      const OptionalContent& optional_content);
 
+  // What a walk reads: everything, or only what names the page's damage
+  // (every stream decoded and lexed, every form a Do draws followed, and no
+  // record made), which costs a fraction of a full reading.
+  enum class Reading : std::uint8_t { full, damage };
+
   // Interprets one page of the document.
-  [[nodiscard]] PageContent run(const syntax::Page& page);
+  [[nodiscard]] PageContent run(const syntax::Page& page, Reading reading = Reading::full);
 
  private:
   // One page's walk, defined in the source file.

@@ -4,7 +4,9 @@
 // The scan reads the pages it has no answer for through one text reader per
 // call, which shares the font cache and the decoded forms across those
 // pages and is dropped when the call returns, so the scan keeps only the
-// answers. A limit (the operator count, a stream or the document past its
+// answers. Each page is read for its damage alone (the same decoding,
+// lexing and form walk, no records), and a damaged page again in full for
+// the glyphs read on it. A limit (the operator count, a stream or the document past its
 // bytes) names the page not_checked with the limit's own message; any other
 // failure is the document's and passes through.
 
@@ -27,7 +29,14 @@ std::vector<syntax::PageDamage> DamageScan::pages(std::span<const std::uint32_t>
         reader = std::make_unique<TextReader>(*document_);
       }
       try {
-        read_[number] = reader->interpret(number).damaged_page();
+        // The damage reading first, and the full one, which counts the
+        // glyphs, only for a page it found damaged.
+        std::optional<syntax::PageDamage> damage =
+            reader->interpret(number, ContentInterpreter::Reading::damage).damaged_page();
+        if (damage) {
+          damage = reader->interpret(number).damaged_page();
+        }
+        read_[number] = std::move(damage);
       } catch (const platform::Error& error) {
         if (error.code() != platform::ErrorCode::limit_exceeded) {
           throw;

@@ -122,8 +122,8 @@ using Operation = syntax::ContentLexer::Operation;
 
 class ContentInterpreter::Walk {
  public:
-  Walk(ContentInterpreter& owner, const syntax::Page& page)
-      : owner_(owner), document_(*owner.document_), page_(page) {
+  Walk(ContentInterpreter& owner, const syntax::Page& page, Reading reading)
+      : owner_(owner), document_(*owner.document_), page_(page), reading_(reading) {
     content_.page = page.number;
     content_.media_box = page.media_box;
     content_.crop_box = page.crop_box;
@@ -269,6 +269,13 @@ class ContentInterpreter::Walk {
   void operate(const Operation& operation, std::size_t index, std::size_t stream,
                const std::vector<std::byte>& bytes, const syntax::Resources& resources, int depth) {
     const std::string& op = operation.op;
+    if (reading_ == Reading::damage) {
+      // Only the forms a draw reaches, whose streams name damage too.
+      if (op == "Do") {
+        draw_object(operation, index, stream, resources, depth);
+      }
+      return;
+    }
     GraphicsState::State& state = state_.current();
     if (op == "q") {
       close_figure();
@@ -1054,6 +1061,7 @@ class ContentInterpreter::Walk {
   ContentInterpreter& owner_;
   syntax::Document& document_;
   const syntax::Page& page_;
+  Reading reading_;
   PageContent content_;
   GraphicsState state_;
   TextPosition text_;
@@ -1074,8 +1082,8 @@ ContentInterpreter::ContentInterpreter(syntax::Document& document, fonts::FontLo
                                        const OptionalContent& optional_content)
     : document_(&document), loader_(&loader), optional_content_(&optional_content) {}
 
-PageContent ContentInterpreter::run(const syntax::Page& page) {
-  return Walk(*this, page).run();
+PageContent ContentInterpreter::run(const syntax::Page& page, Reading reading) {
+  return Walk(*this, page, reading).run();
 }
 
 }  // namespace pdfkit::text
