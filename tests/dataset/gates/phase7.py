@@ -18,9 +18,12 @@
 # file holding optional content must hold no /OCProperties and no /OC name. The result is a markdown table of every
 # measure (measure, value, threshold, pass or fail), written into the run folder
 # as a markdown and a JSON file named after this script, with every differing
-# page listed by file, page and cause. The text agreement of an identity write
-# leaves out the input's text of its switched-off optional-content layers,
-# which every write removes (places.py), read only for a file under 1.0.
+# page listed by file, page and cause, and every page of the population PDFium did
+# not compare listed by file with the reason (a run that hung on the file, a write
+# that failed, a page of the manifest's count PDFium does not render). The text
+# agreement of an identity write leaves out the input's text of its switched-off
+# optional-content layers, which every write removes (places.py), read only for
+# a file under 1.0.
 # A page whose comparison names no cause is `unclassified` until the analyst
 # writes its cause into <run>/causes.json, a map from "<id>:<page>" to the text.
 
@@ -196,9 +199,10 @@ class Measures:
         self.rows.append({"measure": name, "value": value, "shown": shown, "threshold": threshold,
                           "pass": bool(passed), "detail": detail or {}})
 
-    def share(self, name: str, count: int, total: int, minimum: float, detail=None) -> None:
+    def share(self, name: str, count: int, total: int, minimum: float, detail=None, note: str = "") -> None:
         value = share(count, total)
         shown = "not measured" if value is None else f"{count} / {total} = {value:.2%}"
+        shown += f" ({note})" if note and value is not None else ""
         self.add(name, value, shown, f">= {minimum:.1%}" if minimum < 1 else "100%",
                  value is not None and value >= minimum, detail)
 
@@ -216,6 +220,44 @@ def differing_pages(entries: dict | None, ids: set, causes: dict) -> list[dict]:
             key = f"{row_id}:{diff['page']}"
             out.append({"file": row_id, "page": diff["page"], "pixels": diff.get("pixels"),
                         "cause": causes.get(key) or diff.get("cause") or "unclassified"})
+    return out
+
+
+def missing_cause(row_id: str, summary: dict) -> str:
+    """Why a file of the population has no outcome, as the run's summary records it."""
+    if row_id in summary.get("hangs", []):
+        return "no outcome: the run hung on the file"
+    if any(c.get("id") == row_id for c in summary.get("crashes", [])):
+        return "no outcome: the run crashed or erred"
+    return "no outcome"
+
+
+def uncompared_pages(opened: list[dict], outcomes: dict, entries: dict, summary: dict) -> list[dict]:
+    """The pages of each file PDFium opens as input that the write check rendered no pair for:
+    file, pages left out, pages compared and why. They stay in the share's denominator, because
+    a page with no output is not reproduced, and are named here because no differing-page entry
+    names them."""
+    out = []
+    for row in opened:
+        expected = pages_of(row)
+        entry = entries.get(row["id"])
+        compared = entry.get("pages", 0) if entry and entry.get("input_opens") else 0
+        if compared >= expected:
+            continue
+        outcome = outcomes.get(row["id"])
+        write = (outcome or {}).get("write") or {}
+        if outcome is None:
+            cause = missing_cause(row["id"], summary)
+        elif write.get("status") != "ok" or not write.get("output"):
+            code = f" ({write['code']})" if write.get("code") else ""
+            cause = f"identity write {write.get('status') or 'not run'}{code}"
+        elif entry is None:
+            cause = "no entry in pdfium-write.json: run compare.py --check write"
+        elif not entry.get("input_opens"):
+            cause = "PDFium does not open the input"
+        else:
+            cause = f"PDFium renders {compared} of the manifest's {expected} pages"
+        out.append({"file": row["id"], "pages": expected - compared, "compared": compared, "cause": cause})
     return out
 
 
@@ -286,8 +328,11 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
     total_pages = sum(pages_of(r) for r in opened)
     identical = sum(write_entries.get(r["id"], {}).get("identical", 0) for r in opened)
     write_diffs = differing_pages(write_entries, ids, causes)
+    write_uncompared = uncompared_pages(opened, outcomes, write_entries, summary)
+    left_out = sum(u["pages"] for u in write_uncompared)
     measures.share("identity write: pages pixel-identical to the input (annotations off)", identical,
-                   total_pages, WRITE_PIXELS, {"differing_pages": len(write_diffs)})
+                   total_pages, WRITE_PIXELS, {"differing_pages": len(write_diffs), "pages_not_compared": left_out},
+                   f"{left_out} pages not compared, listed below" if left_out else "")
 
     text_entries = text_write.get("files", {})
     perfect, adjusted = text_perfect(run_dir, opened, text_entries, outcomes)
@@ -352,6 +397,7 @@ def judge(run_dir: Path, rows: list[dict], family: dict | None = None) -> dict:
 
     return {"run": run_dir.name, "population": len(population), "outcomes": len(outcomes),
             "rows": measures.rows, "differing_pages": {"write": write_diffs, "select": select_diffs},
+            "uncompared_pages": {"write": write_uncompared},
             "planted": {k: v for k, v in planted.items()}, "passed": all(m["pass"] for m in measures.rows)}
 
 
@@ -467,6 +513,11 @@ def markdown(report: dict) -> str:
                       "| File | Page | Pixels | Cause |", "|---|---|---|---|"]
             lines += [f"| {d['file']} | {d['page']} | {'' if d['pixels'] is None else d['pixels']} | {d['cause']} |"
                       for d in diffs]
+    uncompared = report.get("uncompared_pages", {}).get("write", [])
+    if uncompared:
+        lines += ["", f"## Pages of the write check not compared ({sum(u['pages'] for u in uncompared)})", "",
+                  "| File | Pages | Compared | Cause |", "|---|---|---|---|"]
+        lines += [f"| {u['file']} | {u['pages']} | {u['compared']} | {u['cause']} |" for u in uncompared]
     planted = report["planted"]
     for key, title in (("surviving", "Markers of stripped channels found in an output"),
                        ("off_surviving", "Markers of optional-content layers turned off found in an output"),

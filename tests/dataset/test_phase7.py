@@ -190,6 +190,50 @@ class JudgeTest(unittest.TestCase):
                          [{"file": "a-0001", "page": 2, "pixels": 40, "cause": "unclassified"}])
         self.assertEqual(classified["differing_pages"]["write"][0]["cause"], "an OFF layer")
 
+    def test_the_pages_of_a_hung_file_count_against_the_share_and_are_named(self):
+        # A file the run hung on has no outcome and no rendering: its pages stay in the
+        # denominator, because a page with no output is not reproduced, and the report names
+        # them with the reason they were not compared.
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row("a-0001", set_name="qpdf"), row("a-0002", pages="3", set_name="qpdf")]
+            report = self.judge(self.folder(tmp, ["a-0001"], {"hangs": ["a-0002"]}), rows)
+        measure = self.measure(report, "identity write: pages pixel-identical")
+        self.assertEqual(measure["value"], 0.25)
+        self.assertEqual(measure["shown"], "1 / 4 = 25.00% (3 pages not compared, listed below)")
+        self.assertEqual(report["uncompared_pages"]["write"],
+                         [{"file": "a-0002", "pages": 3, "compared": 0,
+                           "cause": "no outcome: the run hung on the file"}])
+        text = phase7.markdown(report)
+        self.assertIn("## Pages of the write check not compared (3)", text)
+        self.assertIn("| a-0002 | 3 | 0 | no outcome: the run hung on the file |", text)
+
+    def test_a_write_that_failed_or_a_page_pdfium_does_not_render_is_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row("a-0001", pages="2", set_name="qpdf"), row("a-0002", pages="2", set_name="qpdf"),
+                    row("a-0003", set_name="qpdf")]
+            run_dir = self.folder(tmp, ["a-0001", "a-0002", "a-0003"], {"crashes": [{"id": "a-0003", "exit": 4}]})
+            (run_dir / "outcomes" / "a-0003.json").unlink()
+            outcome = json.loads((run_dir / "outcomes" / "a-0002.json").read_text(encoding="utf-8"))
+            outcome["write"] = {"status": "refused", "code": "limit_exceeded"}
+            (run_dir / "outcomes" / "a-0002.json").write_text(json.dumps(outcome), encoding="utf-8")
+            files = {"a-0001": {"input_opens": True, "output_opens": True, "pages": 1, "identical": 1,
+                                "differing": []}}
+            (run_dir / "pdfium-write.json").write_text(json.dumps({"files": files}), encoding="utf-8")
+            report = self.judge(run_dir, rows)
+        self.assertEqual(self.measure(report, "identity write: pages pixel-identical")["shown"],
+                         "1 / 5 = 20.00% (4 pages not compared, listed below)")
+        self.assertEqual(report["uncompared_pages"]["write"], [
+            {"file": "a-0001", "pages": 1, "compared": 1, "cause": "PDFium renders 1 of the manifest's 2 pages"},
+            {"file": "a-0002", "pages": 2, "compared": 0, "cause": "identity write refused (limit_exceeded)"},
+            {"file": "a-0003", "pages": 1, "compared": 0, "cause": "no outcome: the run crashed or erred"}])
+
+    def test_a_run_that_compares_every_page_names_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self.judge(self.folder(tmp, ["a-0001"]), [row("a-0001", set_name="qpdf")])
+        self.assertEqual(report["uncompared_pages"]["write"], [])
+        self.assertEqual(self.measure(report, "identity write: pages pixel-identical")["shown"], "1 / 1 = 100.00%")
+        self.assertNotIn("not compared", phase7.markdown(report))
+
     def test_one_run_does_not_measure_determinism(self):
         with tempfile.TemporaryDirectory() as tmp:
             report = self.judge(self.folder(tmp, ["a-0001"], {"runs": 1}), [row("a-0001", set_name="qpdf")])
