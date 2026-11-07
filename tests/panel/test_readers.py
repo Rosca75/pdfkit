@@ -206,12 +206,21 @@ class PixelsTest(unittest.TestCase):
         indexed = pixels.read_png(png(2, 1, 3, 8, [b"\x01\x00"], [0], palette=b"\x00\x00\x00\xff\x80\x00"))
         self.assertEqual((indexed["layout"], indexed["samples"]), ("rgb", b"\xff\x80\x00\x00\x00\x00"))
 
-    def test_a_pdfium_bitmap_becomes_rgba(self):
+    def test_a_pdfium_bitmap_is_composited_over_white(self):
         bgra = bytes([1, 2, 3, 255, 4, 5, 6, 0]) + b"\xee" * 4  # one row of two pixels, stride 12
         image = pixels.from_bgra(2, 1, 12, bgra, 4)
-        self.assertEqual((image["layout"], image["samples"]), ("rgba", bytes([3, 2, 1, 255, 6, 5, 4, 0])))
+        self.assertEqual((image["layout"], image["samples"]), ("rgb", bytes([3, 2, 1, 255, 255, 255])))
+        half = pixels.from_bgra(1, 1, 4, bytes([0, 0, 0, 128]), 4)
+        self.assertEqual(half["samples"], bytes([127, 127, 127]))
         bgr = pixels.from_bgra(1, 1, 4, b"\x01\x02\x03\x00", 2)
         self.assertEqual(bgr["samples"], b"\x03\x02\x01")
+
+    def test_a_neutral_rgb_image_is_kept_as_gray(self):
+        neutral = pixels.image(2, 1, "rgb", bytes([9, 9, 9, 200, 200, 200]), "ppm")
+        self.assertEqual(pixels.compact(neutral)["layout"], "gray")
+        self.assertEqual(pixels.compact(neutral)["samples"], bytes([9, 200]))
+        coloured = pixels.image(1, 1, "rgb", bytes([9, 9, 8]), "ppm")
+        self.assertEqual(pixels.compact(coloured)["layout"], "rgb")
 
 
 class PinsTest(unittest.TestCase):

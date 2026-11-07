@@ -12,7 +12,9 @@
 # /Decode array into account where FPDFImageObj_GetBitmap ignores the mask and
 # the matrix (fpdf_edit.h); the image object's matrix is first set to its own
 # pixel size (FPDFPageObj_SetMatrix with [w 0 0 h 0 0]), so the bitmap has the
-# image's own width and height and no page transform. The document is in
+# image's own width and height and no page transform. The BGRA bitmap is
+# composited over white, as a viewer shows it on a white page, so a stencil
+# mask reads black where it paints. The document is in
 # memory and never saved, so the matrix change touches nothing else. Images are
 # found by the SHA-256 of their encoded data (FPDFImageObj_GetImageDataRaw),
 # pages and the forms they draw walked, as the image agreement aligns them, and
@@ -159,13 +161,14 @@ def rendered(lib, doc, page, obj) -> dict:
         data = ctypes.string_at(lib.FPDFBitmap_GetBuffer(bitmap), stride * h)
     finally:
         lib.FPDFBitmap_Destroy(bitmap)
-    result = pixels.from_bgra(w, h, stride, data, fmt)
+    result = pixels.compact(pixels.from_bgra(w, h, stride, data, fmt))
+    del data
     result["bitmap_format"] = fmt
     result["pixel_size"] = [width.value, height.value]
     return result
 
 
-def handle_pixels(library: pdfium.Library, doc, request: dict) -> dict:
+def handle_pixels(library: pdfium.Library, doc, request: dict, out: Path) -> dict:
     """request["images"]: [{"object", "raw", "pages"}]; request["order"]: page -> the object
     numbers of the images that page draws, in draw order (Poppler's listing, null for an inline
     image), when known.
@@ -203,7 +206,8 @@ def handle_pixels(library: pdfium.Library, doc, request: dict) -> dict:
                     if item is None or str(named) in answers or number not in item.get("pages", []):
                         continue
                     if item["raw"] == digest:
-                        answers[str(named)] = dict(rendered(lib, doc, page, obj), matched="draw_order")
+                        answers[str(named)] = spill(dict(rendered(lib, doc, page, obj), matched="draw_order"),
+                                                    out, str(named))
                 continue
             for digest in sorted({d for _, d in walked}):
                 objects = [obj for obj, d in walked if d == digest]
@@ -216,7 +220,8 @@ def handle_pixels(library: pdfium.Library, doc, request: dict) -> dict:
                 alone = len(candidates) == 1 and (len(objects) == 1 or (
                     drawn is not None and sum(1 for n in drawn if str(n) == candidates[0]) == len(objects)))
                 if alone:
-                    answers[candidates[0]] = dict(rendered(lib, doc, page, objects[0]), matched="bytes")
+                    answers[candidates[0]] = spill(dict(rendered(lib, doc, page, objects[0]), matched="bytes"),
+                                                   out, candidates[0])
                 else:
                     for key in candidates:
                         answers[key] = {"error": "ambiguous", "detail": f"{len(objects)} drawn images and "
@@ -226,6 +231,16 @@ def handle_pixels(library: pdfium.Library, doc, request: dict) -> dict:
     for item in request.get("images", []):
         answers.setdefault(str(item["object"]), {"error": "not_found" if item.get("raw") else "no_raw_digest"})
     return {"ok": True, "images": answers}
+
+
+def spill(entry: dict, out: Path, name: str) -> dict:
+    """Writes an answer's samples into `out` and names the file in their place."""
+    samples = entry.pop("samples", None)
+    if samples is not None:
+        target = out / f"{name}.samples"
+        target.write_bytes(samples)
+        entry["samples_file"] = str(target)
+    return entry
 
 
 def handle(library: pdfium.Library, request: dict) -> dict:
@@ -238,10 +253,9 @@ def handle(library: pdfium.Library, request: dict) -> dict:
         if request["kind"] == "pages":
             return handle_pages(library, doc)
         if request["kind"] == "image_pixels":
-            answer = handle_pixels(library, doc, request.get("request", {}))
-            for entry in answer["images"].values():
-                if "samples" in entry:
-                    entry["samples"] = entry["samples"].hex()
+            # The samples go to files in the caller's scratch folder, not through the pipe: an
+            # image of a hundred million pixels would not fit a JSON line.
+            answer = handle_pixels(library, doc, request.get("request", {}), Path(request["out"]))
             return answer
     return readers.unsupported(NAME, request["kind"])
 
@@ -354,10 +368,12 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
         return text_shape(_TimedProbe(timeout).probe(path, ["text"]))
     if kind not in ("pages", "image_pixels"):
         return readers.unsupported(NAME, kind)
-    result = POOLS.get("panel").ask({"path": str(path), "kind": kind, "request": request}, timeout)
-    for entry in (result.get("images") or {}).values():
-        if "samples" in entry:
-            entry["samples"] = bytes.fromhex(entry["samples"])
+    with readers.scratch() as folder:
+        result = POOLS.get("panel").ask({"path": str(path), "kind": kind, "request": request,
+                                         "out": str(folder)}, timeout)
+        for entry in (result.get("images") or {}).values():
+            if "samples_file" in entry:
+                entry["samples"] = Path(entry.pop("samples_file")).read_bytes()
     return result
 
 

@@ -14,10 +14,10 @@
 # where two objects hold the same bytes. A non-zero exit with Poppler's message
 # is its refusal of the file.
 #
-# Sources: the manual pages pdftotext(1), pdfinfo(1) and pdfimages(1) of
-# poppler-utils 24.02.0 (`man pdftotext`, `man pdfinfo`, `man pdfimages` on the
-# Linux host, read on 2026-11-07); the form feed after each page, the numbering
-# from 0 within a page range and the default formats were seen on dataset files.
+# Sources: the usage text of pdftotext, pdfinfo and pdfimages 24.02.0 (each run
+# with -h on the Linux host, read on 2026-11-07); the form feed after each
+# page, the numbering from 0 within a page range, the listing's columns and the
+# default formats were seen on qpdf-0026, synth-0263 and dccc-0003.
 
 from __future__ import annotations
 
@@ -128,7 +128,7 @@ def page_pixels(path: Path, page: int, objects: set[int], timeout: float) -> dic
                 out[str(row["object"])] = {"error": "not_written"}
                 continue
             try:
-                out[str(row["object"])] = dict(pixels.read_any(image.read_bytes()), type=row["type"])
+                out[str(row["object"])] = dict(pixels.compact(pixels.read_any(image.read_bytes())), type=row["type"])
             except pixels.PixelError as err:
                 out[str(row["object"])] = {"error": "unreadable_output", "detail": str(err)}
     return out

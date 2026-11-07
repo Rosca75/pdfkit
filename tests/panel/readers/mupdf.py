@@ -114,7 +114,7 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
                     images[str(number)] = {"error": "not_written"}
                     continue
                 try:
-                    images[str(number)] = pixels.read_any(written[0].read_bytes())
+                    images[str(number)] = pixels.compact(pixels.read_any(written[0].read_bytes()))
                 except pixels.PixelError as err:
                     images[str(number)] = {"error": "unreadable_output", "detail": str(err),
                                            "file": written[0].suffix}

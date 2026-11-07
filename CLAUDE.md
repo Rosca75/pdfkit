@@ -184,6 +184,7 @@ third_party/      vendored sources, one folder per component with its licence fi
 tests/unit/       unit tests over fixtures written in code (tests/unit/support/ holds the PDF builder)
 tests/dataset/    the dataset harness: runs the CLI over the manifest and checks expectations
 tests/pdfium/     the PDFium comparison: binding, text, image and metadata agreement, rendering, leak check
+tests/panel/      the reference panel: one adapter per reader, the Rust adapters, the fetch tool, the answers cache and collection
 tests/abi/        the C ABI from .NET (dotnet/) and Python (python/), run by run.py
 dataset/          manifest.tsv, taxonomy.tsv, README.md, tools/; files/, cache/ and reports/ are ignored
 docs/             DESIGN.md, ABI.md, SOURCES.md, archive/build/ (the build plans of finished phases)
@@ -514,9 +515,10 @@ out was analysed in full when its last change entered main.
   `cli/` (beyond the CLI's own reading of the paths its user names) opens a
   socket, a URL or a file; nothing follows a `/URI`, a launch action, an external
   stream (`/F`) or runs JavaScript. `build/check_network.py` fails on a socket,
-  HTTP or URL API and on a link to a networking library; the dataset fetch tools
-  and `tests/pdfium/fetch.py` are its only named exemptions, each with its
-  reason, because they are developer tools that never ship.
+  HTTP or URL API and on a link to a networking library; the dataset fetch tools,
+  `tests/pdfium/fetch.py` and `tests/panel/fetch.py` are its only named
+  exemptions, each with its reason, because they are developer tools that never
+  ship.
 - **Determinism.** Every sort is stable; every geometric key is rounded to
   0.01 pt before comparison; no output depends on hash-map iteration order,
   time, locale or randomness; numbers are formatted with `std::to_chars`;

@@ -277,6 +277,32 @@ to find it.
 | The security handler algorithms the mutator writes (1 to 5, 2.A, 2.B, 8 to 10) | ISO 32000-1 §7.6.3.3; ISO 32000-2 §7.6.4 | | read in the design record; PDFium opens every mutated file encrypted with the empty user password and refuses the others |
 | Word `ExportAsFixedFormat` and `PrintOut`, Excel `ExportAsFixedFormat` and `PrintOut`, PowerPoint `SaveAs` (32) and `PrintOut`, Edge `--headless --print-to-pdf` | https://learn.microsoft.com/en-us/office/vba/api/overview/ | | recalled; each outcome is recorded in the generation log the script writes |
 
+### The reference panel
+
+The members of `tests/panel/` and every fact its adapters rely on about them,
+read or tested on the Linux host on 2026-11-07 unless the row says otherwise.
+
+| Member or fact | Source | Licence as recorded | Status |
+|---|---|---|---|
+| Poppler: `poppler-utils` and `libpoppler134` 24.02.0-1ubuntu9.11 of Ubuntu 24.04 (`pdftotext`, `pdfinfo`, `pdfimages`, `pdftoppm`) | https://poppler.freedesktop.org/; the package versions from `dpkg-query` | GPL-2.0-or-later | read |
+| MuPDF: `mupdf-tools` 1.23.10+ds1-1build3 of Ubuntu 24.04 (`mutool`), built without ICC support (it prints "ICC support is not available") | https://mupdf.com/; `dpkg-query`; the tool's own warning | AGPL-3.0-or-later | read |
+| QPDF: `qpdf` and `libqpdf29t64` 11.9.0-1.1ubuntu0.1 of Ubuntu 24.04 | https://qpdf.sourceforge.io/; `dpkg-query` | Apache-2.0 | read |
+| pdf_oxide 0.3.78 (`PdfDocument::open`, `page_count`, `extract_text`, `get_page_visible_box`) and its crate checksum | https://crates.io/crates/pdf_oxide/0.3.78; src/document.rs of the crate as published; `tests/panel/rust/Cargo.lock` | MIT OR Apache-2.0 | read |
+| pdf_oxide 0.3.78 compiles as published only with `office_oxide` pinned `=0.1.9`; its positioned words are sometimes joined ("1Scope") | the owner's evaluation of 2026-10-28 (`docs/change-01.md` E8) | | recalled from that evaluation; the build with the pin succeeds |
+| pdf-extract 0.12.1 (`extract_text_from_mem_by_pages`, which decrypts with the empty password and stops at the first page it cannot read; it reads through lopdf 0.42.0) | https://crates.io/crates/pdf-extract/0.12.1; src/lib.rs of the crate as published | MIT | read |
+| lopdf 0.47.0 (`Document::load`, `is_encrypted`, `was_encrypted`, `decrypt`, `get_pages`, `objects`) | https://crates.io/crates/lopdf/0.47.0; src/reader.rs and src/document.rs of the crate as published | MIT | read |
+| /MediaBox is inheritable through the page tree's /Parent chain | ISO 32000-1 §7.7.3.4 | | recalled; the adapter reports what it finds |
+| `pdftotext -enc`, `pdfinfo -box -f -l`, `pdfimages -list -f -l` and its default output formats | the usage text of each tool 24.02.0 (`-h`) | | read; the form feed after each page, the numbering from 0 within a page range, the listing's columns and the PBM, PGM and PPM outputs (CMYK converted to RGB) tested on qpdf-0026, synth-0263 and dccc-0003 |
+| `mutool draw -F txt -o %d.txt`, `mutool pages`, `mutool extract -r` | the usage text of each subcommand 1.23.10 (run without arguments) | | read; one text file per page ending in a form feed, and `-r` decoding a CMYK JPEG to an RGB PNG (without it the JPEG is written as stored), tested on qpdf-0026 and dccc-0003 |
+| `qpdf --show-npages`, `--check` and its exit statuses (0, 2 errors, 3 warnings), `--show-object=<n> --raw-stream-data` | `qpdf --help=<option>` and `qpdf --help=exit-status` of 11.9.0 | | read; the raw stream bytes hash to what PDFium's `FPDFImageObj_GetImageDataRaw` gives, tested on the smoke set |
+| `FPDFImageObj_GetBitmap` "does not take the associated image mask into account. It also ignores the matrix"; `FPDFImageObj_GetRenderedBitmap(document, page, image_object)` "takes the image mask and image matrix into account" (`docs/change-01.md` E9); `FPDFImageObj_GetImagePixelSize`, `FPDFPageObj_GetMatrix` and `SetMatrix` with `FS_MATRIX`, `FPDFPage_GetRotation`, `FPDFPage_GetMediaBox` and `GetCropBox` | https://raw.githubusercontent.com/chromium/pdfium/main/public/fpdf_edit.h and fpdf_transformpage.h | | read on 2026-11-07; every symbol exported by the chromium/8111 Linux library (`nm -D`) |
+| PDFium's rendered bitmap of an image whose matrix is set to its own pixel size has that size and applies `/Decode` | `tests/panel/readers/pdfium_member.py` on synth-0265 (JBIG2, `/Decode [1 0]`) and synth-0263 (stencil masks) | | tested: object 4 of synth-0265 inverted at its own size and at the page's matrix alike |
+| Netpbm PBM, PGM, PPM and PAM; PNG's chunks and row filters | https://netpbm.sourceforge.net/doc/; https://www.w3.org/TR/png-3/ | | recalled; tested by `tests/panel/test_readers.py` and on the members' outputs |
+| MuPDF 1.28.5 for Windows, `mupdf-1.28.5-windows.zip`, SHA-256 `13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99` | https://mupdf.com/releases (the archive URL https://casper.mupdf.com/downloads/archive/mupdf-1.28.5-windows.zip) | AGPL-3.0-or-later | read on 2026-11-07; not downloaded on Linux |
+| Rust 1.99.1 for `x86_64-pc-windows-gnu`, `rust-1.99.1-x86_64-pc-windows-gnu.tar.xz`, SHA-256 `0210624b2eb2bdf4ec32c2a6caf5c3bd2ab84e5df66c7530023e37f02add1084` | https://static.rust-lang.org/dist/channel-rust-stable.toml (dated 2026-10-15) | MIT OR Apache-2.0 | read on 2026-11-07; not downloaded on Linux |
+| A Rust dist archive holds one folder per component, each with a `manifest.in` of the files it installs | rust-installer's archive layout | | recalled; `tests/panel/fetch.py` relies on it on Windows only, untested on Linux |
+| Poppler for Windows (oschwartz10612/poppler-windows) and QPDF for Windows: the latest release and its archive's SHA-256 | https://github.com/oschwartz10612/poppler-windows/releases; https://github.com/qpdf/qpdf/releases | GPL-2.0-or-later; Apache-2.0 | not readable from the Linux host (HTTP 403); recorded on the laptop with `python tests/panel/fetch.py --record` |
+
 ## 11. CLAUDE.md §9 and §10: the toolchain, the build and the C ABI
 
 Facts measured on the laptop are recorded with their commands in

@@ -9,10 +9,12 @@
 # module reads each into that form. A PBM sample 1 is black (Netpbm's pbm(5)),
 # so a bilevel image becomes gray 0 for black and 255 for white.
 #
-# Sources: the Netpbm formats pbm(5), pgm(5), ppm(5) and pam(5), read at
-# https://netpbm.sourceforge.net/doc/ ; PNG's chunk layout, colour types, bit
-# depths and the five row filters (None, Sub, Up, Average, Paeth) of the PNG
-# specification (W3C, third edition), read at https://www.w3.org/TR/png-3/ .
+# Sources: the Netpbm formats pbm(5), pgm(5), ppm(5) and pam(5)
+# (https://netpbm.sourceforge.net/doc/) and the PNG specification's chunk
+# layout, colour types, bit depths and five row filters (None, Sub, Up,
+# Average, Paeth; https://www.w3.org/TR/png-3/), both recalled; tested by
+# tests/panel/test_readers.py and on the members' outputs of synth-0263,
+# synth-0265, qpdf-0026 and dccc-0003.
 
 from __future__ import annotations
 
@@ -20,6 +22,9 @@ import struct
 import zlib
 
 LAYOUTS = {"gray": 1, "rgb": 3, "rgba": 4, "cmyk": 4}
+# A PBM byte as its eight gray samples, most significant bit first: 1 is black.
+_BITS = [bytes(0 if (byte >> (7 - i)) & 1 else 255 for i in range(8)) for byte in range(256)]
+_INVERT = bytes(255 - i for i in range(256))
 
 
 class PixelError(ValueError):
@@ -61,15 +66,12 @@ def read_pnm(data: bytes) -> dict:
     if magic == b"P4":
         (width, height), pos = _pnm_tokens(data, 2)
         stride = (width + 7) // 8
-        out = bytearray(width * height)
-        for y in range(height):
-            row = data[pos + y * stride: pos + (y + 1) * stride]
-            if len(row) != stride:
-                raise PixelError("a PBM raster shorter than its header")
-            for x in range(width):
-                if not (row[x >> 3] >> (7 - (x & 7))) & 1:
-                    out[y * width + x] = 255
-        return image(width, height, "gray", bytes(out), "pbm")
+        raster = data[pos:pos + stride * height]
+        if len(raster) != stride * height:
+            raise PixelError("a PBM raster shorter than its header")
+        expanded = b"".join(_BITS[b] for b in raster)  # 8 samples per byte, padding included
+        samples = b"".join(expanded[y * stride * 8: y * stride * 8 + width] for y in range(height))
+        return image(width, height, "gray", samples, "pbm")
     if magic in (b"P5", b"P6"):
         (width, height, maxval), pos = _pnm_tokens(data, 3)
         channels = 1 if magic == b"P5" else 3
@@ -213,24 +215,40 @@ def read_any(data: bytes) -> dict:
 
 
 def from_bgra(width: int, height: int, stride: int, data: bytes, fmt: int) -> dict:
-    """A PDFium bitmap (fpdfview.h: 1 gray, 2 BGR, 3 BGRx, 4 BGRA) in the common form."""
+    """A PDFium bitmap (fpdfview.h: 1 gray, 2 BGR, 3 BGRx, 4 BGRA) in the common form; a bitmap
+    with alpha is composited over white, as a viewer shows it on a white page."""
     per = {1: 1, 2: 3, 3: 4, 4: 4}.get(fmt)
     if per is None:
         raise PixelError(f"PDFium bitmap format {fmt}")
-    out = bytearray()
-    for y in range(height):
-        row = data[y * stride: y * stride + width * per]
-        # A strided copy per channel rather than a loop per pixel.
-        if fmt == 1:
-            out += row
-        elif fmt == 2:
-            rgb = bytearray(len(row))
-            rgb[0::3], rgb[1::3], rgb[2::3] = row[2::3], row[1::3], row[0::3]
-            out += rgb
-        else:
-            rgba = bytearray(len(row))
-            rgba[0::4], rgba[1::4], rgba[2::4] = row[2::4], row[1::4], row[0::4]
-            rgba[3::4] = row[3::4] if fmt == 4 else bytes([255]) * (len(row) // 4)
-            out += rgba
-    layout = {1: "gray", 2: "rgb", 3: "rgba", 4: "rgba"}[fmt]
-    return image(width, height, layout, bytes(out), "bitmap")
+    rows = b"".join(data[y * stride: y * stride + width * per] for y in range(height))
+    if fmt == 1:
+        return image(width, height, "gray", rows, "bitmap")
+    # A strided copy per channel rather than a loop per pixel.
+    blue, green, red = rows[0::per], rows[1::per], rows[2::per]
+    if fmt == 4:
+        alpha = rows[3::4]
+        red, green, blue = (over_white(channel, alpha) for channel in (red, green, blue))
+    rgb = bytearray(width * height * 3)
+    rgb[0::3], rgb[1::3], rgb[2::3] = red, green, blue
+    return image(width, height, "rgb", bytes(rgb), "bitmap")
+
+
+def over_white(channel: bytes, alpha: bytes) -> bytes:
+    """One channel composited over white: c * a / 255 + 255 * (1 - a / 255), rounded. An alpha of
+    only 0 and 255 (an opaque image, a stencil mask) takes a bitwise path: c OR (255 - a)."""
+    if set(alpha) <= {0, 255}:
+        size = len(channel)
+        merged = int.from_bytes(channel, "big") | int.from_bytes(alpha.translate(_INVERT), "big")
+        return merged.to_bytes(size, "big")
+    return bytes((c * a + 255 * (255 - a) + 127) // 255 for c, a in zip(channel, alpha))
+
+
+def compact(img: dict) -> dict:
+    """An RGB image whose every pixel is neutral (R = G = B) as gray, so a bilevel or gray image
+    is kept and compared at one sample per pixel whichever member wrote it."""
+    if img["layout"] == "rgb":
+        samples = img["samples"]
+        red = samples[0::3]
+        if red == samples[1::3] and red == samples[2::3]:
+            return dict(img, layout="gray", samples=red)
+    return img
