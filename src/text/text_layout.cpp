@@ -34,6 +34,10 @@ constexpr double baseline_tolerance = 0.2;
 // A glyph drawn this many font sizes before the one drawn just ahead of it on
 // its baseline starts a new run of the content.
 constexpr double run_backstep = 0.5;
+// Two glyphs whose baselines lie more than this many font sizes apart are not
+// one drawn over the other: a placeholder is drawn on the baseline of the
+// text it replaces, a subscript or a superscript off it.
+constexpr double overprint_baseline = 0.05;
 // Runs of at most this many glyphs take their place by position.
 constexpr std::size_t short_run = 2;
 // A painted shape this thin (in points) is a ruling.
@@ -80,6 +84,9 @@ struct Item {
   double low = 0.0;
   double high = 0.0;
   double origin = 0.0;
+  // Where the glyph's width ends along the line, its character and word
+  // spacing left out (the far side of its box from the origin).
+  double width_end = 0.0;
   double across = 0.0;
   double across_low = 0.0;
   double across_high = 0.0;
@@ -149,10 +156,29 @@ struct RawLine {
   return left_to_right_letter(c) || right_to_left_letter(c);
 }
 
-// The name of a glyph's font, so one face stated as two font objects is one
-// font; empty for a glyph without one.
+// The name of a glyph's font without a subset tag (six upper-case letters and
+// a plus sign, ISO 32000-1 section 9.6.4, recalled) and without a suffix of a
+// plus sign and digits (a further encoding of one face, "WarnockPro-Regular+20",
+// as the producers of the dataset's files write it), so one face stated as
+// several font objects, cut into subsets or encoded twice is one font; empty
+// for a glyph without one.
 [[nodiscard]] std::string_view font_name(const GlyphRecord& glyph) noexcept {
-  return glyph.font != nullptr ? std::string_view(glyph.font->name()) : std::string_view();
+  if (glyph.font == nullptr) {
+    return {};
+  }
+  std::string_view name(glyph.font->name());
+  constexpr std::size_t tag = 6;
+  if (name.size() > tag + 1 && name[tag] == '+' &&
+      std::all_of(name.begin(), name.begin() + tag, [](char c) { return c >= 'A' && c <= 'Z'; })) {
+    name.remove_prefix(tag + 1);
+  }
+  const std::size_t plus = name.rfind('+');
+  if (plus != std::string_view::npos && plus > 0 && plus + 1 < name.size() &&
+      std::all_of(name.begin() + static_cast<std::ptrdiff_t>(plus) + 1, name.end(),
+                  [](char c) { return c >= '0' && c <= '9'; })) {
+    name.remove_suffix(name.size() - plus);
+  }
+  return name;
 }
 
 // An accent a producer may draw over its letter on its own: a combining mark
@@ -234,6 +260,7 @@ class Builder {
     const Matrix::Point baseline = (glyph.text_matrix * glyph.ctm).apply(0.0, 0.0);
     item.across = key(frame.across(baseline.x, baseline.y));
     item.size = glyph.size > 0.01 ? glyph.size : std::max(glyph.box.height(), 1.0);
+    item.width_end = item.high;
     if (glyph.box.is_empty()) {
       const double across = frame.across(glyph.origin.x, glyph.origin.y);
       item.across_low = item.across_high = key(across);
@@ -244,6 +271,11 @@ class Builder {
                                  frame.across(box.left, box.top), frame.across(box.right, box.top)};
       item.across_low = key(*std::ranges::min_element(corners));
       item.across_high = key(*std::ranges::max_element(corners));
+      const double along[4] = {frame.along(box.left, box.bottom),
+                               frame.along(box.right, box.bottom), frame.along(box.left, box.top),
+                               frame.along(box.right, box.top)};
+      item.width_end =
+          key(start <= end ? *std::ranges::max_element(along) : *std::ranges::min_element(along));
     }
     return item;
   }
@@ -295,19 +327,34 @@ class Builder {
     }
   }
 
-  // Whether item, in another font than before, starts more than
-  // TextLayout::overprint_gap of the size before before's advance ends: it
-  // was placed over before rather than after it (a placeholder running over
-  // the next word, a stamp over a line). An accent drawn over its letter is
-  // left to its letter.
+  // Whether item, in another font than before and on its baseline, starts
+  // more than TextLayout::overprint_gap of the size before before ends: it
+  // was placed over before rather than after it (a placeholder
+  // running over the next word, a stamp over a line). A space paints nothing
+  // and is drawn over nothing; an accent drawn over its letter is left to
+  // its letter; a subscript or a superscript tucked
+  // under its letter's italic overhang is off the baseline; and the same
+  // text drawn again where before starts is a bold made of two faces.
   [[nodiscard]] bool drawn_over(const Item& before, const Item& item) const {
     const GlyphRecord& first = glyphs_[before.draw];
     const GlyphRecord& second = glyphs_[item.draw];
-    if (font_name(first) == font_name(second) || accent(first_code_point(first.text)) ||
-        accent(first_code_point(second.text))) {
+    if (font_name(first) == font_name(second) || first.is_space() || second.is_space() ||
+        accent(first_code_point(first.text)) || accent(first_code_point(second.text))) {
       return false;
     }
-    return item.low < before.high - (TextLayout::overprint_gap * std::max(before.size, item.size));
+    const double size = std::max(before.size, item.size);
+    if (std::abs(item.across - before.across) > overprint_baseline * size) {
+      return false;
+    }
+    if (first.text == second.text &&
+        std::abs(item.low - before.low) < TextLayout::overprint_gap * size) {
+      return false;
+    }
+    // Before ends where its advance or its width ends, whichever comes first:
+    // character spacing a TJ number takes back (TeX's mathematics) does not
+    // put the next glyph over it.
+    const double end = std::min(before.high, before.width_end);
+    return item.low < end - (TextLayout::overprint_gap * size);
   }
 
   // The glyphs of one baseline in visual order along it. The content's runs
@@ -321,11 +368,14 @@ class Builder {
   // whole, so it reads as a string of its own rather than as letters
   // interleaved with the other's: it takes its place where it starts when
   // that is in a gap of the placed glyphs, else follows them. Every other
-  // piece, and a run of one or two glyphs (an accent, a glyph drawn out of
-  // turn, right-to-left text drawn in logical order), takes its place by
-  // position. A glyph in another font drawn over the one drawn just ahead of
-  // it starts a run, so a string run over the next word is not shuffled into
-  // it.
+  // piece stays whole too and takes its place where it starts, since no
+  // placed glyph stands in its gaps: a placed glyph inside one of its
+  // advances (a space set at a tab stop of another column) does not cut a
+  // word. A run of one or two glyphs (an accent, a glyph drawn out of turn,
+  // right-to-left text drawn in logical order) takes its place glyph by
+  // glyph by position. A glyph in another font drawn over the one drawn just
+  // ahead of it starts a run, so a string run over the next word is not
+  // shuffled into it.
   [[nodiscard]] std::vector<std::size_t> visual_sequence(std::vector<std::size_t> cluster) const {
     std::ranges::stable_sort(cluster, {}, [&](std::size_t i) { return items_[i].draw; });
     std::vector<std::vector<std::size_t>> runs;
@@ -360,13 +410,7 @@ class Builder {
       for (const std::vector<std::size_t>& piece : pieces(sequence, run)) {
         const bool over =
             std::ranges::any_of(piece, [&](std::size_t i) { return covered(sequence, i); });
-        if (!over) {
-          for (const std::size_t i : piece) {
-            sequence.insert(std::ranges::upper_bound(sequence, i, by_position), i);
-          }
-          continue;
-        }
-        const auto at = covered(sequence, piece.front())
+        const auto at = over && covered(sequence, piece.front())
                             ? sequence.end()
                             : std::ranges::upper_bound(sequence, piece.front(), by_position);
         sequence.insert(at, piece.begin(), piece.end());
@@ -492,21 +536,48 @@ class Builder {
 
   // Splits a line into words: a space glyph ends one, and so does a gap past
   // the word gap of the two glyphs either side of it, which is the spaced
-  // one when both their fonts draw space glyphs on the line (so a font that
-  // places its words by position alone keeps its narrower gap beside one
-  // that draws spaces, a placeholder of realistic text for one), or a glyph
-  // drawn over the one read ahead of it.
+  // one when both their fonts mark their words with space glyphs on the line
+  // (so a font that places its words by position alone keeps its narrower
+  // gap beside one that draws spaces, a placeholder of realistic text for
+  // one), or a glyph drawn over the one read ahead of it. The line's glyphs
+  // fall into segments drawn one straight after another; a font marks its
+  // words with spaces in a segment when a space glyph, whatever font draws
+  // it, is drawn there just after one of its glyphs (a producer that takes
+  // every space from one face). Spaces drawn apart from a line's words (a
+  // string of hyphens placed later into the gaps of a hymn's syllables)
+  // leave the words as they were, and so does a placeholder's space, drawn
+  // just after a glyph of the placeholder.
   void split_words(RawLine& line) const {
-    std::vector<std::string_view> spacing_fonts;
+    std::vector<std::size_t> draws;
+    draws.reserve(line.items.size());
     for (const std::size_t i : line.items) {
-      const GlyphRecord& glyph = glyphs_[items_[i].draw];
-      if (glyph.is_space() &&
-          std::ranges::find(spacing_fonts, font_name(glyph)) == spacing_fonts.end()) {
-        spacing_fonts.push_back(font_name(glyph));
+      draws.push_back(items_[i].draw);
+    }
+    std::ranges::sort(draws);
+    // segment[k] is the segment of draws[k].
+    std::vector<std::size_t> segment(draws.size(), 0);
+    for (std::size_t k = 1; k < draws.size(); ++k) {
+      segment[k] = segment[k - 1] + (draws[k] == draws[k - 1] + 1 ? 0 : 1);
+    }
+    const auto segment_of = [&](std::size_t draw) {
+      return segment[static_cast<std::size_t>(std::ranges::lower_bound(draws, draw) -
+                                              draws.begin())];
+    };
+    std::vector<std::pair<std::size_t, std::string_view>> spacing;
+    for (std::size_t k = 1; k < draws.size(); ++k) {
+      if (glyphs_[draws[k]].is_space() && draws[k] == draws[k - 1] + 1 &&
+          !glyphs_[draws[k - 1]].is_space()) {
+        const std::pair<std::size_t, std::string_view> mark(segment[k],
+                                                            font_name(glyphs_[draws[k - 1]]));
+        if (std::ranges::find(spacing, mark) == spacing.end()) {
+          spacing.push_back(mark);
+        }
       }
     }
     const auto draws_spaces = [&](const Item& item) {
-      return std::ranges::find(spacing_fonts, font_name(glyphs_[item.draw])) != spacing_fonts.end();
+      const std::pair<std::size_t, std::string_view> mark(segment_of(item.draw),
+                                                          font_name(glyphs_[item.draw]));
+      return std::ranges::find(spacing, mark) != spacing.end();
     };
     // The word under way starts at start when open; previous is its last
     // glyph.

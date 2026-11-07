@@ -218,6 +218,137 @@ TEST_CASE("an accent drawn in another font over its letter stays in the word") {
   CHECK(document.read().text() == "cafe\xC2\xB4");
 }
 
+TEST_CASE("letters of a font whose spaces another font draws keep their letter spacing") {
+  // Letters in Times set 0.15 of the size apart by TJ adjustments, the
+  // spaces between the words drawn in Helvetica.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page(
+      "BT /F4 10 Tf 72 700 Td [(R) -150 (e) -150 (c) -150 (u) -150 (e) -150 (i) -150 (l)] TJ "
+      "/F1 10 Tf ( ) Tj /F4 10 Tf [(d) -150 (e)] TJ /F1 10 Tf ( ) Tj "
+      "/F4 10 Tf [(l) -150 (a)] TJ ET",
+      "", "", times);
+  CHECK(document.read().text() == "Recueil de la");
+}
+
+TEST_CASE("a word alone on its line keeps its letter spacing before a space in another font") {
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page(
+      "BT /F4 10 Tf 72 700 Td [(c) -150 (o) -150 (n) -150 (t) -150 (r) -150 (e)] TJ "
+      "/F1 10 Tf ( ) Tj ET",
+      "", "", times);
+  CHECK(document.read().text() == "contre");
+}
+
+TEST_CASE("spaces drawn apart from a line's words leave its words set by position") {
+  // Three words set 0.2 of the size apart without space glyphs, a line
+  // further down, then a string " - " placed just after the last word.
+  const PageText page = read(
+      "BT /F1 10 Tf 72 700 Td [(Lord) -200 (from) -200 (heav)] TJ ET "
+      "BT /F1 10 Tf 72 600 Td (below) Tj ET "
+      "BT /F1 10 Tf 137.69 700 Td ( - ) Tj ET");
+  const std::vector<std::string> words = words_of(page.blocks);
+  REQUIRE(words.size() >= 3U);
+  CHECK(std::vector<std::string>(words.begin(), words.begin() + 3) ==
+        std::vector<std::string>{"Lord", "from", "heav"});
+}
+
+TEST_CASE("a space a string in another font runs over stays with that string") {
+  // "Upconversion", then a space set inside its "e" and "How" in Times drawn
+  // over that space.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page(
+      "BT /F1 10 Tf 72 700 Td (Upconversion) Tj ET "
+      "BT /F1 10 Tf 105 700 Td ( ) Tj /F4 10 Tf [250 (How)] TJ ET",
+      "", "", times);
+  const std::vector<std::string> words = words_of(document.read().blocks);
+  CHECK(std::ranges::find(words, "Upconversion") != words.end());
+}
+
+TEST_CASE("a space drawn earlier inside a later word does not split it") {
+  // "Left" and a space set at 270, inside the advance of the "h" of "South"
+  // drawn afterwards from 250 (its "t" ends at 270.57 where the "h" starts).
+  const PageText page = read(
+      "BT /F1 10 Tf 72 700 Td (Left) Tj 198 0 Td ( ) Tj ET "
+      "BT /F1 10 Tf 250 700 Td (South) Tj ET");
+  const std::vector<std::string> words = words_of(page.blocks);
+  CHECK(std::ranges::find(words, "South") != words.end());
+}
+
+TEST_CASE("two subsets of one face are one font") {
+  // "Fo" and "rum" in two subsets of one face, the second kerned 0.15 of the
+  // size back under the first.
+  std::string widths;
+  for (int c = 32; c <= 126; ++c) {
+    widths += "500 ";
+  }
+  const auto subset = [&](const std::string& key, const std::string& tag) {
+    return "/" + key + " << /Type /Font /Subtype /Type1 /BaseFont /" + tag +
+           "+Helvetica /FirstChar 32 /LastChar 126 /Widths [" + widths +
+           "] /Encoding /WinAnsiEncoding >>";
+  };
+  TextDocument document;
+  document.page("BT /F5 10 Tf 72 700 Td (Fo) Tj /F6 10 Tf [150 (rum)] TJ ET", "", "",
+                subset("F5", "ABCDEF") + " " + subset("F6", "GHIJKL"));
+  CHECK(document.read().text() == "Forum");
+}
+
+TEST_CASE("a glyph from a second encoding of one face stays in the word") {
+  // "C" and "591" in Helvetica, the hyphen between them from the same face
+  // stated again as Helvetica+20, 0.15 of the size after the "C".
+  std::string widths;
+  for (int c = 32; c <= 126; ++c) {
+    widths += "500 ";
+  }
+  const auto font = [&](const std::string& key, const std::string& name) {
+    return "/" + key + " << /Type /Font /Subtype /Type1 /BaseFont /" + name +
+           " /FirstChar 32 /LastChar 126 /Widths [" + widths + "] /Encoding /WinAnsiEncoding >>";
+  };
+  TextDocument document;
+  document.page(
+      "BT /F5 10 Tf 72 700 Td (affaire ) Tj (C) Tj /F6 10 Tf [-150 (-)] TJ /F5 10 Tf (591) Tj ET",
+      "", "", font("F5", "Helvetica") + " " + font("F6", "Helvetica+20"));
+  CHECK(document.read().text() == "affaire C-591");
+}
+
+TEST_CASE("a glyph whose spacing a TJ number takes back is not drawn over by the next") {
+  // A "2" shown with 2.7 of character spacing, taken back by a TJ number, so
+  // the "m" in Times starts where the "2"'s width ends.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page("BT /F1 10 Tf 2.7 Tc 72 700 Td (2) Tj /F4 10 Tf 0 Tc [270 (m)] TJ ET", "", "",
+                times);
+  CHECK(document.read().text() == "2m");
+}
+
+TEST_CASE("a subscript in another font tucked under its letter stays in the word") {
+  // "k" in Helvetica ends at 77; the "2" in Times at 7 pt starts 1.5 pt
+  // before that, 1.5 pt below the baseline.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page("BT /F1 10 Tf 72 700 Td (k) Tj ET BT /F4 7 Tf 75.5 698.5 Td (2) Tj ET", "", "",
+                times);
+  CHECK(document.read().text() == "k2");
+}
+
+TEST_CASE("a glyph drawn twice in two faces at one place is not a word of its own") {
+  // A page number drawn in Helvetica, then again in Times 0.18 pt beside
+  // it (a bold made by two faces).
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page("BT /F1 12 Tf 302.66 20.38 Td (4) Tj ET BT /F4 12 Tf 302.48 20.2 Td (4) Tj ET", "",
+                "", times);
+  CHECK(words_of(document.read().blocks).size() == 1U);
+}
+
 TEST_CASE("order_is_stable") {
   TextDocument document;
   document.page(column(72, 700, {"The quick brown", "fox jumps over", "the lazy dog"}) +
