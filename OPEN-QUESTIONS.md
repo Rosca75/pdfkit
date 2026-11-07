@@ -85,6 +85,74 @@ nice-to-have that must not add complexity. The Adobe CMap resources are not
 embedded and the CJK misses stay known gaps; the panel's verdicts on CJK
 files are not pursued.
 
+### 1.6 Damaged pages: choices decided by the session, to confirm
+
+The session that built the report of §1.3 (`docs/change-03.md`, W1) made
+these choices a caller sees. Each is in force; confirming costs nothing, and
+the price given is that of changing it.
+
+1. **Inspect names a page it could not read as `not_checked`.** When a limit
+   of the open options is met while inspect reads a page (the operator count,
+   a stream or the whole document past its bytes), inspect still answers and
+   names that page with the class `not_checked` and the limit's message,
+   instead of failing. Example: a file opened with
+   `{"operators_per_page": 12}` whose page 2 holds 20 operators answers
+   `{"page": 2, "glyphs": 0, "streams": [{"stream": null, "class":
+   "not_checked", "fault": "page 2 holds more than 12 content operators",
+   ...}]}`. Text and find still fail with `limit_exceeded` on such a page.
+   **Recommended: keep.** Alternative: inspect fails with `limit_exceeded`,
+   which breaks its catalogue promise; about 0.5 hour, $10.
+2. **Which damage names a page.** Named: every filter fault (`flate_checksum`,
+   `flate_corrupt`, `flate_truncated`, `flate_dictionary`, `lzw`,
+   `ascii_hex`, `ascii85`, `run_length`, `predictor`), an operator the content
+   operators do not hold outside `BX` and `EX` (`unknown_operator`), an
+   operator read into an operand or a string that runs to the end
+   (`unlexable_content`), an inline image without a readable dictionary or an
+   `EI` (`inline_image`). Not named: a wrong `/Length` or a missing
+   `endstream` (a `repaired` reason), operands left at the end or before
+   `BI`, a stray delimiter. Two borderline cases name the page: a checksum
+   that disagrees though every byte decoded (page 13 of `opf-0019` reads 700
+   glyphs whole but holds garbage after byte 38,206), and an unknown operator
+   (`1 2 zork` between two lines of text). **Recommended: keep**, because a
+   false silence costs more than a false mention; the caller can ignore a
+   class it trusts. Alternative: leave `flate_checksum` or `unknown_operator`
+   out when nothing else is wrong with the stream; about 1 hour, $20, and a
+   page whose garbage hides a word goes unnamed.
+3. **What `text_redaction` means in the write report.** True on every damaged
+   output page when the plan holds a search string (a value is searched on
+   every page, so its verification over a damaged page is incomplete), and
+   otherwise only on the pages of the plan's glyph-range, occurrence and
+   string matches. Example: a plan removing "Smith" everywhere marks all 23
+   damaged pages of `opf-0019`; a plan removing one located "EU" on page 4
+   marks page 4 alone. **Recommended: keep.** Alternative: true only on a
+   page where a match was found or edited; about 1 hour, $20, and a value
+   that occurs only in the unread part of a page is then reported as no
+   concern.
+4. **What `copied_as_is` means.** True when the output page, read again by
+   the same walk, still holds damage: a damaged stream the write did not
+   touch (its bytes copied as they were, which a better decoder may read
+   further), or bytes no operator draws that a rewrite kept (`4budget` in
+   `mutate-0046` page 30, which a byte search finds and no reader shows).
+   False where a rewrite wrote only what decoded (a truncated stream's lost
+   tail is not in the output). **Recommended: keep.** Alternative: a rewrite
+   drops the bytes no operator draws, so the flag is false on every page a
+   text redaction rewrote; about 3 to 4 hours, $60 to $80, a change to what
+   the write copies.
+5. **Inspect reads every page.** It reads each page for its damage alone and
+   a damaged page in full, charged to the document's budget like any read: on
+   2,000 pages of 60 lines 0.14 s, where it took 0.025 s before. A file near
+   the 2 GiB document limit can meet it one call sooner. **Recommended:
+   keep.** Alternative: inspect reads under a budget of its own; about 1
+   hour, $20.
+6. **The dataset expects no damaged page where none is recorded.** Every
+   readable row but `opf-0019`, `mutate-0046` (23 pages each, measured) and
+   the five `damaged_flate` mutations (`some`) expects `none`, so the first
+   laptop run fails on each readable file with a damaged page the manifest
+   does not hold, and `python tests/dataset/run.py --write-damage` records
+   them. **Recommended: keep**, one laptop run and one commit, about 0.5 hour
+   and $10. Alternative: start every unmeasured row at `n/a`, which checks
+   nothing until filled.
+
 ## 2. Answered on 2026-10-28
 
 The section numbers are those of the file before this date; its full text is

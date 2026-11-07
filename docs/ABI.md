@@ -229,8 +229,8 @@ crop box clipped to the media box, a missing media box being US Letter), and
 the rotation (0, 90, 180 or 270). `encryption` and `repairs` are those of the
 open report; `warnings` those met so far, the warnings of reading every page
 included. `damaged_pages` (§4.4.1) names every page of the document: inspect
-reads each page's content once to name them and keeps the answer on the
-handle, so it answers the same whatever was called before it, and a limit of
+reads each page's content once to name them (for its damage alone, and a
+damaged page in full for its glyphs) and keeps the answer on the handle, so it answers the same whatever was called before it, and a limit of
 §4.3 met while a page is read names that page `not_checked` instead of failing.
 Keys are written in the order shown, so two calls give the same bytes.
 
