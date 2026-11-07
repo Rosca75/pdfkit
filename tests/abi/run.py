@@ -14,7 +14,10 @@
 # file cases are skipped by name with the command that supplies them, and the
 # tier runs the library-level calls alone. The .NET caller is built for the
 # library's own machine (x64 or ARM64), read from its PE header, because a
-# process loads only a library of its own architecture.
+# process loads only a library of its own architecture. On a Linux host, where
+# the tiers run for testing only (build/toolchain.md, "Linux (test only)"), the
+# library is pdfkit.so of a Linux preset, the CLI is pdfkit, and the machine is
+# read from the ELF header.
 """Run the ABI tier: python tests/abi/run.py [--preset mingw-release] [--dll <path>] [--cases N]."""
 
 from __future__ import annotations
@@ -36,6 +39,13 @@ EXPECTED_ABI = 3
 # The COFF machine field of a PE file and the PlatformTarget a .NET process loading it needs
 # (the PE and COFF specification, recalled; a library of each build reads back as named).
 MACHINES = {0x8664: "x64", 0xAA64: "ARM64"}
+# The e_machine field of a little-endian ELF file, for a Linux host (the System V ABI's
+# ELF header, recalled; the Linux build's pdfkit.so reads back as x64).
+ELF_MACHINES = {0x3E: "x64", 0xB7: "ARM64"}
+LINUX = sys.platform.startswith("linux")
+# The shared library and the CLI beside it, as the build of this host names them.
+LIBRARY = "pdfkit.so" if LINUX else "pdfkit.dll"
+CLI = "pdfkit" if LINUX else "pdfkit.exe"
 # One case per tag: the smallest manifest file that opens and carries it.
 CASE_TAGS = (
     "gen_word", "gen_libreoffice", "gen_pdftex", "object_streams", "xref_stream", "incremental_update",
@@ -47,19 +57,19 @@ CASE_TAGS = (
 
 
 def find_build(preset: str | None, dll: str | None) -> tuple[Path, Path | None]:
-    """pdfkit.dll and, beside it, pdfkit.exe (None when absent)."""
+    """The shared library and, beside it, the CLI (None when absent)."""
     if dll:
         path = Path(dll).resolve()
-        exe = path.with_name("pdfkit.exe")
+        exe = path.with_name(CLI)
         return path, exe if exe.is_file() else None
-    presets = [preset] if preset else ["mingw-release", "mingw-debug"]
+    presets = [preset] if preset else list(common.build_presets())
     for name in presets:
-        candidate = ROOT / "out" / name / "pdfkit.dll"
+        candidate = ROOT / "out" / name / LIBRARY
         if candidate.is_file():
-            exe = candidate.with_name("pdfkit.exe")
+            exe = candidate.with_name(CLI)
             return candidate, exe if exe.is_file() else None
     raise SystemExit(
-        f"abi: no pdfkit.dll under out/{' or out/'.join(presets)}; expected a built library; "
+        f"abi: no {LIBRARY} under out/{' or out/'.join(presets)}; expected a built library; "
         f"fix: cmake --preset {presets[0]} && cmake --build --preset {presets[0]}"
     )
 
@@ -98,7 +108,7 @@ def cli_fixture(exe: Path | None, cases: list[tuple[str, str, str]], folder: Pat
     source = next((c for c in cases if not c[1].startswith("refused:")), None)
     if exe is None or source is None:
         print("abi: skipped the CLI fixture: "
-              + ("no pdfkit.exe beside the library" if exe is None else "no dataset file opens"))
+              + (f"no {CLI} beside the library" if exe is None else "no dataset file opens"))
         return []
     output = folder / "cli-fixture.pdf"
     job = {"input": source[0], "output": str(output),
@@ -116,8 +126,12 @@ def cli_fixture(exe: Path | None, cases: list[tuple[str, str, str]], folder: Pat
 
 def platform_of(dll: Path) -> str | None:
     """The PlatformTarget of a PE file's machine: the PE header's offset is at 0x3C, and the COFF
-    machine field follows its four-byte signature. None for a file that is not a known PE."""
-    data = dll.read_bytes()[:4096]
+    machine field follows its four-byte signature. A little-endian ELF file's machine is the
+    two bytes at 18. None for a file that is neither of a known machine."""
+    with open(dll, "rb") as file:
+        data = file.read(4096)
+    if data[:4] == b"\x7fELF" and len(data) >= 20 and data[5] == 1:
+        return ELF_MACHINES.get(int.from_bytes(data[18:20], "little"))
     if len(data) < 0x40 or data[:2] != b"MZ":
         return None
     header = int.from_bytes(data[0x3C:0x40], "little")
@@ -134,7 +148,7 @@ def run_dotnet(dll: Path, cases_file: Path) -> bool:
         return False
     platform = platform_of(dll)
     if platform is None:
-        print(f"abi: {dll} is not a PE file of a known machine; expected an x64 or ARM64 pdfkit.dll; "
+        print(f"abi: {dll} is not a library of a known machine; expected an x64 or ARM64 {LIBRARY}; "
               f"fix: build one of the release presets", file=sys.stderr)
         return False
     project = ROOT / "tests" / "abi" / "dotnet" / "PdfkitAbi.csproj"
@@ -170,8 +184,8 @@ def run_python(dll: Path, cases_file: Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--preset", help="the build folder under out/ to load pdfkit.dll from")
-    parser.add_argument("--dll", help="an explicit path to pdfkit.dll")
+    parser.add_argument("--preset", help=f"the build folder under out/ to load {LIBRARY} from")
+    parser.add_argument("--dll", help=f"an explicit path to {LIBRARY}")
     parser.add_argument("--cases", type=int, help="at most this many dataset cases")
     args = parser.parse_args()
     dll, exe = find_build(args.preset, args.dll)

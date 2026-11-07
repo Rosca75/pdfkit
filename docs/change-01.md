@@ -690,3 +690,116 @@ Before batch A starts, the owner has done the five items of §16.
   pool does, and needs no binding to maintain.
 - **One merged batch A and B**: about 10 to 11.5 hours, past the 6-hour session
   limit (D4).
+
+---
+
+## Appendix C — Deviations recorded on Linux
+
+The order was written for the owner's Windows laptop. Its test tiers also run
+on a Linux host (`build/toolchain.md` §7, "Linux (test only)"), and a batch run
+there departs from the batch files as follows. Each entry holds for every
+batch run on Linux; a batch run on the laptop follows its file as written.
+
+1. **The builds are the Linux presets.** `linux-debug` (GCC 13, Debug) builds
+   the unit tier and `linux-release` (clang 18, Release) builds the CLI
+   `pdfkit`, the shared library `pdfkit.so` and `pdfkit_image_census` that the
+   dataset, PDFium and ABI tiers run; `ctest --preset unit-linux` and
+   `ctest --preset unit-linux-release` stand for `ctest --preset unit`. The
+   release preset is clang because GCC 13 at `-O2` stops on a
+   `-Wmaybe-uninitialized` in `src/syntax/object_streams.cpp` that the pinned
+   GCC 16 does not raise. Neither preset ships anything.
+2. **The tiers find the Linux builds by platform.** `common.build_presets()`
+   (`dataset/tools/common.py`) names `out/linux-release` then
+   `out/linux-debug` on Linux and the `mingw` folders elsewhere;
+   `tests/dataset/run.py`, `tests/pdfium/image_agreement.py`,
+   `tests/pdfium/metadata.py` and `tests/abi/run.py` read it, accept
+   executables without the `.exe` suffix, and load `pdfkit.so`. A panel
+   adapter that runs pdfkit finds it the same way.
+3. **PDFium on Linux is `pdfium-linux-x64.tgz` of the same release,
+   chromium/8111, with a computed digest.** `tests/pdfium/fetch.py` pins it
+   by SHA-256 `bdc60126399f39fe768566a18d4be055a7b3681bc9e248e8a6656b4f6cae0aa2`,
+   computed from the download, not read: the release page, its asset list and
+   the GitHub API answer 403 through the Linux host's proxy, and the release
+   publishes no checksum file. The same download route served the Windows
+   asset with the digest read on the release page. The library is
+   the archive's lib/libpdfium.so in `build/cache/pdfium/chromium-8111-linux-x64/`, and
+   PDFium's answers are cached under the Linux digest, so no answer the laptop
+   recorded is reused on Linux and every one is computed afresh there.
+4. **Poppler, MuPDF and QPDF are the distribution's packages**, in place of
+   the Windows archives of `docs/change-01a.md` §9.1: `poppler-utils`
+   24.02.0, `mupdf-tools` 1.23.10 and `qpdf` 11.9.0 of Ubuntu 24.04, run from
+   `/usr/bin`, pinned by package version and by each binary's SHA-256 in
+   `build/toolchain.md` §7 rather than downloaded by hash into
+   `build/cache/panel/`. They are older than the latest stable releases the
+   batch file asks for, so an answer that differs between versions is
+   recorded with the Linux version beside it.
+5. **Rust is the host's rustup toolchain**, 1.97.0 (`x86_64-unknown-linux-gnu`),
+   in place of D9's `x86_64-pc-windows-gnu` toolchain unpacked by hash into
+   `build/cache/panel/rust/`; the adapters link with the host's C compiler.
+   `CARGO_HOME` and `CARGO_TARGET_DIR` stay under `build/cache/panel/` of the
+   main checkout, `Cargo.lock` still pins every crate by checksum, and
+   cargo's revocation setting is not needed. crates.io answers only a request
+   that carries a `User-Agent`, which cargo sends.
+6. **The dataset holds 968 rows, not 960**, and 961 of their files are on
+   disk: the 7 `office` rows (`office-0001` to `office-0007`) are made only by
+   the laptop's Office applications. Every denominator of 960 in the batch
+   files reads as the files on disk of the run, and a member's "answered plus
+   refused" count is held to those 961.
+7. **The C ABI is 3 on `main`, not 1**, and the change 03 order raises it to
+   4; this order still moves no JSON shape. The ABI tier checks the version
+   `main` carries.
+8. **The synthesiser's font comes from the vendored copy.** The `liberation`
+   archive URL of `dataset/sources.tsv` answers 403 on Linux, so the two faces
+   are copied into the shared `dataset/cache/liberation/` from
+   `third_party/liberation-fonts/`, which holds the same members of the same
+   archive; `dataset/tools/synth/run.py --check` reproduces all 248
+   synthesised rows and `dataset/tools/mutate.py --restore` all 75 mutated
+   ones, and `dataset/tools/fetch.py --verify` finds every present file equal
+   to its manifest hash.
+9. **What does not run on Linux**: the `mingw-*`, `clang-sanitize` and
+   `arm64-*` builds and their tiers (so neither `ctest --preset sanitize` nor
+   `ctest --preset clang-sanitize`), `python build/check.py` routine and
+   `--full` (they build `mingw-release` and read a PE import table),
+   `build/check_artefact.py` and `build/package.py`. `python build/check.py
+   --fast` runs, with clang-tidy analysing for the Windows target, and so does
+   the ABI tier from both .NET and Python. The merge gate of §0.4 that needs
+   the Windows builds runs on the laptop.
+10. **The shared caches on Linux**: the dataset files, the PDFium binary and
+    PDFium's answers live in the main checkout as on the laptop. The compile
+    cache does not: ccache 4.9.1 keeps its objects in its default folder
+    (`~/.cache/ccache`) and ignores the `cache_dir` its command line names,
+    which still gives every worktree of the host one cache. No llvm-mingw
+    toolchain is cached on Linux.
+11. **The timings of §0.2 are the laptop's.** On the Linux host (four logical
+    processors, shared with other sessions), the unit tier takes about 10 s
+    under `linux-debug` and 1 s under `linux-release`, and a clean
+    `linux-release` build of the four targets about 3 minutes at `-j3`. The
+    dataset tier over the 961 files, two runs with two workers, takes 752 s;
+    the reading gate 12 s and the image census 275 s once PDFium's answers
+    are cached.
+12. **The Linux baseline** (`main` at 09b8d78, run `linux-base-09b8d78`, the
+    `linux-release` build), against the laptop's last full table (`build-10.md`
+    §9 item 22, 960 files, the 0.2.0 build):
+
+    | Measure | Linux | Laptop |
+    |---|---|---|
+    | unit tier, `linux-debug` and `linux-release` | 721 of 721 cases each | 721 cases (`docs/change-02.md` Appendix C entry 16) |
+    | dataset files run; two runs identical; crashes | 961; 961; 0 | 960; 960; 0 |
+    | hangs | 1, `dccc-0129` (394 pages, a 60 s limit): 73 s alone on the loaded four-processor host; every expectation holds with `--timeout-scale 3` | 0 |
+    | expectation misses | 1, `mutate-0048` `expect_redact_text`: the self-check refuses the output ("Discrimi" and "reduction" survive on page 2), as on the laptop (`docs/change-02.md` Appendix C entry 16) | the same file |
+    | reading gate: median F1; files below 0.90 | 1.0; 55 of 898 (6.12 %; 20 pdfkit, 27 PDFium, 8 legitimate) | 1.0; 56 of 898 (6.24 %; 21, 27, 8) |
+    | re-serialisation | 11,722 of 11,722 streams identical | 12,122 of 12,122 walks |
+    | images decoded (occurrences through resources) | 6,133 of 6,139 (99.90 %) | 6,132 of 6,138 (99.90 %) |
+    | bitonal equal to PDFium's bitmap | 495 of 498 | 495 of 498 |
+    | continuous-tone within MAD 2 | 3,688 of 3,724 | 3,687 of 3,723 |
+    | Info fields equal to PDFium's | 3,048 of 3,048 (`pdfium-0033` named) | 3,056 of 3,056 (`pdfium-0033` named) |
+    | ABI tier, .NET and Python | 31 files, 717 calls each | 31 files, 552 calls each |
+
+    The one file that leaves the reading gate's list is `pdfpig-0003` (0.9008
+    on Linux, a `pdfkit` row of `tests/pdfium/text_causes.tsv`); the layout
+    changes `main` carries since the laptop's table (`docs/change-02.md`
+    Appendix C entries 15 and 16) are the likelier cause than the platform,
+    though no per-file laptop table of `main` exists to tell the two apart.
+    The Linux tiers therefore measure the dataset as the laptop's did within
+    one image and one file, and a batch's Linux numbers are compared
+    with a Linux baseline, never with the laptop's.

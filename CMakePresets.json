@@ -12,7 +12,10 @@
     "-O1, AddressSanitizer's recommended level. build/toolchain.md section 6 holds the measurements.",
     "arm64-release and arm64-debug build for Windows ARM64 with llvm-mingw's aarch64 clang",
     "(build/llvm-mingw-arm64.cmake); arm64-release ships, and unit-arm64 runs the unit tier on an",
-    "ARM64 machine."
+    "ARM64 machine. linux-debug (GCC) and linux-release (clang, since GCC's -O2 stops on a",
+    "-Wmaybe-uninitialized) build on a Linux host for the test tiers only; they ship nothing and",
+    "exist only on Linux (build/toolchain.md, 'Linux (test only)'), as do their build presets and",
+    "unit-linux and unit-linux-release, which run the unit tier there."
   ],
   "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
   "configurePresets": [
@@ -95,6 +98,36 @@
       "displayName": "llvm-mingw clang, Windows ARM64, release",
       "inherits": "arm64-base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+        "CMAKE_C_FLAGS": "-D_GNU_SOURCE -DOPJ_HAVE_POSIX_MEMALIGN"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux GCC, debug, test only",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux clang, release, test only",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -103,7 +136,17 @@
     { "name": "mingw-sanitize", "configurePreset": "mingw-sanitize" },
     { "name": "clang-sanitize", "configurePreset": "clang-sanitize" },
     { "name": "arm64-debug", "configurePreset": "arm64-debug" },
-    { "name": "arm64-release", "configurePreset": "arm64-release" }
+    { "name": "arm64-release", "configurePreset": "arm64-release" },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    }
   ],
   "testPresets": [
     {
@@ -127,6 +170,20 @@
     {
       "name": "unit-arm64",
       "configurePreset": "arm64-debug",
+      "filter": { "include": { "label": "unit" } },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "unit-linux",
+      "configurePreset": "linux-debug",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "filter": { "include": { "label": "unit" } },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "unit-linux-release",
+      "configurePreset": "linux-release",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
       "filter": { "include": { "label": "unit" } },
       "output": { "outputOnFailure": true }
     }

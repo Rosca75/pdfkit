@@ -19,11 +19,15 @@ import synth.run as synth_run
 from synth.channels import kit, leak, rows
 
 ROW_TAGS = set(kit.ROWS.values())
+# The off-layer family (synth/channels/off_layers.py) is named mark_ but plants
+# the markers of two rows by design, row 25 in off content and row 90 in shown
+# text, so it is no specimen of one channel row and stays out of these tests.
+NOT_ROWS = {"mark_off_layers"}
 
 
 def build_all() -> dict:
     table = synth_run.pattern_table()
-    return {name: fn() for name, fn in table.items() if name.startswith("mark_")}
+    return {name: fn() for name, fn in table.items() if name.startswith("mark_") and name not in NOT_ROWS}
 
 
 class RowsTest(unittest.TestCase):
