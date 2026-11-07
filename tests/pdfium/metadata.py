@@ -36,12 +36,13 @@ import results_cache  # noqa: E402
 
 
 def find_pdfkit(explicit: str | None) -> Path:
+    presets = common.build_presets()
     for candidate in ([Path(explicit)] if explicit else []) + [
-            REPO / "out" / "mingw-release" / "pdfkit.exe", REPO / "out" / "mingw-debug" / "pdfkit.exe"]:
+            REPO / "out" / preset / name for preset in presets for name in ("pdfkit.exe", "pdfkit")]:
         if candidate.is_file():
             return candidate
-    raise common.ToolError("no pdfkit.exe under out/mingw-release or out/mingw-debug",
-                           "a built command-line tool", "cmake --build --preset mingw-release")
+    raise common.ToolError(f"no pdfkit executable under out/{' or out/'.join(presets)}",
+                           "a built command-line tool", f"cmake --build --preset {presets[0]}")
 
 
 def clean(value: str | None) -> str:
@@ -78,7 +79,7 @@ def compare(pool, exe: Path, row: dict) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True, help="the dataset run id")
-    parser.add_argument("--pdfkit", help="the pdfkit executable (default: out/mingw-release)")
+    parser.add_argument("--pdfkit", help="the pdfkit executable (default: out/<release preset>)")
     parser.add_argument("--id", action="append", help="only these ids")
     parser.add_argument("--workers", type=int, default=pdfium.default_workers())
     args = parser.parse_args()

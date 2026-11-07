@@ -57,6 +57,7 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO / "dataset" / "tools"))
 
+import common  # noqa: E402
 import pdfium  # noqa: E402
 import results_cache  # noqa: E402
 
@@ -179,7 +180,7 @@ class ImageWorker(pdfium.Worker):
 
 def find_census(explicit: str | None) -> Path | None:
     candidates = [Path(explicit)] if explicit else []
-    for preset in ("mingw-release", "mingw-debug"):
+    for preset in common.build_presets():
         candidates += [REPO / "out" / preset / "pdfkit_image_census.exe",
                        REPO / "out" / preset / "pdfkit_image_census"]
     return next((c for c in candidates if c.is_file()), None)
@@ -335,7 +336,7 @@ def percent(part: int, whole: int) -> str:
 
 def find_cli(explicit: str | None) -> Path | None:
     candidates = [Path(explicit)] if explicit else []
-    for preset in ("mingw-release", "mingw-debug"):
+    for preset in common.build_presets():
         candidates += [REPO / "out" / preset / "pdfkit.exe", REPO / "out" / preset / "pdfkit"]
     return next((c for c in candidates if c.is_file()), None)
 
@@ -383,7 +384,7 @@ def run_listing(args, rows: list[dict], out_dir: Path) -> int:
     cli = find_cli(args.pdfkit)
     if cli is None:
         print("SKIPPED image listing: no pdfkit executable found; build it with "
-              "`cmake --build --preset mingw-release`, or pass --pdfkit <path>.")
+              f"`cmake --build --preset {common.build_presets()[0]}`, or pass --pdfkit <path>.")
         return 0
     work = out_dir / "work"
     results: dict[str, dict] = {}
@@ -494,7 +495,8 @@ def main() -> int:
     census = find_census(args.census)
     if census is None:
         print("SKIPPED image agreement: no pdfkit_image_census executable found. Build it with "
-              "`cmake --preset mingw-release && cmake --build --preset mingw-release`, or pass "
+              f"`cmake --preset {common.build_presets()[0]} && cmake --build --preset "
+              f"{common.build_presets()[0]}`, or pass "
               "--census <path>.")
         return 0
     all_rows = common.read_manifest()

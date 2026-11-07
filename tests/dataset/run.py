@@ -59,7 +59,7 @@ def find_pdfkit(explicit: str | None) -> list[str] | None:
         candidates.append(Path(os.environ["PDFKIT_EXE"]))
     out = REPO / "out"
     if out.exists():
-        for preset in ("mingw-release", "mingw-debug"):
+        for preset in common.build_presets():
             candidates += sorted((out / preset).rglob("pdfkit.exe")) if (out / preset).exists() else []
             candidates += sorted((out / preset).rglob("pdfkit")) if (out / preset).exists() else []
     found = shutil.which("pdfkit")
@@ -365,7 +365,7 @@ def main() -> int:
         command = find_pdfkit(args.pdfkit)
     if command is None:
         print("SKIPPED dataset tier: no pdfkit executable found. Build it with "
-              "`cmake --preset mingw-release && cmake --build --preset mingw-release`, "
+              f"`cmake --preset {common.build_presets()[0]} && cmake --build --preset {common.build_presets()[0]}`, "
               "or pass --pdfkit <path> or set PDFKIT_EXE.")
         return 0
     rows = select_rows(common.read_manifest(), args.set, args.id)
