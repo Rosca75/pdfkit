@@ -49,8 +49,8 @@ void PageDamage::write(platform::JsonWriter& writer, const std::vector<PageDamag
   for (const PageDamage& page : pages) {
     writer.begin_object();
     writer.key("page").unsigned_integer(page.page);
-    if (page.source_page) {
-      writer.key("source_page").unsigned_integer(*page.source_page);
+    if (const std::optional<std::uint32_t> source = page.source_page) {
+      writer.key("source_page").unsigned_integer(*source);
     }
     writer.key("glyphs").unsigned_integer(page.glyphs);
     writer.key("streams").begin_array();
@@ -84,19 +84,19 @@ void PageDamage::write(platform::JsonWriter& writer, const std::vector<PageDamag
       writer.key("fault").string(stream.fault);
       writer.key("decoded_bytes").unsigned_integer(stream.decoded_bytes);
       writer.key("unread_bytes");
-      if (stream.unread_bytes) {
-        writer.unsigned_integer(*stream.unread_bytes);
+      if (const std::optional<std::size_t> unread = stream.unread_bytes) {
+        writer.unsigned_integer(*unread);
       } else {
         writer.null();
       }
       writer.end_object();
     }
     writer.end_array();
-    if (page.text_redaction) {
-      writer.key("text_redaction").boolean(*page.text_redaction);
+    if (const std::optional<bool> searched = page.text_redaction) {
+      writer.key("text_redaction").boolean(*searched);
     }
-    if (page.copied_as_is) {
-      writer.key("copied_as_is").boolean(*page.copied_as_is);
+    if (const std::optional<bool> copied = page.copied_as_is) {
+      writer.key("copied_as_is").boolean(*copied);
     }
     writer.end_object();
   }

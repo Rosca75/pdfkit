@@ -166,8 +166,8 @@ sanitizer and PDFium tiers need the owner's laptop; `opf-0019` and
 
 ## 14. Manual verification on the laptop
 
-`python build/check.py --full` (clang-tidy over the changed sources did not
-run on Linux), the unit and sanitizer tiers, then
+`python build/check.py --full` (clang-tidy ran on Linux over the changed
+sources only), the unit and sanitizer tiers, then
 `python tests/dataset/run.py --run-id <id>`. Its `expect_damage` failures are
 the readable files whose damaged pages the manifest does not hold (every row
 but `opf-0019`, `mutate-0046` and the five `damaged_flate` mutations expects
@@ -230,4 +230,6 @@ Revert the merge on `main`. Nothing is released by this order.
     is inspect's; `CLAUDE.md` §7.1 names it.
 11. The interpreter's damage-reading test was written with the code, after
     the measurement that asked for it, not seen red first.
-12. clang-tidy did not run on Linux.
+12. clang-tidy 23.1.3 from PyPI ran on Linux over every changed source and
+    test with the Linux compile database (the gcc-only warning flags aside, which
+    clang does not know); its findings in the new code are fixed.

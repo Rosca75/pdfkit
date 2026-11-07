@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -39,8 +40,15 @@ using pdfkit::test::StreamOptions;
 
 // Two lines of text; the damage of a fixture starts between them, so the
 // first line reads whole and the second is what the damage takes.
-const std::string hello = "BT /F1 12 Tf 72 700 Td (Hello) Tj ET\n";
-const std::string world = "BT /F1 12 Tf 72 680 Td (World) Tj ET\n";
+constexpr std::string_view hello_line = "BT /F1 12 Tf 72 700 Td (Hello) Tj ET\n";
+constexpr std::string_view world_line = "BT /F1 12 Tf 72 680 Td (World) Tj ET\n";
+
+std::string hello() {
+  return std::string(hello_line);
+}
+std::string world() {
+  return std::string(world_line);
+}
 
 std::string take(pdfkit_buffer& buffer) {
   std::string text(reinterpret_cast<const char*>(buffer.data), buffer.size);
@@ -82,7 +90,7 @@ class Fixture {
   std::uint32_t font_ = 0;
 };
 
-StreamOptions flate(FlateDamage damage, std::size_t at = hello.size()) {
+StreamOptions flate(FlateDamage damage, std::size_t at = hello().size()) {
   StreamOptions options;
   options.flate = true;
   options.flate_damage = damage;
@@ -191,7 +199,7 @@ std::vector<std::string> named(const JsonValue& answer) {
   std::vector<std::string> out;
   for (const JsonValue& page : damaged(answer)) {
     for (const JsonValue& stream : page.find("streams")->as_array()) {
-      out.push_back(std::to_string(*page.find("page")->as_int64()) + ":" +
+      out.push_back(std::to_string(page.find("page")->as_int64().value_or(0)) + ":" +
                     stream.find("class")->as_string());
     }
   }
@@ -242,7 +250,7 @@ void every_output_names(const std::string& file, const std::vector<std::string>&
 
 TEST_CASE("a page read in full names no damage in any output") {
   Fixture fixture;
-  fixture.page(hello + world, flate(FlateDamage::none));
+  fixture.page(hello() + world(), flate(FlateDamage::none));
   every_output_names(fixture.bytes(), {});
 }
 
@@ -252,15 +260,15 @@ TEST_CASE("each Flate fault names its page with its class") {
                                      std::pair{FlateDamage::truncated, "flate_truncated"}}) {
     CAPTURE(name);
     Fixture fixture;
-    fixture.page(hello + world);
-    fixture.page(hello + world, flate(damage));
+    fixture.page(hello() + world());
+    fixture.page(hello() + world(), flate(damage));
     every_output_names(fixture.bytes(), {std::string("2:") + name});
   }
 }
 
 TEST_CASE("the damaged page's entry carries its stream, fault and bytes") {
   Fixture fixture;
-  fixture.page(hello + world, flate(FlateDamage::truncated));
+  fixture.page(hello() + world(), flate(FlateDamage::truncated));
   const Opened opened(fixture.bytes());
   const JsonValue answer = inspect(opened.get());
   REQUIRE(damaged(answer).size() == 1);
@@ -276,7 +284,7 @@ TEST_CASE("the damaged page's entry carries its stream, fault and bytes") {
   CHECK(stream.find("stream")->find("form")->kind() == JsonValue::Kind::null);
   CHECK(stream.find("stream")->find("form_path")->as_array().empty());
   CHECK(stream.find("fault")->as_string().find("ends before its last block") != std::string::npos);
-  CHECK(stream.find("decoded_bytes")->as_int64() == static_cast<std::int64_t>(hello.size()));
+  CHECK(stream.find("decoded_bytes")->as_int64() == static_cast<std::int64_t>(hello().size()));
   CHECK(stream.find("unread_bytes")->as_int64() == 0);
   // The key comes last, after the members the call wrote before.
   CHECK(keys_of(answer) == "version page_count pages encryption repairs warnings damaged_pages ");
@@ -284,12 +292,12 @@ TEST_CASE("the damaged page's entry carries its stream, fault and bytes") {
 
 TEST_CASE("a corrupt Flate stream counts the encoded bytes it left unread") {
   Fixture fixture;
-  fixture.page(hello + world, flate(FlateDamage::corrupt));
+  fixture.page(hello() + world(), flate(FlateDamage::corrupt));
   const Opened opened(fixture.bytes());
   const JsonValue answer = inspect(opened.get());
   REQUIRE(damaged(answer).size() == 1);
   const JsonValue& stream = damaged(answer).front().find("streams")->as_array().front();
-  CHECK(stream.find("decoded_bytes")->as_int64() == static_cast<std::int64_t>(hello.size()));
+  CHECK(stream.find("decoded_bytes")->as_int64() == static_cast<std::int64_t>(hello().size()));
   CHECK(stream.find("unread_bytes")->as_int64() > 0);
 }
 
@@ -297,18 +305,18 @@ TEST_CASE("the other filters' faults name the page") {
   // ASCIIHex: the hexadecimal digits of the first line, then a byte that is
   // not one.
   std::string hex;
-  for (const char c : hello) {
+  for (const char c : hello()) {
     constexpr const char* digits = "0123456789ABCDEF";
     hex += digits[static_cast<unsigned char>(c) >> 4U];
     hex += digits[static_cast<unsigned char>(c) & 0x0FU];
   }
   // RunLength: one literal run of the first line, then a run that claims
   // more bytes than follow.
-  std::string run_length(1, static_cast<char>(hello.size() - 1));
-  run_length += hello + std::string(1, static_cast<char>(40)) + "BT";
+  std::string run_length(1, static_cast<char>(hello().size() - 1));
+  run_length += hello() + std::string(1, static_cast<char>(40)) + "BT";
   const std::vector<std::tuple<std::string, std::string, std::string>> cases{
       {"/Filter /ASCIIHexDecode", hex + "ZZ" + ">", "ascii_hex"},
-      {"/Filter /ASCII85Decode", ascii85(hello) + "vx~>", "ascii85"},
+      {"/Filter /ASCII85Decode", ascii85(hello()) + "vx~>", "ascii85"},
       {"/Filter /LZWDecode", std::string("\x96\x00\x00", 3), "lzw"},
       {"/Filter /RunLengthDecode", run_length, "run_length"},
       {"/DecodeParms << /Predictor 3 >>", "", "predictor"}};
@@ -318,7 +326,7 @@ TEST_CASE("the other filters' faults name the page") {
     if (name == "predictor") {
       // Flate with predictor parameters no predictor defines: the bytes
       // reach the lexer as they inflated.
-      fixture.page(hello + world, flate(FlateDamage::none), entries);
+      fixture.page(hello() + world(), flate(FlateDamage::none), entries);
     } else {
       fixture.page(data, {}, entries);
     }
@@ -329,13 +337,13 @@ TEST_CASE("the other filters' faults name the page") {
 TEST_CASE("content the lexer skips or an operator it drops names the page") {
   const std::vector<std::pair<std::string, std::string>> cases{
       // A keyword Annex A does not know, outside BX and EX.
-      {hello + "1 2 zork\n" + world, "unknown_operator"},
+      {hello() + "1 2 zork\n" + world(), "unknown_operator"},
       // An operator swallowed into an array operand.
-      {hello + "BT /F1 12 Tf 72 680 Td [(Wor) Tj (ld)] TJ ET\n", "unlexable_content"},
+      {hello() + "BT /F1 12 Tf 72 680 Td [(Wor) Tj (ld)] TJ ET\n", "unlexable_content"},
       // A string that runs to the end of the content.
-      {hello + "BT /F1 12 Tf 72 680 Td (World Tj ET\n", "unlexable_content"},
+      {hello() + "BT /F1 12 Tf 72 680 Td (World Tj ET\n", "unlexable_content"},
       // An inline image whose end is never found.
-      {hello + "BI /W 4 /H 4 /CS /G /BPC 8 /F /Fl ID xxxx\n" + world, "inline_image"}};
+      {hello() + "BI /W 4 /H 4 /CS /G /BPC 8 /F /Fl ID xxxx\n" + world(), "inline_image"}};
   for (const auto& [content, name] : cases) {
     CAPTURE(name);
     Fixture fixture;
@@ -346,11 +354,11 @@ TEST_CASE("content the lexer skips or an operator it drops names the page") {
 
 TEST_CASE("a recovery that loses nothing names no page") {
   const std::vector<std::string> cases{// Trailing operands at the end of the content.
-                                       hello + world + "1 2 3",
+                                       hello() + world() + "1 2 3",
                                        // A stray delimiter between operators.
-                                       hello + ") >> ] }\n" + world,
+                                       hello() + ") >> ] }\n" + world(),
                                        // An unknown operator inside a compatibility section.
-                                       hello + "BX 1 2 zork EX\n" + world};
+                                       hello() + "BX 1 2 zork EX\n" + world()};
   for (const std::string& content : cases) {
     CAPTURE(content);
     Fixture fixture;
@@ -369,7 +377,7 @@ TEST_CASE("a stream the parser recovered whole names no page") {
     } else {
       options.length_delta = 7;
     }
-    fixture.page(hello + world, options);
+    fixture.page(hello() + world(), options);
     every_output_names(fixture.bytes(), {});
     const Opened opened(fixture.bytes());
     CHECK_FALSE(inspect(opened.get()).find("repairs")->as_array().empty());
@@ -378,10 +386,10 @@ TEST_CASE("a stream the parser recovered whole names no page") {
 
 TEST_CASE("a damaged form names every page that draws it, by its form path") {
   Fixture fixture;
-  const std::uint32_t form = fixture.form(hello + world, flate(FlateDamage::checksum));
+  const std::uint32_t form = fixture.form(hello() + world(), flate(FlateDamage::checksum));
   const std::string resources = "/XObject << /X1 " + std::to_string(form) + " 0 R >>";
   fixture.page("/X1 Do\n", {}, "", resources);
-  fixture.page(hello);
+  fixture.page(hello());
   fixture.page("q /X1 Do Q\n", {}, "", resources);
   const std::string file = fixture.bytes();
   every_output_names(file, {"1:flate_checksum", "3:flate_checksum"});
@@ -396,9 +404,9 @@ TEST_CASE("a damaged form names every page that draws it, by its form path") {
 
 TEST_CASE("inspect answers the same before and after a text read") {
   Fixture fixture;
-  const std::uint32_t form = fixture.form(world, flate(FlateDamage::corrupt, 4));
-  fixture.page(hello + "/X1 Do\n", {}, "", "/XObject << /X1 " + std::to_string(form) + " 0 R >>");
-  fixture.page(hello + world, flate(FlateDamage::truncated));
+  const std::uint32_t form = fixture.form(world(), flate(FlateDamage::corrupt, 4));
+  fixture.page(hello() + "/X1 Do\n", {}, "", "/XObject << /X1 " + std::to_string(form) + " 0 R >>");
+  fixture.page(hello() + world(), flate(FlateDamage::truncated));
   const std::string file = fixture.bytes();
   // The damaged_pages member, written last, as bytes.
   const auto member = [](const std::string& answer) {
@@ -424,8 +432,8 @@ TEST_CASE("inspect answers the same before and after a text read") {
 
 TEST_CASE("a limit met while inspect reads a page names it as not checked") {
   Fixture fixture;
-  fixture.page(hello);
-  fixture.page(hello + world + hello + world);
+  fixture.page(hello());
+  fixture.page(hello() + world() + hello() + world());
   const Opened opened(fixture.bytes(), R"({"operators_per_page": 12})");
   const JsonValue answer = inspect(opened.get());
   REQUIRE(named(answer) == std::vector<std::string>{"2:not_checked"});
@@ -437,8 +445,8 @@ TEST_CASE("a limit met while inspect reads a page names it as not checked") {
 
 TEST_CASE("text and find name only the pages they read") {
   Fixture fixture;
-  fixture.page(hello + world, flate(FlateDamage::checksum));
-  fixture.page(hello + world, flate(FlateDamage::truncated));
+  fixture.page(hello() + world(), flate(FlateDamage::checksum));
+  fixture.page(hello() + world(), flate(FlateDamage::truncated));
   const Opened opened(fixture.bytes());
   CHECK(named(text_of(opened.get(), R"({"pages": [2]})")) ==
         std::vector<std::string>{"2:flate_truncated"});
@@ -450,12 +458,12 @@ TEST_CASE("the write report says whether a search ran over a damaged page and wh
   Fixture fixture;
   // Page 1: the search edits it; its truncated stream is written again from
   // what it decoded, so nothing of the lost tail is copied.
-  fixture.page(hello + world, flate(FlateDamage::truncated));
+  fixture.page(hello() + world(), flate(FlateDamage::truncated));
   // Page 2: the search finds nothing there; the damaged stream is copied as
   // it was.
-  fixture.page(world + world, flate(FlateDamage::corrupt, world.size()));
+  fixture.page(world() + world(), flate(FlateDamage::corrupt, world().size()));
   // Page 3: the search edits it, and the bytes no operator draws are kept.
-  fixture.page(hello + "1 2 zork\n" + world);
+  fixture.page(hello() + "1 2 zork\n" + world());
   const std::string file = fixture.bytes();
   const auto [report, output] = write_of(file, search_hello);
   const JsonValue::Array& pages = damaged(report);
@@ -478,8 +486,8 @@ TEST_CASE("the write report says whether a search ran over a damaged page and wh
 
 TEST_CASE("the write report names output pages with the source page each one is") {
   Fixture fixture;
-  fixture.page(hello);
-  fixture.page(hello + world, flate(FlateDamage::checksum));
+  fixture.page(hello());
+  fixture.page(hello() + world(), flate(FlateDamage::checksum));
   const Opened opened(fixture.bytes());
   pdfkit_buffer out{nullptr, 0, nullptr};
   pdfkit_edit* edit = nullptr;

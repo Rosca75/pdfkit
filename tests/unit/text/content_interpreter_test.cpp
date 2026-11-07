@@ -11,6 +11,7 @@
 
 #include "text/content_interpreter.hpp"
 
+#include "support/require_value.hpp"
 #include "text/support/text_document.hpp"
 #include "text/text_reader.hpp"
 
@@ -361,11 +362,11 @@ TEST_CASE("the damage reading finds the full reading's damage and makes no recor
   const PageContent full = reader.interpret(1);
   const PageContent damage = reader.interpret(1, pdfkit::text::ContentInterpreter::Reading::damage);
   CHECK(damage.glyphs.empty());
-  REQUIRE(full.damaged_page().has_value());
-  REQUIRE(damage.damaged_page().has_value());
-  CHECK(damage.damaged_page()->streams == full.damaged_page()->streams);
-  CHECK(full.damaged_page()->glyphs == 2U);
+  const pdfkit::syntax::PageDamage read = pdfkit::test::require_value(full.damaged_page());
+  CHECK(pdfkit::test::require_value(damage.damaged_page()).streams == read.streams);
+  CHECK(read.glyphs == 2U);
   const std::vector<std::uint32_t> path{outer, inner};
-  CHECK(full.damaged_page()->streams.front().form_path == path);
-  CHECK(full.damaged_page()->streams.front().damage == "unknown_operator");
+  REQUIRE_FALSE(read.streams.empty());
+  CHECK(read.streams.front().form_path == path);
+  CHECK(read.streams.front().damage == "unknown_operator");
 }

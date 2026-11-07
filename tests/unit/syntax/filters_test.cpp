@@ -248,8 +248,7 @@ TEST_CASE("every filter fault carries its damage class") {
       run(PdfBuilder::deflate_damaged(original, Damage::corrupt, half), "FlateDecode");
   CHECK(corrupt.damage == "flate_corrupt");
   CHECK(text(corrupt.bytes) == original.substr(0, half));
-  REQUIRE(corrupt.unread.has_value());
-  CHECK(*corrupt.unread > 0);
+  CHECK(corrupt.unread.value_or(0) > 0);
   const Filters::Result truncated =
       run(PdfBuilder::deflate_damaged(original, Damage::truncated, half), "FlateDecode");
   CHECK(truncated.damage == "flate_truncated");
