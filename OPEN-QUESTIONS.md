@@ -49,15 +49,19 @@ and the self-check, which reads as pdfkit does, passes: a search for "Large"
 left one "Large" on that page that PDFium reads in the output, and "Most"
 likewise in `mutate-0046`.
 
-**Answered 2026-11-07: refuse to write a text redaction of a page whose
-content stream is damaged**, naming the page, so doc-anonymiser falls back to
-its other route for that file, because pdfkit serves an anonymiser first and
-must never let a caller believe text was read and removed when it was not.
-The same refusal covers the bytes such a stream copies as they were (a word
-of the damaged data that no reader shows but a byte search finds, `budget` in
-`mutate-0046`). The extraction of such a page carries the warning a caller
-can act on. Action: a session implements the refusal with its tests, its
-`docs/ABI.md` and `docs/DESIGN.md` rows and the dataset expectations.
+**Answered 2026-11-07: pdfkit reports, it does not refuse.** What to do with a
+damaged page is a business rule of the caller (§2.1), so pdfkit decides
+nothing about it: every output a caller reads (inspect, text, find, check and
+the write report) names each page whose text could not be read in full, so a
+caller never takes partial text for the whole page or "nothing found" for
+"nothing there". A page pdfkit repaired with no text lost is a normal page.
+The same report covers the bytes such a stream copies as they were (a word of
+the damaged data that no reader shows but a byte search finds, `budget` in
+`mutate-0046`). doc-anonymiser-for-.NET shows a warning and lets its user
+ignore the page or drop it; dropping is that application's workflow. Action:
+a session adds the report to pdfkit with its tests, its `docs/ABI.md` and
+`docs/DESIGN.md` rows and the dataset expectations, and the warning and the
+choice to doc-anonymiser-for-.NET.
 
 ### 1.4 Word cuts that differ from the reference readers
 
@@ -68,8 +72,18 @@ agreement against the reference readers is never accepted as small. Action:
 a session examines each file whose agreement is below 0.2.1-preview
 (`dccc-0124`, `dccc-0139`, `dccc-0097`, `pdfpig-0005`) and the Latin digits
 glued to ideographs of `dccc-0073`, judges each cut by the reader panel
-(§2.2), fixes what the panel calls wrong with a test seen red first, and
-reports a case the panel splits on.
+(§2.2), fixes what the panel calls wrong with a test seen red first. Where
+the panel splits, the session judges the cut from the words around it and
+pdfkit's purpose, and changes pdfkit only when the gain in reading is clear
+and costs no quality elsewhere.
+
+### 1.5 Chinese, Japanese and Korean fonts
+
+Answered 2026-11-07 by the owner: pdfkit stays a general library, but its
+first caller reads mostly European languages, so CJK reading is a
+nice-to-have that must not add complexity. The Adobe CMap resources are not
+embedded and the CJK misses stay known gaps; the panel's verdicts on CJK
+files are not pursued.
 
 ## 2. Answered on 2026-10-28
 
