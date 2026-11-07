@@ -24,7 +24,7 @@ MANIFEST_COLUMNS = (
     "tags", "expect_open", "expect_text", "expect_images", "expect_redact",
     "expect_metadata", "expect_fonts", "expect_write", "expect_select", "expect_redact_text",
     "expect_set_metadata",
-    "expect_redact_images", "expect_find", "notes",
+    "expect_redact_images", "expect_find", "expect_damage", "notes",
 )
 TAXONOMY_COLUMNS = ("tag", "group", "minimum", "description", "detector")
 SOURCES_COLUMNS = (
@@ -57,6 +57,10 @@ EXPECTATIONS = {
     # search removes for them, and each fed back as a located match
     # (tests/dataset/outcome.md).
     "expect_find": ("find", ("agree", "known_gap:", "n/a")),
+    # The pages pdfkit_inspect names as not read in full (docs/ABI.md
+    # damaged_pages), which pdfkit_text names alike: none, exactly these
+    # pages, at least one page not yet recorded, a known gap, or n/a.
+    "expect_damage": ("inspect", ("none", "pages:", "some", "known_gap:", "n/a")),
 }
 
 # The refusal codes of docs/DESIGN.md chapter 19 an `expect_open` may name.
@@ -286,8 +290,29 @@ def default_expect_find(expect_open: str) -> str:
     return "agree" if expect_open in ("opens", "repaired") else "n/a"
 
 
+def default_expect_damage(expect_open: str, tags: list[str] | set[str]) -> str:
+    """`some` for a readable file whose damage tag names a damaged content stream, `none`
+    for any other readable file, else `n/a`."""
+    if expect_open not in ("opens", "repaired"):
+        return "n/a"
+    return "some" if "damaged_flate" in tags else "none"
+
+
+def damaged_pages(value: str) -> list[int] | None:
+    """The page numbers of an `expect_damage` of `pages:<n>,<n>...`, else None."""
+    if not value.startswith("pages:"):
+        return None
+    try:
+        pages = [int(item) for item in value[len("pages:"):].split(",")]
+    except ValueError:
+        return None
+    return pages if pages and all(p > 0 for p in pages) and pages == sorted(set(pages)) else None
+
+
 def check_expectation(column: str, value: str) -> bool:
     """True when `value` is one of the values `column` may hold."""
+    if column == "expect_damage" and value.startswith("pages:"):
+        return damaged_pages(value) is not None
     allowed = EXPECTATIONS[column][1]
     for option in allowed:
         if option.endswith(":"):
