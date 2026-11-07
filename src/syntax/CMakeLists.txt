@@ -15,6 +15,7 @@ target_sources(pdfkit_core PRIVATE
   metadata_reader.cpp
   object.cpp
   object_streams.cpp
+  page_damage.cpp
   page_tree.cpp
   parser.cpp
   pdf_doc_encoding.cpp

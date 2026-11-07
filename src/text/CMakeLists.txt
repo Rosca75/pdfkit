@@ -9,6 +9,7 @@ target_sources(pdfkit_core PRIVATE
   colour.cpp
   content_interpreter.cpp
   content_serialiser.cpp
+  damage_scan.cpp
   docstrum.cpp
   glyph_record.cpp
   graphics_state.cpp

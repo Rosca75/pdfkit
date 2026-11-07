@@ -98,7 +98,8 @@ TEST_CASE("the open report and the inspect output in their documented shapes") {
   CHECK(report.find("warnings")->as_array().empty());
 
   const JsonValue output = JsonReader::parse(inspect(opened.document));
-  CHECK(keys_of(output) == "version page_count pages encryption repairs warnings ");
+  CHECK(keys_of(output) == "version page_count pages encryption repairs warnings damaged_pages ");
+  CHECK(output.find("damaged_pages")->as_array().empty());
   const auto& pages = output.find("pages")->as_array();
   REQUIRE(pages.size() == 2U);
   CHECK(keys_of(pages[0]) == "page media_box crop_box rotate ");

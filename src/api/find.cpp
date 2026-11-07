@@ -9,7 +9,8 @@
 // docs/ABI.md). It runs the one search the redaction runs
 // (MatchFinder::locate), so the count shown to a user is the count a search
 // of the same value removes. Pages are read one at a time, in page order,
-// each once for every value; nothing is recorded on the document.
+// each once for every value, and the answer names those whose text could not
+// be read in full; nothing but that damage is kept on the handle.
 
 #include "pdfkit/pdfkit.h"
 
@@ -25,6 +26,7 @@
 #include "platform/unicode/folding.hpp"
 #include "redact/match_finder.hpp"
 #include "redact/property_strings.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/hidden_class.hpp"
 #include "text/page_text.hpp"
 #include "text/rect.hpp"
@@ -294,8 +296,13 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
     std::vector<std::vector<Found>> found(values.size());
     std::vector<std::vector<InString>> in_strings(values.size());
     pdfkit::text::TextReader reader(document);
+    std::vector<pdfkit::syntax::PageDamage> damaged;
     for (const std::uint32_t number : pages) {
       const pdfkit::text::PageText page = reader.read(number);
+      handle.damage->record(page.content);
+      if (std::optional<pdfkit::syntax::PageDamage> damage = page.content.damaged_page()) {
+        damaged.push_back(std::move(*damage));
+      }
       MatchFinder finder(page);
       const std::vector<PropertyStrings::List> lists =
           PropertyStrings::lists(document, page.content);
@@ -358,6 +365,10 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_find(pdfkit_document* doc, const char
       writer.end_object();
     }
     writer.end_array();
+    // The pages read whose text is not whole: an occurrence there may be
+    // missing from the counts above.
+    writer.key("damaged_pages");
+    pdfkit::syntax::PageDamage::write(writer, damaged);
     writer.end_object();
     pdfkit::api::write_buffer(out, writer.take());
     return PDFKIT_OK;

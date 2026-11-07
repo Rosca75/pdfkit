@@ -13,12 +13,20 @@
 #include "redact/optional_content_remover.hpp"
 #include "redact/self_check.hpp"
 #include "redact/text_redactor.hpp"
+#include "syntax/document.hpp"
+#include "syntax/page_damage.hpp"
+#include "text/damage_scan.hpp"
 #include "writer/channel_table.hpp"
 #include "writer/file_writer.hpp"
 #include "writer/metadata_writer.hpp"
 #include "writer/page_selector.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <utility>
@@ -48,6 +56,7 @@ WritePipeline::Output WritePipeline::run(EditPlan& plan) {
   strip_channels(graph, output.report);
   output.pdf = serialise(graph, output.report);
   self_check(plan, output.pdf, output.report);
+  damaged_pages(plan, output.pdf, output.report);
   return output;
 }
 
@@ -118,6 +127,51 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
                                writer::WriteReport& report) {
   // Each kind of request is verified where it applies (SelfCheck::verify).
   SelfCheck::verify(plan, pdf, report);
+}
+
+void WritePipeline::damaged_pages(EditPlan& plan, const std::string& pdf,
+                                  writer::WriteReport& report) {
+  // The source pages the output keeps that could not be read in full, read
+  // by the scan the document handle keeps.
+  std::map<std::uint32_t, syntax::PageDamage> source;
+  for (syntax::PageDamage& damage : plan.damage().pages(report.pages)) {
+    const std::uint32_t page = damage.page;
+    source.emplace(page, std::move(damage));
+  }
+  if (source.empty()) {
+    return;
+  }
+  const TextPlan& text = plan.text();
+  std::set<std::uint32_t> edited;
+  for (const auto& [page, work] : text.pages) {
+    edited.insert(page);
+  }
+  for (const TextPlan::Located& entry : text.located) {
+    edited.insert(entry.page);
+  }
+  for (const TextPlan::StringEdit& edit : text.strings) {
+    edited.insert(edit.page);
+  }
+  // The output read again by the same walk: a damaged stream copied as it
+  // was, or bytes no operator draws kept by a rewrite, read there as damage
+  // again, while a rewrite of what decoded leaves an undecoded tail behind.
+  const std::unique_ptr<syntax::Document> output =
+      syntax::Document::open(platform::as_bytes(pdf), plan.document().limits());
+  text::DamageScan reread(*output);
+  for (std::size_t i = 0; i < report.pages.size(); ++i) {
+    const auto found = source.find(report.pages[i]);
+    if (found == source.end()) {
+      continue;
+    }
+    syntax::PageDamage entry = found->second;
+    entry.page = static_cast<std::uint32_t>(i + 1);
+    entry.source_page = found->first;
+    // A search string is searched on every page; any other match on its own.
+    entry.text_redaction = !text.needles.empty() || edited.contains(found->first);
+    const std::array<std::uint32_t, 1> page{entry.page};
+    entry.copied_as_is = !reread.pages(page).empty();
+    report.damaged_pages.push_back(std::move(entry));
+  }
 }
 
 }  // namespace pdfkit::redact

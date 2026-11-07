@@ -5,7 +5,8 @@
 // surviving occurrences of strings under their folding rules, with the same
 // search the self-check of pdfkit_write runs (docs/DESIGN.md section 18),
 // and answers every occurrence by page and surface (CLAUDE.md section 2, the
-// pdfkit_check section of docs/ABI.md). Finding a string is the answer, not a
+// pdfkit_check section of docs/ABI.md), with every page of the bytes whose
+// text could not be read in full. Finding a string is the answer, not a
 // failure; the call fails only when the bytes do not open, with the open's
 // refusal, under the default open limits.
 
@@ -21,6 +22,7 @@
 #include "platform/json_writer.hpp"
 #include "redact/self_check.hpp"
 #include "syntax/limits.hpp"
+#include "syntax/page_damage.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -96,7 +98,7 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_check(const std::uint8_t* bytes, std:
     }
     const pdfkit::platform::ByteSpan data(reinterpret_cast<const std::byte*>(bytes), size);
     const pdfkit::redact::SelfCheck::Result result =
-        pdfkit::redact::SelfCheck::run(data, pdfkit::syntax::Limits{}, needles);
+        pdfkit::redact::SelfCheck::run(data, pdfkit::syntax::Limits{}, needles, nullptr, true);
 
     pdfkit::platform::JsonWriter writer;
     writer.begin_object();
@@ -123,6 +125,10 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_check(const std::uint8_t* bytes, std:
       writer.end_object();
     }
     writer.end_array();
+    // The pages whose text could not be read in full: a string may survive
+    // there unseen.
+    writer.key("damaged_pages");
+    pdfkit::syntax::PageDamage::write(writer, result.damaged_pages);
     writer.end_object();
     pdfkit::api::write_buffer(out, writer.take());
     return PDFKIT_OK;

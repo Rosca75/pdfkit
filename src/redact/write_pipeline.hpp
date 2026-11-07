@@ -12,7 +12,9 @@
 // redacted or a metadata field rewritten, which the report says with its
 // reason. The metadata stage (section 10) runs on every write, because the
 // XMP packet's identifiers and history name the original whatever the plan
-// holds.
+// holds. Last, the report names each output page whose source page could not
+// be read in full (the damaged pages section), because a verification over
+// such a page is incomplete whatever the self-check found.
 
 #ifndef PDFKIT_REDACT_WRITE_PIPELINE_HPP
 #define PDFKIT_REDACT_WRITE_PIPELINE_HPP
@@ -44,6 +46,7 @@ class WritePipeline {
   static void strip_channels(writer::ObjectGraph& graph, writer::WriteReport& report);
   static std::string serialise(writer::ObjectGraph& graph, writer::WriteReport& report);
   static void self_check(EditPlan& plan, const std::string& pdf, writer::WriteReport& report);
+  static void damaged_pages(EditPlan& plan, const std::string& pdf, writer::WriteReport& report);
 };
 
 }  // namespace pdfkit::redact

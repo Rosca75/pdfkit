@@ -21,6 +21,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <span>
 #include <utility>
 
@@ -35,6 +36,8 @@ struct Stage {
   std::vector<std::byte> bytes;
   bool damaged = false;
   std::string fault;
+  std::string damage;
+  std::optional<std::size_t> unread;
 };
 
 [[nodiscard]] unsigned byte_at(ByteSpan data, std::size_t index) noexcept {
@@ -46,10 +49,17 @@ struct Stage {
          value == 0x20;
 }
 
-Stage finish(Buffer&& buffer, std::string fault = {}) {
+// The stage's bytes and, when fault is not empty, its damage class and the
+// input bytes the filter did not read.
+Stage finish(Buffer&& buffer, std::string fault = {}, std::string damage = {},
+             std::optional<std::size_t> unread = std::nullopt) {
   Stage stage;
   stage.damaged = !fault.empty();
   stage.fault = std::move(fault);
+  if (stage.damaged) {
+    stage.damage = std::move(damage);
+    stage.unread = unread;
+  }
   stage.bytes = std::move(buffer).release();
   return stage;
 }
@@ -73,19 +83,22 @@ Stage flate(ByteSpan data, platform::Budget& budget, std::string_view object) {
       if ((flg & 0x20U) != 0) {
         return finish(std::move(out),
                       "the Flate data names a preset dictionary, which PDF "
-                      "does not define");
+                      "does not define",
+                      "flate_dictionary", data.size());
       }
       start = 2;
     }
   }
   z_stream stream{};
   if (inflateInit2(&stream, -15) != Z_OK) {
-    return finish(std::move(out), "zlib could not start inflating");
+    return finish(std::move(out), "zlib could not start inflating", "flate_corrupt", data.size());
   }
   std::vector<unsigned char> chunk(65536);
   uLong checksum = adler32(0L, Z_NULL, 0);
   std::size_t fed = start;
   std::string fault;
+  std::string damage;
+  std::size_t unread = 0;
   while (true) {
     if (stream.avail_in == 0 && fed < data.size()) {
       const std::size_t piece = std::min<std::size_t>(data.size() - fed, 1U << 30U);
@@ -112,6 +125,7 @@ Stage flate(ByteSpan data, platform::Budget& budget, std::string_view object) {
             static_cast<uLong>(platform::read_be<std::uint32_t>(data, end).value_or(0));
         if (stored != checksum) {
           fault = "the Flate data's Adler-32 checksum does not match its decoded bytes";
+          damage = "flate_checksum";
         }
       }
       break;
@@ -121,9 +135,13 @@ Stage flate(ByteSpan data, platform::Budget& budget, std::string_view object) {
     }
     if (result == Z_BUF_ERROR && stream.avail_in == 0 && fed >= data.size()) {
       fault = "the Flate data ends before its last block";
+      damage = "flate_truncated";
     } else if (result != Z_BUF_ERROR) {
       fault = std::string("the Flate data is corrupt (zlib: ") +
               (stream.msg != nullptr ? stream.msg : "error") + ")";
+      damage = "flate_corrupt";
+      // The input from where inflate stopped on.
+      unread = data.size() - (fed - stream.avail_in);
     } else {
       continue;
     }
@@ -133,7 +151,7 @@ Stage flate(ByteSpan data, platform::Budget& budget, std::string_view object) {
     fault += " (" + std::to_string(out.size()) + " bytes decoded)";
   }
   inflateEnd(&stream);
-  return finish(std::move(out), fault);
+  return finish(std::move(out), fault, damage, unread);
 }
 
 // LZWDecode, ISO 32000-1 section 7.4.4.2: codes of 9 to 12 bits, 256 clears
@@ -193,7 +211,8 @@ Stage lzw(ByteSpan data, int early_change, platform::Budget& budget, std::string
     }
     if (previous < 0) {
       if (code > 255) {
-        return finish(std::move(out), "the LZW data starts with an undefined code");
+        return finish(std::move(out), "the LZW data starts with an undefined code", "lzw",
+                      data.size() - at);
       }
       emit(code);
       previous = static_cast<int>(code);
@@ -206,7 +225,8 @@ Stage lzw(ByteSpan data, int early_change, platform::Budget& budget, std::string
     } else if (code == next) {
       first = first_byte(prior);
     } else {
-      return finish(std::move(out), "the LZW data holds an undefined code");
+      return finish(std::move(out), "the LZW data holds an undefined code", "lzw",
+                    data.size() - at);
     }
     if (next < table_size) {
       prefix[next] = static_cast<std::uint16_t>(prior);
@@ -232,6 +252,7 @@ Stage ascii_hex(ByteSpan data, platform::Budget& budget, std::string_view object
   Buffer out(budget, std::string(object));
   int pending = -1;
   std::string fault;
+  std::size_t unread = 0;
   for (std::size_t i = 0; i < data.size(); ++i) {
     const unsigned value = byte_at(data, i);
     if (value == '>') {
@@ -250,6 +271,7 @@ Stage ascii_hex(ByteSpan data, platform::Budget& budget, std::string_view object
     } else {
       fault = "the ASCIIHex data holds a byte that is not a hexadecimal digit at offset " +
               std::to_string(i);
+      unread = data.size() - i;
       break;
     }
     if (pending < 0) {
@@ -263,7 +285,7 @@ Stage ascii_hex(ByteSpan data, platform::Budget& budget, std::string_view object
   if (pending >= 0) {
     out.push_back(std::byte{static_cast<unsigned char>(static_cast<unsigned>(pending) << 4U)});
   }
-  return finish(std::move(out), fault);
+  return finish(std::move(out), fault, "ascii_hex", unread);
 }
 
 // ASCII85Decode, ISO 32000-1 section 7.4.3.
@@ -276,6 +298,7 @@ Stage ascii85(ByteSpan data, platform::Budget& budget, std::string_view object) 
   std::array<unsigned, 5> group{};
   std::size_t count = 0;
   std::string fault;
+  std::size_t unread = 0;
   const auto flush = [&](std::size_t digits) {
     for (std::size_t i = digits; i < 5; ++i) {
       group.at(i) = 84;  // 'u' - '!'
@@ -306,6 +329,7 @@ Stage ascii85(ByteSpan data, platform::Budget& budget, std::string_view object) 
     }
     if (value < '!' || value > 'u') {
       fault = "the ASCII85 data holds an invalid byte at offset " + std::to_string(at);
+      unread = data.size() - at;
       break;
     }
     group.at(count++) = value - '!';
@@ -313,6 +337,7 @@ Stage ascii85(ByteSpan data, platform::Budget& budget, std::string_view object) 
       flush(5);
       count = 0;
       if (!fault.empty()) {
+        unread = data.size() - at - 1;
         break;
       }
     }
@@ -322,7 +347,7 @@ Stage ascii85(ByteSpan data, platform::Budget& budget, std::string_view object) 
   } else if (fault.empty() && count > 1) {
     flush(count);
   }
-  return finish(std::move(out), fault);
+  return finish(std::move(out), fault, "ascii85", unread);
 }
 
 // RunLengthDecode, ISO 32000-1 section 7.4.5.
@@ -338,13 +363,15 @@ Stage run_length(ByteSpan data, platform::Budget& budget, std::string_view objec
       const std::size_t count = length + 1U;
       if (data.size() - at < count) {
         out.append(data.subspan(at));
-        return finish(std::move(out), "the RunLength data ends inside a literal run");
+        return finish(std::move(out), "the RunLength data ends inside a literal run", "run_length",
+                      0);
       }
       out.append(data.subspan(at, count));
       at += count;
     } else {
       if (at >= data.size()) {
-        return finish(std::move(out), "the RunLength data ends before a repeated byte");
+        return finish(std::move(out), "the RunLength data ends before a repeated byte",
+                      "run_length", 0);
       }
       const std::byte repeated = data[at++];
       for (unsigned i = 0; i < 257U - length; ++i) {
@@ -390,6 +417,7 @@ Stage predict(std::vector<std::byte> input, const PredictorParameters& p, platfo
       (p.predictor != 2 && (p.predictor < 10 || p.predictor > 15))) {
     stage.bytes = std::move(input);
     stage.damaged = true;
+    stage.damage = "predictor";
     stage.fault = "the predictor parameters are invalid (/Predictor " +
                   std::to_string(p.predictor) + ", /Colors " + std::to_string(p.colors) +
                   ", /BitsPerComponent " + std::to_string(p.bits) + ")";
@@ -497,7 +525,7 @@ Stage predict(std::vector<std::byte> input, const PredictorParameters& p, platfo
     at += take;
     std::swap(previous, current);
   }
-  return finish(std::move(out), fault);
+  return finish(std::move(out), fault, "predictor");
 }
 
 [[nodiscard]] std::vector<std::pair<std::string, Object>> chain_of(const Object& filter,
@@ -592,12 +620,16 @@ Filters::Result Filters::decode(platform::ByteSpan data, const Object& filter,
       if (predicted.damaged && !stage.damaged) {
         stage.damaged = true;
         stage.fault = std::move(predicted.fault);
+        stage.damage = std::move(predicted.damage);
+        stage.unread = predicted.unread;
       }
     }
     result.bytes = std::move(stage.bytes);
     if (stage.damaged && !result.damaged) {
       result.damaged = true;
       result.fault = std::string(name) + ": " + stage.fault;
+      result.damage = std::move(stage.damage);
+      result.unread = stage.unread;
     }
   }
   return result;

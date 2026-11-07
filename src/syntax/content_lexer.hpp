@@ -12,7 +12,9 @@
 // else at the first "EI" preceded by white space and followed by white space
 // or the end, whose following bytes lex as operators: PdfPig's check against
 // a false EI inside binary data (PR 1476, read in the design record). The
-// operation count is bounded by the open option operators_per_page.
+// operation count is bounded by the open option operators_per_page. Every
+// recovery is counted, and those that can take text are kept as losses,
+// which name the page as damaged (docs/DESIGN.md, the damaged pages section).
 
 #ifndef PDFKIT_SYNTAX_CONTENT_LEXER_HPP
 #define PDFKIT_SYNTAX_CONTENT_LEXER_HPP
@@ -53,6 +55,25 @@ class ContentLexer {
     std::size_t offset = 0;
   };
 
+  // A recovery that can take text from the page (docs/DESIGN.md chapter 4):
+  // bytes the lexer read as no operation, or an operation it could not read
+  // whole. A recovery that skips no byte and drops no operator (operands
+  // left before BI or at the end, a stray delimiter, a token read leniently)
+  // is no loss.
+  struct Loss {
+    // unknown_operator: a keyword Annex A does not know, outside BX and EX;
+    // unlexable_content: an operator read as an operand's value, a
+    // dictionary key that is not a name, containers nested past the limit,
+    // operands past their bound, a string that runs to the end;
+    // inline_image: an inline image whose dictionary or end is not read.
+    std::string damage;
+    std::string fault;
+    // Where it starts in the joined bytes.
+    std::size_t start = 0;
+    // The bytes it takes from the drawing, when known.
+    std::optional<std::size_t> bytes;
+  };
+
   // pieces are a /Contents array's decoded streams in order (one for a form or
   // a single stream); what names the stream in a refusal ("page 3").
   ContentLexer(const std::vector<std::vector<std::byte>>& pieces, const Limits& limits,
@@ -77,6 +98,8 @@ class ContentLexer {
   // Recoveries met so far: a stray delimiter, an unterminated string, an
   // inline image without EI.
   [[nodiscard]] std::size_t faults() const noexcept { return faults_; }
+  // The recoveries met so far that can take text, in the order met.
+  [[nodiscard]] const std::vector<Loss>& losses() const noexcept { return losses_; }
 
   // Whether a keyword is one of the content operators of ISO 32000-1 Annex A
   // (read).
@@ -86,6 +109,10 @@ class ContentLexer {
   [[nodiscard]] Operation inline_image(std::size_t start, std::size_t operator_start);
   [[nodiscard]] std::optional<std::size_t> computed_length(const Object& dictionary) const;
   [[nodiscard]] bool plausible_after(std::size_t position) const;
+  void lose(std::string damage, std::string fault, std::size_t start,
+            std::optional<std::size_t> bytes);
+  // Records the recoveries of one operand's parse that can take text.
+  void lose_recoveries(const std::vector<std::string>& recoveries, std::size_t start);
 
   std::vector<std::byte> joined_;
   std::vector<std::size_t> piece_starts_;
@@ -94,6 +121,11 @@ class ContentLexer {
   std::string what_;
   std::uint64_t count_ = 0;
   std::size_t faults_ = 0;
+  std::vector<Loss> losses_;
+  // The BX sections open, inside which an unknown operator is no loss
+  // (ISO 32000-1 section 7.8.2, read).
+  std::size_t compatibility_ = 0;
+  bool string_lost_ = false;
 };
 
 }  // namespace pdfkit::syntax

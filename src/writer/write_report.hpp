@@ -6,12 +6,14 @@
 // and SHA-256 of the output, per channel of the table the occurrences
 // stripped, the /Redact annotations never applied, the references written as
 // null, the resource dictionaries kept whole, the rectangles changed, the
-// self-check's result and the warnings met. Keys are written in a fixed
-// order, so one write gives one report.
+// self-check's result, the warnings met and the output pages whose text
+// could not be read in full. Keys are written in a fixed order, so one write
+// gives one report.
 
 #ifndef PDFKIT_WRITER_WRITE_REPORT_HPP
 #define PDFKIT_WRITER_WRITE_REPORT_HPP
 
+#include "syntax/page_damage.hpp"
 #include "writer/channel_table.hpp"
 
 #include <array>
@@ -68,6 +70,10 @@ class WriteReport {
   std::size_t self_check_located = 0;
   std::size_t self_check_metadata_values = 0;
   std::vector<ChannelTable::Warning> warnings;
+  // Per output page whose source page could not be read in full, in output
+  // order, with whether a text redaction searched or edited it and whether
+  // its damaged bytes reach the output as they were.
+  std::vector<syntax::PageDamage> damaged_pages;
 
   [[nodiscard]] std::string json() const;
 };

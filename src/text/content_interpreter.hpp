@@ -31,6 +31,7 @@
 #include "fonts/font_loader.hpp"
 #include "syntax/document.hpp"
 #include "syntax/page.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/optional_content.hpp"
 #include "text/page_content.hpp"
 
@@ -61,10 +62,17 @@ class ContentInterpreter {
   syntax::Document* document_;
   fonts::FontLoader* loader_;
   const OptionalContent* optional_content_;
+  // A form stream decoded: its bytes, whether a filter met a fault, and that
+  // fault as a damaged stream of the page drawing it.
+  struct FormBytes {
+    std::shared_ptr<const std::vector<std::byte>> bytes;
+    bool damaged = false;
+    syntax::PageDamage::Stream damage;
+  };
+
   // The decoded bytes of each form stream, by object number, so a form drawn
   // on many pages is decoded and charged to the budget once.
-  std::map<std::uint32_t, std::shared_ptr<const std::vector<std::byte>>> forms_;
-  std::map<std::uint32_t, bool> form_damaged_;
+  std::map<std::uint32_t, FormBytes> forms_;
 };
 
 }  // namespace pdfkit::text

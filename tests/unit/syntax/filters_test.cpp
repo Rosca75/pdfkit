@@ -236,3 +236,40 @@ TEST_CASE("a stream past the per-stream budget is refused naming the object and 
 }
 
 }  // namespace
+
+TEST_CASE("every filter fault carries its damage class") {
+  const std::string original = sample(20000);
+  const std::size_t half = original.size() / 2;
+  CHECK(run("4865>", "ASCIIHexDecode").damage.empty());
+  using Damage = PdfBuilder::FlateDamage;
+  CHECK(run(PdfBuilder::deflate_damaged(original, Damage::checksum, half), "FlateDecode").damage ==
+        "flate_checksum");
+  const Filters::Result corrupt =
+      run(PdfBuilder::deflate_damaged(original, Damage::corrupt, half), "FlateDecode");
+  CHECK(corrupt.damage == "flate_corrupt");
+  CHECK(text(corrupt.bytes) == original.substr(0, half));
+  REQUIRE(corrupt.unread.has_value());
+  CHECK(*corrupt.unread > 0);
+  const Filters::Result truncated =
+      run(PdfBuilder::deflate_damaged(original, Damage::truncated, half), "FlateDecode");
+  CHECK(truncated.damage == "flate_truncated");
+  CHECK(text(truncated.bytes) == original.substr(0, half));
+  CHECK(truncated.unread == std::size_t{0});
+  CHECK(run("78 9C", "FlateDecode").damage.starts_with("flate_"));
+  const std::string dictionary("\x78\xBB\x00\x00\x00\x00", 6);
+  CHECK(run(dictionary, "FlateDecode").damage == "flate_dictionary");
+  const Filters::Result hex = run("48 65 ZZ 6C>", "ASCIIHexDecode");
+  CHECK(hex.damage == "ascii_hex");
+  CHECK(text(hex.bytes) == "He");
+  CHECK(hex.unread == std::size_t{6});
+  CHECK(run("87cURvx~>", "ASCII85Decode").damage == "ascii85");
+  CHECK(run("87cUR8~>", "ASCII85Decode").damage == "ascii85");
+  CHECK(run(std::string("\x96\x00\x00", 3), "LZWDecode").damage == "lzw");
+  CHECK(run(std::string("\x05He", 3), "RunLengthDecode").damage == "run_length");
+  CHECK(run(std::string("\xFF", 1), "RunLengthDecode").damage == "run_length");
+  CHECK(run(PdfBuilder::deflate(original), "FlateDecode", predictor(3, 1, 8, 1)).damage ==
+        "predictor");
+  CHECK(run(PdfBuilder::deflate(std::string("\x09\x01\x02", 3)), "FlateDecode",
+            predictor(12, 1, 8, 2))
+            .damage == "predictor");
+}

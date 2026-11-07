@@ -8,13 +8,15 @@
 // order through forms, the marked-content spans carrying replacement text,
 // the unreadable codes per font name, the fonts whose widths are estimated,
 // and the faults met (a damaged stream, a refused self-drawing form, a form
-// past the depth limit, a q past the stack bound). It is the one reading of a
+// past the depth limit, a q past the stack bound) with the streams whose text
+// could not be read in full. It is the one reading of a
 // page that extraction, the image listing and redaction all start from.
 
 #ifndef PDFKIT_TEXT_PAGE_CONTENT_HPP
 #define PDFKIT_TEXT_PAGE_CONTENT_HPP
 
 #include "syntax/page.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/content_stream.hpp"
 #include "text/figure_record.hpp"
 #include "text/glyph_record.hpp"
@@ -23,6 +25,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -77,6 +80,11 @@ class PageContent {
 
   // The fault, recorded once.
   void fault(std::string message);
+
+  // The page's damage: every walk's damaged streams, each stream and class
+  // once, in walk order, with the glyphs read; no value when every stream
+  // was read in full.
+  [[nodiscard]] std::optional<syntax::PageDamage> damaged_page() const;
 };
 
 }  // namespace pdfkit::text

@@ -31,6 +31,7 @@
 #include "syntax/dictionary.hpp"
 #include "syntax/document.hpp"
 #include "syntax/stream.hpp"
+#include "text/damage_scan.hpp"
 #include "text/page_text.hpp"
 #include "text/text_reader.hpp"
 #include "text/text_string.hpp"
@@ -482,12 +483,13 @@ void check_strings(syntax::Document& document, const text::PageText& page,
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                  std::span<const MatchFinder::Match> needles,
-                                 const std::set<std::uint32_t>* pages) {
-  return run(pdf, limits, Needles{needles, {}, {}, {}}, pages);
+                                 const std::set<std::uint32_t>* pages, bool damage) {
+  return run(pdf, limits, Needles{needles, {}, {}, {}}, pages, damage);
 }
 
 SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& limits,
-                                 const Needles& requests, const std::set<std::uint32_t>* pages) {
+                                 const Needles& requests, const std::set<std::uint32_t>* pages,
+                                 bool damage) {
   Result result;
   const std::span<const MatchFinder::Match> needles = requests.values;
   std::vector<MatchFinder::Match> originals;
@@ -502,7 +504,13 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
       needles.size() + result.located + requests.strings.size() + result.metadata_values;
   std::unique_ptr<syntax::Document> document = syntax::Document::open(pdf, limits);
   Search search(needles, originals, requests.written, result);
+  // The pages read below keep their damage here, and the others are read for
+  // it when it is asked for.
+  text::DamageScan scan(*document);
   if (result.strings == 0) {
+    if (damage) {
+      result.damaged_pages = scan.all();
+    }
     return result;
   }
   std::map<std::uint32_t, std::vector<const Located*>> located_on;
@@ -529,6 +537,7 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     }
     ++result.pages_read;
     const text::PageText page = reader.read(source.number);
+    scan.record(page.content);
     MatchFinder finder(page, {placeholder_fonts.begin(), placeholder_fonts.end()});
     if (here != located_on.end()) {
       check_located(page, finder, here->second, placeholder_fonts, search);
@@ -568,6 +577,10 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
         search.text(*span.expansion, source.number, "expansion", 0);
       }
     }
+  }
+
+  if (damage) {
+    result.damaged_pages = scan.all();
   }
 
   // The Info dictionary and the XMP packet.
