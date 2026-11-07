@@ -1,19 +1,4 @@
 path	phase	note
-tests/panel/	change-01a	the reference panel's folder
-tests/panel/fetch.py	change-01a	fetches and builds the panel's readers by hash
-tests/panel/answers.py	change-01a	the panel's answers cache
-tests/panel/collect.py	change-01a	asks every member about the dataset
-tests/panel/readers/	change-01a	one adapter per member
-tests/panel/rust/	change-01a	the Rust adapters
-tests/panel/rust/Cargo.toml	change-01a	the Rust adapters' manifest
-tests/panel/rust/Cargo.lock	change-01a	the Rust adapters' pinned crates
-tests/panel/rust/src/bin/panel-oxide.rs	change-01a	the pdf_oxide adapter
-tests/panel/rust/src/bin/panel-extract.rs	change-01a	the pdf-extract adapter
-tests/panel/rust/src/bin/panel-lopdf.rs	change-01a	the lopdf adapter
-tests/panel/members.tsv	change-01a	the members and their measured capabilities
-tests/panel/smoke.tsv	change-01a	the smoke set
-tests/panel/test_answers.py	change-01a	tests of the answers cache
-tests/panel/test_readers.py	change-01a	tests of the adapters
 tests/panel/judge.py	change-01b	the majority judge
 tests/panel/test_judge.py	change-01b	tests of the judge
 tests/panel/redecide.py	change-01b	the three re-decisions
