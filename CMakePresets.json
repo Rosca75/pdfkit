@@ -14,8 +14,8 @@
     "(build/llvm-mingw-arm64.cmake); arm64-release ships, and unit-arm64 runs the unit tier on an",
     "ARM64 machine. linux-debug (GCC) and linux-release (clang, since GCC's -O2 stops on a",
     "-Wmaybe-uninitialized) build on a Linux host for the test tiers only; they ship nothing and",
-    "exist only on Linux (build/toolchain.md, 'Linux (test only)'). unit-linux and",
-    "unit-linux-release run the unit tier there."
+    "exist only on Linux (build/toolchain.md, 'Linux (test only)'), as do their build presets and",
+    "unit-linux and unit-linux-release, which run the unit tier there."
   ],
   "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
   "configurePresets": [
@@ -137,8 +137,16 @@
     { "name": "clang-sanitize", "configurePreset": "clang-sanitize" },
     { "name": "arm64-debug", "configurePreset": "arm64-debug" },
     { "name": "arm64-release", "configurePreset": "arm64-release" },
-    { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-release", "configurePreset": "linux-release" }
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    }
   ],
   "testPresets": [
     {
@@ -168,12 +176,14 @@
     {
       "name": "unit-linux",
       "configurePreset": "linux-debug",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
       "filter": { "include": { "label": "unit" } },
       "output": { "outputOnFailure": true }
     },
     {
       "name": "unit-linux-release",
       "configurePreset": "linux-release",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
       "filter": { "include": { "label": "unit" } },
       "output": { "outputOnFailure": true }
     }

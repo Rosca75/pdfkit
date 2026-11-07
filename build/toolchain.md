@@ -377,8 +377,9 @@ times its release limit.
 The test tiers also run on a Linux host, for the reference readers that are
 packaged for Linux and for sessions that have no Windows machine. Linux is a
 test platform only: no Linux artefact is packaged, released or budgeted,
-`build/package.py`, `build/check_artefact.py` and the Windows presets are
-unchanged, and every rule of sections 1 to 6 stays the laptop's. The versions
+`build/package.py`, `build/check_artefact.py` and the Windows presets build
+and check the Windows artefacts alone, and every rule of sections 1 to 6 is the
+laptop's. The versions
 below are what the commands printed on Ubuntu 24.04.5 LTS (x86_64, four
 logical processors) on 2026-11-07.
 
@@ -461,8 +462,8 @@ python3 build/check.py --fast
 The dataset, PDFium and ABI tiers find the Linux builds through
 `common.build_presets()` (`dataset/tools/common.py`): `out/linux-release`
 first, then `out/linux-debug`, with suffix-less executables and `pdfkit.so`.
-`build/check.py --fast` is unchanged: it configures `mingw-debug` with the host
-GCC only for its compile database, and clang-tidy analyses that database for
+`build/check.py --fast` reads the same presets on Linux as on the laptop: it
+configures `mingw-debug` with the host GCC only for its compile database, and clang-tidy analyses that database for
 the Windows target (`--target=x86_64-w64-mingw32`), which is why the MinGW-w64
 headers are installed. The ABI tier runs both halves: the .NET caller loads
 the library by path and is built for the machine read from its ELF header.

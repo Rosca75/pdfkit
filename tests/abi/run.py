@@ -128,7 +128,8 @@ def platform_of(dll: Path) -> str | None:
     """The PlatformTarget of a PE file's machine: the PE header's offset is at 0x3C, and the COFF
     machine field follows its four-byte signature. A little-endian ELF file's machine is the
     two bytes at 18. None for a file that is neither of a known machine."""
-    data = dll.read_bytes()[:4096]
+    with open(dll, "rb") as file:
+        data = file.read(4096)
     if data[:4] == b"\x7fELF" and len(data) >= 20 and data[5] == 1:
         return ELF_MACHINES.get(int.from_bytes(data[18:20], "little"))
     if len(data) < 0x40 or data[:2] != b"MZ":
