@@ -22,12 +22,12 @@ decision, and a session that resumes reads it before anything else.
 
 | Item | Repository | Branch | Status | Commits | Numbers | Next step |
 |---|---|---|---|---|---|---|
-| Toolkit check | both | none | running | none | none | record results here |
-| W1 damaged pages | pdfkit | `w1-damaged-pages` | design decided (below), implementation starting | none | none | implement, review, merge |
-| W1 consumer | doc-anonymiser | its own workflow | waiting on W1's ABI | none | none | brief after W1's ABI shape is fixed |
-| P0 Linux tiers | pdfkit | `p0-linux-tiers` | waiting on the toolkit check | none | none | brief |
+| Toolkit check | both | none | done 2026-11-07 | none | pdfkit unit 721/721 (Linux gcc Debug); `check.py --fast` 11/11 with the scratch venv; doc-anonymiser 7,612 unit (0 failed, 122 skipped) and 107 integration (95 passed, 12 skipped) against `pdfkit.so` 0.2.1 | see Toolkit below |
+| W1 damaged pages | pdfkit | `w1-damaged-pages` (worktree `/home/user/wt/w1`) | implementing | none | none | review, merge |
+| W1 consumer | doc-anonymiser | change order 19, `claude/change-19-<letter>-<slug>` | waiting on W1's ABI | none | none | brief after W1 lands. The app pins pdfkit 0.2.1 (ABI 2); its fixtures are recorded from a tagged release and `build/pdfkit-linux.sh` builds only a tag, so the pin move stays the owner's after the tag |
+| P0 Linux tiers | pdfkit | `p0-linux-tiers` (worktree `/home/user/wt/p0`) | implementing: presets, Linux paths, dataset fetch, base run `linux-base-09b8d78`, PDFium Linux | none | none | review, merge |
 | Batch A, B, C (+W2) | pdfkit | one per batch | waiting on P0 | none | none | in order |
-| W3 gate counts | pdfkit | `w3-gate-counts` | waiting | none | none | last |
+| W3 gate counts | pdfkit | `w3-gate-counts` (worktree `/home/user/wt/w3`) | investigating (reading only; no dataset needed) | none | none | review |
 
 Decisions taken, with their reasons:
 
@@ -56,3 +56,16 @@ Decisions taken, with their reasons:
    report adds per page whether a text redaction searched or edited it and
    whether damaged bytes were copied as they were.
 5. **ABI 4, version 0.4.0-preview.** Fields only grow, so no meaning changes.
+
+Toolkit (2026-11-07): gcc/g++ 13.3, clang 18.1.3; a scratch venv
+(`/tmp/claude-0/-home-user/99d91c01-26b5-556f-b9dd-feff24862ffc/scratchpad/toolkit/venv/bin`)
+holds the pinned cmake 4.3.2, ninja 1.13.2, clang-format and clang-tidy 23.1.3 and
+fonttools 4.67.0; ccache 4.9.1 and mingw-w64 headers from apt; rustc/cargo 1.97.0;
+dotnet SDK 10.0.114 from apt (doc-anonymiser's `global.json` pins 10.0.204, so its
+build runs in a scratch clone with the pin relaxed, never by editing the file);
+pdftotext 24.02.0, mutool 1.23.10, qpdf 11.9.0 from apt. gcc 13 at `-O2` fails
+`-Werror` on a maybe-uninitialized in `syntax::Object`; a Release build uses clang.
+GitHub release assets download; GitHub pages and API of unattached repositories do
+not. Not runnable here: `check.py --full`, the mingw and arm64 artefacts, the
+import-table check, the sanitizer presets of the laptop, the .NET abi tier against
+the DLL, doc-anonymiser's fixture drift against the shipped DLL.
