@@ -27,7 +27,7 @@ decision, and a session that resumes reads it before anything else.
 | W1 consumer | doc-anonymiser | change order 19, `claude/change-19-<letter>-<slug>` | waiting on W1's ABI | none | none | brief after W1 lands. The app pins pdfkit 0.2.1 (ABI 2); its fixtures are recorded from a tagged release and its Linux build script builds only a tag, so the pin move stays the owner's after the tag |
 | P0 Linux tiers | pdfkit | `p0-linux-tiers` (worktree `/home/user/wt/p0`) | implementing: presets, Linux paths, dataset fetch, base run `linux-base-09b8d78`, PDFium Linux | none | none | review, merge |
 | Batch A, B, C (+W2) | pdfkit | one per batch | waiting on P0 | none | none | in order |
-| W3 gate counts | pdfkit | `w3-gate-counts` (worktree `/home/user/wt/w3`) | explained; reviewed APPROVE with three minor fixes being applied | 82410b5, 752fddd | 8,075 − 7,681 = 394 pages, all `dccc-0129` (hung, no outcome); re-open 360/361 the same file; scripts right on the numbers, reports now name the pages; selection rows now keep a hung file | merge after the fixes |
+| W3 gate counts | pdfkit | `w3-gate-counts` | merged into `main` at 523c10d after review (APPROVE, three minor fixes applied) | 82410b5, 752fddd, e6f813e, e4c588d | 8,075 − 7,681 = 394 pages, all `dccc-0129` (hung, no outcome); re-open 360/361 the same file; the numbers stand, the reports now name those pages with their cause; the selection rows keep a hung or failed selection in their population; unit tier 722/722, harness tests 94, `check.py --fast` 10/10 on Linux | done; `dccc-0129` (44.6 s alone of a 60 s limit) is a timing risk for the next laptop gate |
 
 Decisions taken, with their reasons:
 
@@ -69,3 +69,15 @@ GitHub release assets download; GitHub pages and API of unattached repositories 
 not. Not runnable here: `check.py --full`, the mingw and arm64 artefacts, the
 import-table check, the sanitizer presets of the laptop, the .NET abi tier against
 the DLL, doc-anonymiser's fixture drift against the shipped DLL.
+
+W3 record. Phase 7's identity-write pixel row reads 7,676 / 8,075 (95.06 %)
+while `compare.py` compares 7,681 pages. The 394 pages between them are
+`dccc-0129`'s, which hung in both runs and so has no outcome, no write and no
+rendering. The denominator is the gate's own (every page of the files PDFium
+opens, a page with no output not reproduced), so the number stands and the gap
+counts against the share; the report now names each file's pages not compared
+with the cause. Phase 9's re-open 360 / 361 is the same file. The selection rows
+now judge a file with no outcome on the manifest's page count and count the
+pages its outcome names (or the verb's seeded draw when it names none), so a
+hang fails both selection rows rather than leaving them; the unit tier pins the
+draw to the values the gate's Python copy is pinned to.
