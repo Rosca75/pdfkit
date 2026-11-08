@@ -23,7 +23,7 @@ decision, and a session that resumes reads it before anything else.
 | Item | Repository | Branch | Status | Commits | Numbers | Next step |
 |---|---|---|---|---|---|---|
 | Toolkit check | both | none | done 2026-11-07 | none | pdfkit unit 721/721 (Linux gcc Debug); `check.py --fast` 11/11 with the scratch venv; doc-anonymiser 7,612 unit (0 failed, 122 skipped) and 107 integration (95 passed, 12 skipped) against `pdfkit.so` 0.2.1 | see Toolkit below |
-| W1 damaged pages | pdfkit | `w1-damaged-pages` (worktree `/home/user/wt/w1`) | implemented (7 commits, unit 739/739 on its base); under review; main being merged in and the dataset measured (run `w1-damage`) | 94e4caa..3186958 | 13 classes; inspect's damage reading 0.14 s on 2,000 pages; opf-0019 and mutate-0046 name 23 pages; the self-check misses `4budget` (page 30, a keyword swallowed into a `TJ` array) and the write report names that page | merge after review and measurement |
+| W1 damaged pages | pdfkit | `w1-damaged-pages` (worktree `/home/user/wt/w1`) | reviewed CHANGES REQUESTED (undecodable or missing streams not named, an unbounded loss list, false mentions); main merged in; dataset measured; fixes in progress | 94e4caa..3186958, merges a98df23 4f96a1c, manifest 86ea593 | unit 740/740; run `w1-damage`: no column lost a pass, 0 crashes, 0 non-deterministic; 24 files named damaged (19 the manifest held clean); inspect, text and find agree on 912/912 readable files; inspect over the dataset 4.84 s → 10.72 s; false mentions qpdf-0060 (two pages) and safedocs-0005 | rerun `w1-fix`, re-review, merge |
 | W1 consumer | doc-anonymiser | branch claude/change-19-damaged-pages (worktree `/home/user/wt/19`) | implementing change order 19 against ABI 4's documented shape; the pin stays 0.2.1 until the owner tags | none | none | review, land on its main |
 | P0 Linux tiers | pdfkit | `p0-linux-tiers` | merged into `main` at 9a97e6f after review (APPROVE; follow-ups applied: preset host conditions, two delta words, a bounded read, the `test_channels` failure main already had) | 7af4f56, f15bb87, 821a7ac | dataset 961/968 present (7 `office` rows laptop-only), 0 hash mismatches; unit 721/721 linux-debug and linux-release; run `linux-base-09b8d78` (2 runs, 961 files, 752 s): 0 crashes, 0 non-deterministic, 1 hang (`dccc-0129`, 73 s alone under load; passes at `--timeout-scale 3`), 1 real miss (`mutate-0048` self-check refusal, as on the laptop); PDFium on Linux: F1 median 1.0, 55/898 below 0.90 (laptop 56), bitonal 495/498, Info 3,048/3,048; ABI tier .NET and Python pass (31 files, 717 calls); PDFium Linux SHA-256 `bdc60126…` computed, not read | done; departures in `docs/change-01.md` Appendix C, versions in `build/toolchain.md` §7 |
 | Batch A, B, C (+W2) | pdfkit | branch change/01-a-readers (worktree `/home/user/wt/a`) | batch A starting | none | none | in order |
@@ -56,6 +56,16 @@ Decisions taken, with their reasons:
    report adds per page whether a text redaction searched or edited it and
    whether damaged bytes were copied as they were.
 5. **ABI 4, version 0.4.0-preview.** Fields only grow, so no meaning changes.
+6. **A stream pdfkit cannot decode at all, or a content stream or XObject that
+   resolves to nothing, names the page**, because a missing form may have held
+   text, and decision 1 names a page whenever pdfkit cannot show none was lost.
+7. **A dropped operator names the page only when its operands could carry or
+   decide text** (a string, an array, a name or a dictionary); an unknown keyword
+   with no operands or only numbers, and an indirect reference written in content
+   (`5 0 R`), name no page. Reason: the dataset showed these on pages read whole
+   (qpdf-0060, safedocs-0005), and a false mention teaches a caller to ignore the
+   report. The classification changes; the lexer's tokens and operator numbers do
+   not, because the redaction surgery is addressed by them.
 
 Toolkit (2026-11-07): gcc/g++ 13.3, clang 18.1.3; a scratch venv
 (`/tmp/claude-0/-home-user/99d91c01-26b5-556f-b9dd-feff24862ffc/scratchpad/toolkit/venv/bin`)
