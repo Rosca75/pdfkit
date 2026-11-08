@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -42,8 +44,13 @@ class FakePanel:
     def __init__(self, answers: dict, absent=None) -> None:
         self.answers = answers
         self.absent = absent or {}
-        self.members = {"pdfium": None, "poppler": None, "mupdf": None, "oxide": None, "extract": None,
-                        "qpdf": None}
+        self.members = {name: None for name in ("pdfium", "poppler", "mupdf", "oxide", "extract", "qpdf")
+                        if name not in self.absent}
+
+    def stripped_copy(self, path, timeout=120.0):
+        """The copy without annotations: answers about it are keyed by "<id>.stripped"."""
+        del timeout
+        return Path(path).with_name(Path(path).stem + ".stripped.pdf"), None
 
     def answer(self, name, path, kind, timeout=30.0, **request):
         del timeout, request
@@ -64,7 +71,8 @@ def outcome(text: str, present=()) -> dict:
 
 
 class ReadingGateTest(unittest.TestCase):
-    def run_gate(self, files: dict, answers: dict, causes: dict | None = None) -> dict:
+    def run_gate(self, files: dict, answers: dict, causes: dict | None = None, absent=None,
+                 readings=None) -> dict:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "r"
             (run_dir / "outcomes").mkdir(parents=True)
@@ -76,11 +84,15 @@ class ReadingGateTest(unittest.TestCase):
             with mock.patch.object(phase5_panel.common, "reports_dir", return_value=Path(tmp)), \
                     mock.patch.object(phase5_panel.common, "read_manifest",
                                       return_value=[r for r, _ in files.values()]), \
-                    mock.patch.object(phase5_panel.evidence, "Panel", return_value=FakePanel(answers)), \
+                    mock.patch.object(phase5_panel.evidence, "Panel", return_value=FakePanel(answers, absent)), \
                     mock.patch.object(phase5_panel, "PANEL_CAUSES", causes_path), \
                     mock.patch.object(phase5_panel, "PDFIUM_CAUSES", Path(tmp) / "none.tsv"), \
-                    mock.patch("run.find_pdfkit", return_value=None):
+                    mock.patch.object(phase5_panel.evidence, "other_readings", side_effect=readings), \
+                    mock.patch.object(phase5_panel.evidence, "binary_digest", return_value="d" * 64), \
+                    mock.patch("run.find_pdfkit", return_value=["pdfkit"]):
                 code = phase5_panel.main(["--run", "r"])
+            if not (run_dir / "phase5_panel.json").exists():
+                return {"exit": code}
             summary = json.loads((run_dir / "phase5_panel.json").read_text(encoding="utf-8"))
             self.assertTrue((run_dir / "phase5_panel.md").exists())
             summary["exit"] = code
@@ -120,15 +132,57 @@ class ReadingGateTest(unittest.TestCase):
         self.assertEqual(summary["gate"], "failed")
         self.assertEqual(summary["exit"], 1)
 
-    def test_annotation_members_are_one_sided_on_an_annotated_file(self):
+    def annotated(self, draws_text: bool, pdfkit: str) -> dict:
         widget = TEXT + " lima mike november oscar papa quebec"
         answers = {(m, "a", "text"): ok(widget) for m in ("poppler", "mupdf", "oxide")}
         answers.update({(m, "a", "text"): ok(TEXT) for m in ("pdfium", "extract")})
-        plain = self.run_gate({"a": (row("a"), outcome(TEXT))}, answers)
-        self.assertEqual(plain["counts_against"], 1)
-        annotated = self.run_gate({"a": (row("a"), outcome(TEXT, ["ch_annotation"]))}, answers)
-        self.assertEqual(annotated["counts_against"], 0)
-        self.assertEqual(annotated["literal"]["counts_against"], 1)
+        answers.update({(m, "a.stripped", "text"): ok(TEXT) for m in ("poppler", "mupdf", "oxide")})
+        answers[("qpdf", "a", "annotations")] = {"ok": True, "draws_text": draws_text, "annotations": 1}
+        return self.run_gate({"a": (row("a"), outcome(pdfkit, ["ch_annotation"]))}, answers)
+
+    def test_members_drawing_annotations_read_the_copy_without_them(self):
+        summary = self.annotated(True, TEXT)
+        self.assertEqual(summary["counts_against"], 0)
+        self.assertEqual(summary["files"][0]["read_copy"], ["mupdf", "oxide", "poppler"])
+        self.assertEqual(summary["literal"]["counts_against"], 1)
+
+    def test_link_only_annotations_keep_the_members_own_text(self):
+        summary = self.annotated(False, TEXT)
+        self.assertEqual(summary["counts_against"], 1)
+        self.assertEqual(summary["files"][0]["read_copy"], [])
+
+    def test_an_empty_pdfkit_text_counts_against_it_on_an_annotated_file(self):
+        summary = self.annotated(True, "")
+        self.assertEqual(summary["counts_against"], 1)
+        self.assertEqual(summary["against"][0]["scores"],
+                         {"extract": 0.0, "mupdf": 0.0, "oxide": 0.0, "pdfium": 0.0, "poppler": 0.0})
+
+    def test_the_literal_median_is_reported(self):
+        files = {f"f{i}": (row(f"f{i}"), outcome(TEXT)) for i in range(3)}
+        answers = {(m, f"f{i}", "text"): ok(OTHER if i else TEXT) for i in range(3) for m in ("pdfium", "poppler", "mupdf")}
+        summary = self.run_gate(files, answers)
+        self.assertEqual(summary["literal"]["median"], 0.5)
+
+    def test_every_member_absent_skips_by_name(self):
+        absent = {m: f"{m}: missing; supply it with `x`" for m in ("pdfium", "poppler", "mupdf", "oxide", "extract")}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            summary = self.run_gate({"a": (row("a"), outcome(TEXT))}, {}, absent=absent)
+        self.assertEqual(summary, {"exit": 0})
+        self.assertIn("SKIPPED", out.getvalue())
+        self.assertIn("supply it with", out.getvalue())
+
+    def test_other_readings_from_a_binary_that_reads_the_file_otherwise_are_refused(self):
+        hidden = outcome(TEXT)
+        hidden["text"]["hidden_classes"] = {"off_media": 2}
+        answers = {(m, "a", "text"): ok(TEXT) for m in ("pdfium", "poppler", "mupdf")}
+        with self.assertRaises(phase5_panel.common.ToolError) as caught:
+            self.run_gate({"a": (row("a"), hidden)}, answers,
+                          readings=lambda command, path: {"full": "another text", "readings": [TEXT, TEXT]})
+        self.assertIn("a", str(caught.exception.failed))
+        same = self.run_gate({"a": (row("a"), hidden)}, answers,
+                             readings=lambda command, path: {"full": TEXT, "readings": [TEXT, TEXT]})
+        self.assertEqual(same["pdfkit_binary"], "d" * 64)
 
 
 def gray_dump(path: Path, width: int, height: int, values) -> None:
@@ -201,6 +255,27 @@ class BitonalGateTest(unittest.TestCase):
         self.assertEqual(summary["disagreements"][0]["object"], 5)
         self.assertEqual(summary["undecided_images"][0]["why"], "1 voter, 2 needed")
         self.assertEqual(summary["undecided_images"][0]["abstained"], {"pdfium": "not_found", "poppler": "size 4x1"})
+
+    def test_a_missing_census_executable_is_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "r"
+            (run_dir / "images").mkdir(parents=True)
+            (run_dir / "images" / "images.tsv").write_text(
+                self.CENSUS + self.census_row("x-0002", 5, "eeee", "CCITTFaxDecode", "DeviceGray/1"),
+                encoding="utf-8")
+            answers = {("qpdf", "x-0002", "raw_streams"): {"ok": True, "streams": {"5": {"sha256": "x"}}}}
+            import image_agreement  # noqa: PLC0415
+
+            with mock.patch.object(phase6_panel.common, "reports_dir", return_value=Path(tmp)), \
+                    mock.patch.object(phase6_panel.common, "read_manifest",
+                                      return_value=[{"id": "x-0002", "set": "synth"}]), \
+                    mock.patch.object(phase6_panel.evidence, "Panel", return_value=FakePanel(answers)), \
+                    mock.patch.object(image_agreement, "find_census", return_value=None):
+                phase6_panel.main(["--run", "r"])
+            summary = json.loads((run_dir / "phase6_panel.json").read_text(encoding="utf-8"))
+        why = summary["undecided_images"][0]["why"]
+        self.assertIn("no pdfkit_image_census", why)
+        self.assertIn("cmake --build --preset", why)
 
 
 if __name__ == "__main__":

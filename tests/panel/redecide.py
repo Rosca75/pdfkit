@@ -18,7 +18,12 @@
 #   apart and the members cut the same letters into different words
 #   ("Property" and "P ro p e rty"). The reading the members use is told from
 #   the /Differences arrays, per file: a name /Cxx whose hexadecimal or
-#   decimal number is its code restates the code.
+#   decimal number is its code restates the code. Each member's surplus is
+#   checked against the codes themselves: `pdfkit text --glyphs` names every
+#   unreadable glyph's code, and where the names restate their codes the
+#   surplus must hold as many characters (`count`) and the very characters of
+#   those codes (`value`); the check is skipped for a file the binary reads
+#   otherwise than the run did.
 # - `cmyk` (CMYK through PDFium's Adobe table): judge.colour_distance of
 #   pdfkit's RGB against each pixel member's over the DeviceCMYK,
 #   four-component ICCBased, Separation and DeviceN images the collection
@@ -138,7 +143,39 @@ def name_reading(names: dict) -> str:
     return "decimal"
 
 
-def measure_type3(run_dir: Path, panel: evidence.Panel, rows: list[dict]) -> dict:
+def expected_characters(glyphs: list[dict]) -> collections.Counter:
+    """The letters and digits of the codes pdfkit counts unreadable, each read as the character
+    of its code, as a name restating that code reads it; folded as `characters` folds."""
+    out: collections.Counter = collections.Counter()
+    for item in glyphs:
+        if item.get("rung") == "unreadable" and isinstance(item.get("code"), int) and item["code"] < 0x110000:
+            out.update(characters(chr(item["code"])))
+    return out
+
+
+def code_check(surplus: collections.Counter, expected: collections.Counter) -> dict:
+    """Whether a member's characters beyond pdfkit's are the unreadable codes: as many, and the
+    same characters."""
+    return {"count": sum(surplus.values()) == sum(expected.values()), "value": surplus == expected,
+            "surplus": sum(surplus.values()), "expected": sum(expected.values()),
+            "f1": round(char_f1(surplus, expected), 3)}
+
+
+def pdfkit_glyphs(command: list[str] | None, path: Path) -> tuple[list[dict], str] | None:
+    """Every glyph record `pdfkit text --glyphs` gives and the full text it reads, or None."""
+    if command is None:
+        return None
+    proc = subprocess.run(command + ["text", str(path), "--glyphs"], capture_output=True, timeout=300)
+    try:
+        result = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return [g for page in result["pages"] for g in page.get("glyphs") or []], evidence.page_text(result)
+
+
+def measure_type3(run_dir: Path, panel: evidence.Panel, rows: list[dict], command=None) -> dict:
     files = []
     for row in rows:
         tags = set(common.split_tags(row["tags"]))
@@ -163,12 +200,24 @@ def measure_type3(run_dir: Path, panel: evidence.Panel, rows: list[dict]) -> dic
             reads[name] = sum(mine.values()) >= enough and best >= CHAR_AGREE
         voters = len(reads)
         readers_of_names = sorted(n for n, r in reads.items() if r)
+        names = restating(path.read_bytes())
+        check, note = {}, None
+        glyphs = pdfkit_glyphs(command, path)
+        if glyphs is None:
+            note = "no pdfkit glyphs: the code check is skipped"
+        elif glyphs[1] != text.get("text", ""):
+            note = "the pdfkit binary reads the file otherwise than the run: the code check is skipped"
+        elif name_reading(names) in ("hexadecimal", "decimal"):
+            expected = expected_characters(glyphs[0])
+            check = {name: code_check(surplus, expected) for name, surplus in sorted(chars.items())}
+        else:
+            note = f"names that do not restate their codes ({name_reading(names)}): the code check is skipped"
         verdict = ("undecided" if voters < judge.TEXT_QUORUM else
                    "read" if 2 * len(readers_of_names) > voters else
                    "unread" if 2 * len(readers_of_names) < voters else "split")
         files.append({"id": row["id"], "unreadable": unreadable, "voters": sorted(reads),
                       "read_names": readers_of_names, "surplus": {n: sum(c.values()) for n, c in chars.items()},
-                      "verdict": verdict, "names": restating(path.read_bytes())})
+                      "verdict": verdict, "names": names, "code_check": check, "note": note})
     counts = collections.Counter(f["verdict"] for f in files)
     decided = counts["read"] + counts["unread"]
     names = collections.Counter()
@@ -424,7 +473,7 @@ def main(argv=None) -> int:
     measures = ("type3", "cmyk", "media_box", "cuts") if args.measure == "all" else (args.measure,)
     for measure in measures:
         if measure == "type3":
-            result = measure_type3(run_dir, evidence.Panel(evidence.TEXT_MEMBERS, args.collect), rows)
+            result = measure_type3(run_dir, evidence.Panel(evidence.TEXT_MEMBERS, args.collect), rows, command)
         elif measure == "cmyk":
             import image_agreement  # noqa: PLC0415
 

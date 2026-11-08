@@ -13,10 +13,16 @@
 # most 5 % of the decided files count against pdfkit, the thresholds of the
 # reading gate. pdfkit's other readings (its visible text, its text with every
 # duplicate copy) come from `pdfkit text` for the files that hold hidden or
-# duplicate text; a member drawing annotations is scored one-sidedly on a file
-# whose channel report names annotations or a form (judge.py says why). The
-# literal rule, pdfkit's full text against each member with none of those
-# three rules, is reported beside it.
+# duplicate text, and the gate refuses when that binary's text of such a file
+# is not the run's (its SHA-256 is reported), because a reading from another
+# build is not the run's reading. Poppler, MuPDF and pdf_oxide print the text
+# annotations and form fields draw, which pdfkit leaves out as a channel
+# (CLAUDE.md section 2): on a file where QPDF finds an annotation that draws
+# text (a widget, a FreeText, or another whose appearance shows a string;
+# never a link), those three are judged on their text of a copy QPDF writes
+# without the annotations and the form (tests/panel/evidence.py), asked and
+# cached like any answer. The literal rule, pdfkit's full text against each
+# member's own text with words.py alone, is reported beside it.
 #
 # It writes a JSON and a markdown report named after this script into the run
 # folder: the two
@@ -57,8 +63,7 @@ SMOKE = REPO / "tests" / "panel" / "smoke.tsv"
 GROUPS = ("cjk_cmap", "cjk_width", "cjk", "type3_code_names", "subset_unreadable", "layout", "other", "legitimate")
 # Members whose text holds annotation and form-field appearances: synth-0011's form-field
 # marker is in Poppler's, MuPDF's and pdf_oxide's text and in neither PDFium's nor pdf-extract's.
-DRAWS_ANNOTATIONS = frozenset({"poppler", "mupdf", "oxide"})
-ANNOTATED = {"ch_annotation", "ch_acroform"}
+DRAWS_ANNOTATIONS = ("mupdf", "oxide", "poppler")
 
 
 def read_causes(path: Path) -> dict[str, tuple[str, str]]:
@@ -76,44 +81,62 @@ def smoke_ids() -> set[str]:
     return {line.split("\t")[0] for line in SMOKE.read_text(encoding="utf-8").splitlines()[1:] if line.strip()}
 
 
+def timeout_of(row: dict) -> float:
+    pages = int(row["pages"]) if str(row["pages"]).isdigit() else 1
+    return 30.0 * max(1, -(-pages // 200))
+
+
+def literal_rule(full: str, answers: dict) -> dict:
+    """pdfkit's full text against each member's own text with words.py alone."""
+    scores = {m: round(judge.words.f1(full, judge.member_text(a)), 6)
+              for m, a in sorted(answers.items()) if judge.abstention(a) is None}
+    below = [m for m, v in scores.items() if v < judge.AGREE]
+    if len(scores) < judge.TEXT_QUORUM or 2 * len(below) == len(scores):
+        verdict = "undecided"
+    else:
+        verdict = "counts_against" if 2 * len(below) > len(scores) else "agrees"
+    return {"verdict": verdict, "scores": scores,
+            "median": round(statistics.median(scores.values()), 6) if scores else None}
+
+
 def judge_file(row: dict, outcome: dict, panel: evidence.Panel, command: list[str] | None) -> dict:
     text = outcome.get("text") or {}
     path = common.file_path(row)
-    answers = {name: panel.answer(name, path, "text", timeout=30.0 * max(1, -(-int(row["pages"] or 1) // 200)))
-               for name in evidence.TEXT_MEMBERS}
+    timeout = timeout_of(row)
+    own = {name: panel.answer(name, path, "text", timeout=timeout) for name in evidence.TEXT_MEMBERS}
     for name in panel.absent:
-        answers[name] = {"ok": False, "error": "absent"}
+        if name in own:
+            own[name] = {"ok": False, "error": "absent"}
     full = text.get("text", "")
-    readings, note = [], None
+    readings, note, mismatch = [], None, False
     if evidence.hidden_count(text) or (text.get("hidden_classes") or {}).get("duplicate"):
         if command is None:
             note = "no pdfkit executable: the visible and every-copy readings are left out"
         else:
-            readings = evidence.other_readings(command, path) or []
-            if not readings:
+            other = evidence.other_readings(command, path)
+            if other is None:
                 note = "pdfkit text failed: the visible and every-copy readings are left out"
-    channels = set((outcome.get("channels") or {}).get("present") or [])
-    one_sided = DRAWS_ANNOTATIONS if channels & ANNOTATED else frozenset()
-    verdict = judge.text_verdict(full, answers, readings=readings, one_sided=one_sided)
-    literal = judge.text_verdict(full, answers)
-    # The literal rule keeps words.py's metric exactly: no right-to-left fold.
-    literal_scores = {}
-    for member in literal["voters"]:
-        literal_scores[member] = round(judge.words.f1(full, judge.member_text(answers[member])), 6)
-    literal_below = [m for m, s in literal_scores.items() if s < judge.AGREE]
-    if len(literal_scores) < judge.TEXT_QUORUM:
-        literal_verdict = "undecided"
-    elif 2 * len(literal_below) > len(literal_scores):
-        literal_verdict = "counts_against"
-    elif 2 * len(literal_below) == len(literal_scores):
-        literal_verdict = "undecided"
-    else:
-        literal_verdict = "agrees"
+            elif other["full"] != full:
+                mismatch = True
+            else:
+                readings = other["readings"]
+    answers = dict(own)
+    survey = panel.answer("qpdf", path, "annotations", timeout=timeout, **evidence.ANNOTATIONS_REQUEST)
+    read_copy = []
+    if survey and survey.get("ok") and survey.get("draws_text"):
+        copy, why = panel.stripped_copy(path, timeout=4 * timeout)
+        for name in DRAWS_ANNOTATIONS:
+            if name not in own:
+                continue
+            answers[name] = panel.answer(name, copy, "text", timeout=timeout) if copy else \
+                {"ok": False, "error": f"no copy without annotations: {why}"}
+            read_copy.append(name)
+    verdict = judge.text_verdict(full, answers, readings=readings)
     return {"id": row["id"], "set": row["set"], "tags": row["tags"], **verdict,
-            "readings": len(readings), "one_sided": sorted(one_sided), "note": note,
-            "literal": {"verdict": literal_verdict, "scores": literal_scores,
-                        "median": round(statistics.median(literal_scores.values()), 6) if literal_scores else None},
-            "answers": answers}
+            "readings": len(readings), "read_copy": read_copy, "note": note, "mismatch": mismatch,
+            "annotations": None if not survey else {k: survey.get(k) for k in ("ok", "error", "draws_text",
+                                                                               "text", "subtypes")},
+            "literal": literal_rule(full, own), "answers": answers}
 
 
 def summarise(results: list[dict], panel_causes: dict, pdfium_causes: dict) -> dict:
@@ -144,7 +167,13 @@ def summarise(results: list[dict], panel_causes: dict, pdfium_causes: dict) -> d
         "share_against": round(len(against) / len(decided), 4) if decided else None,
         "against_by_group": dict(sorted(groups.items())),
         "literal": {"decided": len(literal_decided), "counts_against": len(literal_against),
-                    "share_against": round(len(literal_against) / len(literal_decided), 4) if literal_decided else None},
+                    "share_against": round(len(literal_against) / len(literal_decided), 4) if literal_decided else None,
+                    "median": round(statistics.median(r["literal"]["median"] for r in literal_decided), 4)
+                    if literal_decided else None},
+        "annotations": {"files_drawing_text": sum(1 for r in results if r["read_copy"]),
+                        "files_surveyed": sum(1 for r in results if r["annotations"] and r["annotations"]["ok"]),
+                        "files_not_surveyed": sorted(r["id"] for r in results
+                                                     if not (r["annotations"] and r["annotations"]["ok"]))},
         "against": [{"id": r["id"], "median": r["median"], "scores": r["scores"], "below": r["below"],
                      "group": panel_causes.get(r["id"], ("unclassified", ""))[0],
                      "pdfium_cause": pdfium_causes.get(r["id"], ("", ""))[0],
@@ -177,8 +206,12 @@ def write_report(run_dir: Path, summary: dict, agreement: dict, absent: dict) ->
           f"{'pass' if s['share_against'] is not None and s['share_against'] <= SHARE_AGAINST else 'fail'} |",
           f"| undecided files | {s['undecided']} of {s['files_judged']} ({s['share_undecided']}) | "
           f"{UNDECIDED_LIMIT} | kill criterion {s['kill_criterion']} |", "",
-          f"Gate: **{s['gate']}**. Literal rule (full text, words.py's metric, no other reading): "
-          f"{s['literal']['counts_against']} of {s['literal']['decided']} ({s['literal']['share_against']}).",
+          f"Gate: **{s['gate']}**. Literal rule (full text against each member's own text, words.py's "
+          f"metric alone): {s['literal']['counts_against']} of {s['literal']['decided']} "
+          f"({s['literal']['share_against']}), median {s['literal']['median']}.",
+          f"Files whose annotations draw text, where Poppler, MuPDF and pdf_oxide read QPDF's copy "
+          f"without them: {s['annotations']['files_drawing_text']} "
+          f"(of {s['annotations']['files_surveyed']} QPDF surveyed).",
           f"Against, by group of tests/panel/text_causes.tsv: {s['against_by_group']}.", ""]
     if absent:
         md += ["Absent members: " + "; ".join(absent.values()), ""]
@@ -219,7 +252,11 @@ def main(argv=None) -> int:
     import run as dataset_run  # noqa: PLC0415
 
     command = dataset_run.find_pdfkit(args.pdfkit)
-    panel = evidence.Panel(evidence.TEXT_MEMBERS, collect_missing=args.collect)
+    panel = evidence.Panel(evidence.TEXT_MEMBERS + ("qpdf",), collect_missing=args.collect)
+    if not any(name in panel.members for name in evidence.TEXT_MEMBERS):
+        print("SKIPPED reading gate under the panel: no text member is present; "
+              + "; ".join(panel.absent[name] for name in evidence.TEXT_MEMBERS if name in panel.absent))
+        return 0
     rows = common.read_manifest()
     if args.smoke:
         chosen = smoke_ids()
@@ -238,12 +275,20 @@ def main(argv=None) -> int:
             jobs.append((row, outcome))
     with concurrent.futures.ThreadPoolExecutor(max(1, args.workers)) as pool:
         results = list(pool.map(lambda job: judge_file(job[0], job[1], panel, command), jobs))
+    mismatched = sorted(r["id"] for r in results if r["mismatch"])
+    if mismatched:
+        raise common.ToolError(
+            f"the pdfkit executable {command[0] if command else ''} reads {len(mismatched)} files otherwise than "
+            f"run {args.run} did: {', '.join(mismatched[:10])}",
+            "the binary that made the run, whose full text of a file equals the run's outcome",
+            "build the run's commit, or run the dataset tier again with this build, and pass --pdfkit")
     agreement = judge.member_agreement({r["id"]: r.pop("answers") for r in results})
     summary = summarise(results, read_causes(PANEL_CAUSES), read_causes(PDFIUM_CAUSES))
     summary["absent"] = panel.absent
+    summary["pdfkit_binary"] = evidence.binary_digest(command) if command else None
     summary["member_agreement"] = {f"{a} {b}": v for (a, b), v in agreement.items()}
     summary["files"] = [{k: r[k] for k in ("id", "verdict", "median", "scores", "reading", "below", "abstained",
-                                           "one_sided", "literal")} for r in results]
+                                           "read_copy", "annotations", "literal")} for r in results]
     write_report(run_dir, summary, agreement, panel.absent)
     print(json.dumps({k: summary[k] for k in ("files_judged", "decided", "undecided", "share_undecided", "median",
                                              "counts_against", "share_against", "against_by_group", "literal",

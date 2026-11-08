@@ -4,9 +4,14 @@
 # What the panel's judge weighs, gathered for the gate scripts and the
 # re-decisions: the members' answers read back from the answers cache without
 # starting a process (a missing answer abstains, unless the caller asks the
-# member through answers.cached_answer), pdfkit's other readings of a file
-# (its visible text without the hidden blocks, and its text with every
-# duplicate copy) from `pdfkit text`, pdfkit's decoded pixels from the image
+# member through answers.cached_answer), a copy of a file without its
+# annotations and its form written by QPDF (readers/qpdf.py `copy`) into
+# build/cache/panel/stripped/ of the main checkout, keyed by the input's
+# SHA-256 and QPDF's digest, so the members' answers about it are cached like
+# any answer; pdfkit's other readings of a file (its visible text without the
+# hidden blocks, and its text with every duplicate copy) from `pdfkit text`,
+# with the full text that binary reads, which the reading gate holds equal to
+# the run's outcome so the readings are the run's own; pdfkit's decoded pixels from the image
 # census's dumps (tests/dataset/image_census.cpp, "<identity>.pix": a line
 # "width height channels" then 8-bit samples), and the request each image
 # answer was cached under, rebuilt from the census as the collection builds
@@ -15,6 +20,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +43,11 @@ PIXEL_MEMBERS = ("pdfium", "poppler", "mupdf")
 HIDDEN = ("render_invisible", "white_fill", "clipped", "off_media", "off_crop",
           "optional_content_off", "covered")
 LAYOUT = {1: "gray", 3: "rgb", 4: "rgba"}
+# Raised whenever the stripped copy QPDF writes changes for the same input and QPDF.
+COPY_SCHEMA = 1
+# The request QPDF's annotation survey is asked and cached under; its rule raises it (the
+# appearance's form XObjects are followed since rule 2).
+ANNOTATIONS_REQUEST = {"rule": 2}
 
 
 class Panel:
@@ -69,6 +80,22 @@ class Panel:
         value = answers.read_json(record)
         return value if isinstance(value, dict) else None
 
+    def stripped_copy(self, path: Path, timeout: float = 120.0) -> tuple[Path | None, str | None]:
+        """The file without its annotations and its form, written by QPDF once and kept: (its
+        path, None), or (None, why it could not be written)."""
+        module = self.members.get("qpdf")
+        if module is None:
+            return None, "QPDF is absent"
+        digest = results_cache.file_digest(path)
+        target = (readers.cache_dir() / "stripped" / f"qpdf-{self.folders['qpdf'].rsplit('-', 1)[-1]}-{COPY_SCHEMA}"
+                  / digest[:2] / f"{digest}.pdf")
+        if target.exists():
+            return target, None
+        problem = module.copy(path, target, timeout)
+        if problem is not None:
+            return None, str(problem.get("error") or "refused")
+        return target, None
+
     def samples(self, name: str, entry: dict | None) -> dict | None:
         """One image of a pixel answer with its samples read from the blob, or the entry as it is
         (an error) when it holds none."""
@@ -84,9 +111,17 @@ def hidden_count(text: dict) -> int:
     return sum((text.get("hidden_classes") or {}).get(k, 0) for k in HIDDEN)
 
 
-def other_readings(command: list[str], path: Path, timeout: float = 120.0) -> list[str] | None:
-    """pdfkit's visible text and its text with every duplicate copy, from `pdfkit text`; None when
-    the command fails. The words of a line are joined by spaces, which the word metric reads alike."""
+def binary_digest(command: list[str]) -> str | None:
+    """The SHA-256 of the pdfkit executable a command runs."""
+    found = shutil.which(command[0]) or command[0]
+    return readers.sha256_of(Path(found)) if Path(found).is_file() else None
+
+
+def other_readings(command: list[str], path: Path, timeout: float = 120.0) -> dict | None:
+    """{"full": the text this binary reads (pages joined by form feeds, as the dataset outcome
+    holds it), "readings": [the visible text, the text with every duplicate copy]} from `pdfkit
+    text`; None when the command fails. The words of a line are joined by spaces, which the word
+    metric reads alike."""
     try:
         proc = subprocess.run(command + ["text", str(path)], capture_output=True, timeout=timeout)
         result = json.loads(proc.stdout)
@@ -106,7 +141,8 @@ def other_readings(command: list[str], path: Path, timeout: float = 120.0) -> li
                         if "duplicate" in hidden:
                             every.append(word["text"])
         visible.append("\n")
-    return [" ".join(visible), page_text(result) + " " + " ".join(every)]
+    return {"full": page_text(result),
+            "readings": [" ".join(visible), page_text(result) + " " + " ".join(every)]}
 
 
 def page_text(result: dict) -> str:

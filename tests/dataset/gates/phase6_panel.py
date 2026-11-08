@@ -83,7 +83,10 @@ def judge_file(file_id: str, images: list[dict], rows: dict, run_dir: Path, pane
                   "encoding": image["encoding"], "colour_space": image["colour_space"], "size": image["size"]}
         mine = pdfkit_pixels(folder, image)
         if mine is None:
-            out.append({**record, "verdict": "undecided", "why": "pdfkit decoded no pixels", "voters": [],
+            why = "pdfkit decoded no pixels" if folder is not None else (
+                "pdfkit's dumps are missing and no pdfkit_image_census was found; build it with "
+                f"`cmake --build --preset {common.build_presets()[0]}` or pass --census")
+            out.append({**record, "verdict": "undecided", "why": why, "voters": [],
                         "abstained": {}, "majority": []})
             continue
         stencil = image["colour_space"] == "stencil"

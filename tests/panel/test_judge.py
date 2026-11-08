@@ -7,10 +7,10 @@
 # member that refused, timed out or crashed abstains; a two-two tie is
 # undecided; an image needs two voters at its own size whose samples agree;
 # a stencil is compared by what it paints. The comparison's own rules are held
-# too: a word in a right-to-left script reads the same in either direction,
-# pdfkit's other readings (its visible text, every duplicate copy) count when
-# they agree better, and a member that draws annotations is asked on an
-# annotated file only whether pdfkit's words are in its text.
+# too: a word in a right-to-left script reads the same in either direction for
+# a member that writes visual order (MuPDF, pdf_oxide, pdf-extract) and only
+# then, pdfkit's other readings (its visible text, every duplicate copy) count
+# when they agree better, and an empty text of pdfkit's scores 0.
 # Run: python -m unittest discover -s tests/panel -p "test_*.py".
 
 from __future__ import annotations
@@ -85,13 +85,18 @@ class TextVerdictTest(unittest.TestCase):
         verdict = judge.text_verdict("alpha bravo charlie delta", {"a": answer, "b": answer, "c": answer})
         self.assertEqual(verdict["scores"], {"a": 1.0, "b": 1.0, "c": 1.0})
 
-    def test_a_right_to_left_word_reads_in_either_direction(self):
+    def test_a_right_to_left_word_reads_either_way_for_a_member_writing_visual_order(self):
         logical = "שלום עולם"
         visual = "םולש םלוע"
-        self.assertEqual(judge.bag(logical), judge.bag(visual))
-        self.assertNotEqual(judge.bag("abc"), judge.bag("cba"))
-        verdict = judge.text_verdict(logical, {m: text(visual) for m in "abc"})
+        self.assertEqual(judge.bag(logical, fold=True), judge.bag(visual, fold=True))
+        self.assertNotEqual(judge.bag(logical), judge.bag(visual))
+        self.assertNotEqual(judge.bag("abc", fold=True), judge.bag("cba", fold=True))
+        verdict = judge.text_verdict(logical, {m: text(visual) for m in ("mupdf", "oxide", "extract")})
         self.assertEqual(verdict["verdict"], "agrees")
+        # PDFium and Poppler write logical order, so a reversed word from them is another word.
+        verdict = judge.text_verdict(logical, {m: text(visual) for m in ("pdfium", "poppler", "mupdf")})
+        self.assertEqual(verdict["verdict"], "counts_against")
+        self.assertEqual(verdict["below"], ["pdfium", "poppler"])
 
     def test_another_reading_of_pdfkit_counts_when_it_agrees_better(self):
         # pdfkit reads the off-page words too; the members leave them out.
@@ -102,17 +107,11 @@ class TextVerdictTest(unittest.TestCase):
         self.assertEqual(verdict["verdict"], "agrees")
         self.assertEqual(verdict["reading"], {"a": 1, "b": 1, "c": 1})
 
-    def test_a_member_drawing_annotations_is_asked_for_pdfkit_words_alone(self):
-        widget = TEN + " lima mike november oscar papa quebec"
-        answers = {"a": text(widget), "b": text(widget), "c": text(widget)}
-        self.assertEqual(judge.text_verdict(TEN, answers)["verdict"], "counts_against")
-        verdict = judge.text_verdict(TEN, answers, one_sided={"a", "b"})
-        self.assertEqual(verdict["verdict"], "agrees")
-        self.assertEqual(verdict["below"], ["c"])
-
-    def test_precision_of_no_words_is_one(self):
-        self.assertEqual(judge.precision(judge.bag(""), judge.bag("text field")), 1.0)
-        self.assertEqual(judge.precision(judge.bag("alpha"), judge.bag("")), 0.0)
+    def test_an_empty_pdfkit_text_scores_zero_against_a_member_with_words(self):
+        verdict = judge.text_verdict("", {m: text(TEN) for m in "abc"})
+        self.assertEqual(verdict["verdict"], "counts_against")
+        self.assertEqual(verdict["scores"], {"a": 0.0, "b": 0.0, "c": 0.0})
+        self.assertFalse(hasattr(judge, "precision"))
 
 
 def gray(width: int, height: int, values) -> dict:

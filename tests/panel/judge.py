@@ -13,23 +13,23 @@
 # word F1 against each voter uses the reading gate's metric (tests/pdfium/
 # words.py), and a file counts against pdfkit when that F1 is below 0.90
 # against a strict majority of at least three voters; with fewer voters, or
-# exactly half below, it is undecided and counted neither way. Three rules
-# keep the comparison on one surface, because the members read differently on
-# purpose where pdfkit makes a reading choice of its own:
-# - a word holding a right-to-left letter (bidirectional class R or AL) reads
-#   the same in either direction, because MuPDF, pdf_oxide and pdf-extract
-#   write Hebrew and Arabic in visual order and pdfkit in logical order;
+# exactly half below, it is undecided and counted neither way. An empty text
+# of pdfkit's scores 0 against a member that reads words. Two rules keep the
+# comparison on one surface, because the members read differently on purpose
+# where pdfkit makes a reading choice of its own:
+# - for a member that writes right-to-left text in visual order (MuPDF,
+#   pdf_oxide and pdf-extract, measured on pdfjs-0018), a word holding a
+#   right-to-left letter (bidirectional class R or AL) reads the same in
+#   either direction; PDFium and Poppler write logical order, as pdfkit does,
+#   and are compared word for word;
 # - pdfkit may offer other readings beside its full text (its visible text
 #   without the hidden blocks; its text with every duplicate copy), and a
 #   member's score is the best of them, because whether off-page, clipped or
 #   twice-drawn text belongs in a text is a choice the members split on and
-#   pdfkit reads both ways (docs/DESIGN.md section 7);
-# - a member whose text holds annotation and form-field appearances (Poppler,
-#   MuPDF and pdf_oxide, measured on synth-0011) is scored on an annotated
-#   file by the better of F1 and pdfkit's precision (the share of pdfkit's
-#   words its text holds), because pdfkit leaves content outside the page
-#   content streams out by design (CLAUDE.md section 2) and no member can be
-#   told to leave annotations out.
+#   pdfkit reads both ways (docs/DESIGN.md section 7).
+# A member that prints annotation and form-field appearances is handed its
+# answer about a copy of the file without them by the reading gate
+# (evidence.py); the judge scores whatever answer it is given.
 #
 # Pixels. The voters on an image are the members whose answer has the image's
 # own width and height (with /Decode applied, as tests/panel/members.tsv
@@ -64,6 +64,8 @@ PIXEL_QUORUM = 2
 # Members whose rendered stencil is dark where the mask paints; every other
 # member writes 255 there (tests/panel/members.tsv `colour_output`).
 STENCIL_PAINTS_DARK = frozenset({"pdfium"})
+# Members that write right-to-left text in visual order (tests/panel/members.tsv notes).
+VISUAL_ORDER = frozenset({"mupdf", "oxide", "extract"})
 
 
 # ---------------------------------------------------------------------------
@@ -74,11 +76,12 @@ def rtl(word: str) -> bool:
     return any(unicodedata.bidirectional(c) in ("R", "AL") for c in word)
 
 
-def bag(text: str | None) -> collections.Counter:
-    """The words of a text (words.py), a right-to-left word keyed the same in either direction."""
+def bag(text: str | None, fold: bool = False) -> collections.Counter:
+    """The words of a text (words.py); with `fold`, a right-to-left word keyed the same in either
+    direction."""
     out: collections.Counter = collections.Counter()
     for word, count in words.words(text or "").items():
-        out[min(word, word[::-1]) if rtl(word) else word] += count
+        out[min(word, word[::-1]) if fold and rtl(word) else word] += count
     return out
 
 
@@ -94,13 +97,6 @@ def f1(mine: collections.Counter, theirs: collections.Counter) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
-def precision(mine: collections.Counter, theirs: collections.Counter) -> float:
-    """The share of pdfkit's words the member's text holds; 1.0 when pdfkit reads no word,
-    because pdfkit then claims nothing the member does not hold."""
-    total = sum(mine.values())
-    return 1.0 if total == 0 else sum((mine & theirs).values()) / total
-
-
 def member_text(answer: dict) -> str:
     return "\n".join(page.get("text") or "" for page in answer.get("pages") or [])
 
@@ -114,25 +110,29 @@ def abstention(answer: dict | None) -> str | None:
     return str(answer.get("error") or "refused")
 
 
-def text_verdict(pdfkit_text: str, answers: dict, *, readings=(), one_sided=()) -> dict:
+def text_verdict(pdfkit_text: str, answers: dict, *, readings=(), visual_order=VISUAL_ORDER) -> dict:
     """The panel's verdict on pdfkit's text of one file.
 
     `answers` maps a member to its text answer (or None when none is cached); `readings` are
-    pdfkit's other texts of the file, `one_sided` the members scored by the better of F1 and
-    precision. Returns the voters, each voter's score and the reading it came from (0 the full
+    pdfkit's other texts of the file; `visual_order` the members whose right-to-left words are
+    folded. Returns the voters, each voter's score and the reading it came from (0 the full
     text), the voters below 0.90, the median score, the abstentions and the verdict: `agrees`,
     `counts_against` or `undecided` with `why`."""
-    mine = [bag(pdfkit_text)] + [bag(text) for text in readings]
+    texts = [pdfkit_text, *readings]
+    plain, folded = [bag(t) for t in texts], [bag(t, fold=True) for t in texts]
     voters, scores, reading, abstained = [], {}, {}, {}
     for member in sorted(answers):
         reason = abstention(answers[member])
         if reason is not None:
             abstained[member] = reason
             continue
-        theirs = bag(member_text(answers[member]))
-        best, which = max((f1(m, theirs), i) for i, m in reversed(list(enumerate(mine))))
-        if member in one_sided:
-            best = max(best, precision(mine[0], theirs))
+        fold = member in visual_order
+        mine = folded if fold else plain
+        theirs = bag(member_text(answers[member]), fold=fold)
+        scores_by_reading = [f1(m, theirs) for m in mine]
+        # The full text wins a tie, so a reading is named only where it agrees better.
+        which = max(range(len(mine)), key=lambda i: (scores_by_reading[i], -i))
+        best = scores_by_reading[which]
         voters.append(member)
         scores[member] = round(best, 6)
         reading[member] = which
