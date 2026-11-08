@@ -237,7 +237,12 @@ class BitonalGateTest(unittest.TestCase):
             rows = [{"id": i, "set": "synth"} for i in ("synth-0263", "synth-0265", "x-0001")]
             import image_agreement  # noqa: PLC0415
 
-            with mock.patch.object(phase6_panel.common, "reports_dir", return_value=Path(tmp)), \
+            # The abstentions are read from the Linux rows of members.tsv, whose pixel facts are
+            # measured, so the test answers alike on every host.
+            linux_abstains = phase6_panel.readers.abstains
+            with mock.patch.object(phase6_panel.readers, "abstains",
+                                   lambda member, kind, host=None: linux_abstains(member, kind, "linux")), \
+                    mock.patch.object(phase6_panel.common, "reports_dir", return_value=Path(tmp)), \
                     mock.patch.object(phase6_panel.common, "read_manifest", return_value=rows), \
                     mock.patch.object(phase6_panel.evidence, "Panel", return_value=FakePanel(answers)), \
                     mock.patch.object(image_agreement, "find_census", return_value=None):
