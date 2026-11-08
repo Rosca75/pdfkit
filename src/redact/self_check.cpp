@@ -609,6 +609,9 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     const Object metadata = document->resolve(entry);
     if (const syntax::Stream* stream = metadata.stream()) {
       const syntax::Filters::Result decoded = document->decode(*stream);
+      if (decoded.locked) {
+        result.not_searched.push_back({xmp_number, std::nullopt});
+      }
       const std::string packet(reinterpret_cast<const char*>(decoded.bytes.data()),
                                decoded.bytes.size());
       search.text(xml_text(packet), std::nullopt, "xmp", xmp_number);
@@ -767,6 +770,11 @@ SelfCheck::Result SelfCheck::run(platform::ByteSpan pdf, const syntax::Limits& l
     std::optional<std::uint32_t> page;
     if (const auto found = page_of.find(number); found != page_of.end()) {
       page = found->second;
+    }
+    if (decoded.locked) {
+      // Never a silent nothing found: the stream is named as not searched.
+      result.not_searched.push_back({number, page});
+      continue;
     }
     if (kind == Kind::scan) {
       search.raw(

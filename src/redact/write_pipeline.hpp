@@ -20,10 +20,16 @@
 #define PDFKIT_REDACT_WRITE_PIPELINE_HPP
 
 #include "redact/edit_plan.hpp"
+#include "syntax/limits.hpp"
+#include "syntax/page_damage.hpp"
 #include "writer/object_graph.hpp"
 #include "writer/write_report.hpp"
 
+#include <cstdint>
+#include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace pdfkit::redact {
 
@@ -36,6 +42,12 @@ class WritePipeline {
 
   // Writes the document of plan with the plan applied.
   [[nodiscard]] static Output run(EditPlan& plan);
+
+  // Per output page of pages, whether the output pdf, opened under limits and
+  // read again by the content walk, still holds damage there: yes, no, or
+  // unknown when it does not open or the page reads only as not checked.
+  [[nodiscard]] static std::vector<syntax::PageDamage::Copied> copied_as_is(
+      std::string_view pdf, const syntax::Limits& limits, std::span<const std::uint32_t> pages);
 
  private:
   static void select_pages(EditPlan& plan, writer::ObjectGraph& graph, writer::WriteReport& report);

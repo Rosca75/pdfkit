@@ -51,6 +51,9 @@ class Filters {
     // The stream's data is an external file (/F), which is never read, so
     // bytes is empty.
     bool external = false;
+    // The stream's data is encrypted under a crypt filter whose key the
+    // security handler does not hold, so bytes is empty.
+    bool locked = false;
   };
 
   // Applies the chain filter (a name, an array of names or null) with its

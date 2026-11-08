@@ -91,10 +91,11 @@ class Document {
   [[nodiscard]] Object catalog();
   [[nodiscard]] Object info();
 
-  // The decoded data of a stream: decrypted (unless created), then through its filters as far
-  // as the first image codec. A stream with an external file (/F) decodes to
-  // nothing. A damaged stream is the warning damaged_stream, naming page when
-  // given.
+  // The decoded data of a stream: decrypted (unless created), then through
+  // its filters as far as the first image codec. A stream with an external
+  // file (/F), or encrypted under a crypt filter whose key the handler does
+  // not hold, decodes to nothing, marked external or locked. A damaged stream
+  // is the warning damaged_stream, naming page when given.
   [[nodiscard]] Filters::Result decode(const Stream& stream,
                                        std::optional<std::uint32_t> page = std::nullopt);
   // The raw (still encrypted and encoded) bytes of a stream; a created

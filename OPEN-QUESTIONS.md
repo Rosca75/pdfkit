@@ -107,8 +107,9 @@ the price given is that of changing it.
    every filter fault (`flate_checksum`, `flate_corrupt`, `flate_truncated`,
    `flate_dictionary`, `lzw`, `ascii_hex`, `ascii85`, `run_length`,
    `predictor`); a stream left encoded with an image codec or an unknown
-   filter (`unsupported_filter`) or held in an external file
-   (`external_stream`); a `/Contents` entry that resolves to nothing
+   filter (`unsupported_filter`), encrypted under a crypt filter whose key
+   needs a user password (`encrypted_stream`; `pdfkit_check` lists it in
+   `not_searched`) or held in an external file (`external_stream`); a `/Contents` entry that resolves to nothing
    (`missing_stream`); a `Do` of an XObject that resolves to nothing
    (`missing_object`, which may have been a form with text); an unknown
    operator outside `BX` and `EX` with a string, an array, a name or a
@@ -120,9 +121,10 @@ the price given is that of changing it.
    the end or before `BI`, a stray delimiter, an unknown operator with no
    operand or numbers alone (`qpdf-0060` page 14's mangled `endstreM-'m`
    after a stream recovery, page 5's `CT` written for `BT`, whose 8 glyphs
-   read), an indirect reference written in content (`/OC 5 0 R BDC`,
-   `<< /Foo [5 0 R] >> BDC`, `safedocs-0005` page 1's `7 0 R` in an inline
-   image's dictionary). One borderline case names the page: a checksum that
+   read), an indirect reference written in content (`5 0 R` alone,
+   `/OC 5 0 R BDC`, `<< /Foo [5 0 R] >> BDC`, `safedocs-0005` page 1's
+   `7 0 R` in an inline image's dictionary); an `R` that takes another
+   operator's operands (`(Secret) 5 0 R Tj`, `/Im1 5 0 R Do`) is named. One borderline case names the page: a checksum that
    disagrees though every byte decoded (`pdfminer-0048`; page 13 of
    `opf-0019` reads 700 glyphs whole but holds garbage after byte 38,206).
    **Recommended: keep**, because a false silence costs more than a false

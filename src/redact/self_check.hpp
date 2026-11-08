@@ -137,6 +137,14 @@ class SelfCheck {
     // When asked for, every page of pdf whose text could not be read in
     // full, in page order (docs/DESIGN.md, the damaged pages section).
     std::vector<syntax::PageDamage> damaged_pages;
+    // The streams that could not be searched, because they are encrypted
+    // under a crypt filter whose key the handler does not hold: the object,
+    // and the page whose content it is, when it is one.
+    struct Unsearched {
+      std::uint32_t object = 0;
+      std::optional<std::uint32_t> page;
+    };
+    std::vector<Unsearched> not_searched;
   };
 
   // Searches pdf for needles. Throws the document's refusal when pdf does

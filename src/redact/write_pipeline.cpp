@@ -30,6 +30,8 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -131,6 +133,40 @@ void WritePipeline::self_check(EditPlan& plan, const std::string& pdf,
   SelfCheck::verify(plan, pdf, report);
 }
 
+std::vector<syntax::PageDamage::Copied> WritePipeline::copied_as_is(
+    std::string_view pdf, const syntax::Limits& limits, std::span<const std::uint32_t> pages) {
+  // The output read again by the same walk: a damaged stream copied as it
+  // was, or bytes no operator draws kept by a rewrite, read there as damage
+  // again, while a rewrite of what decoded leaves an undecoded tail behind.
+  // The reading never fails a write: an output it cannot open, or a page it
+  // reads only as not checked, is unknown.
+  using Copied = syntax::PageDamage::Copied;
+  std::vector<Copied> out(pages.size(), Copied::unknown);
+  std::unique_ptr<syntax::Document> output;
+  try {
+    output = syntax::Document::open(platform::as_bytes(pdf), limits);
+  } catch (const platform::Error&) {
+    return out;
+  }
+  text::DamageScan reread(*output);
+  for (std::size_t i = 0; i < pages.size(); ++i) {
+    std::vector<syntax::PageDamage> found;
+    try {
+      found = reread.pages(pages.subspan(i, 1));
+    } catch (const platform::Error&) {
+      continue;
+    }
+    if (found.empty()) {
+      out[i] = Copied::no;
+    } else if (std::ranges::any_of(found.front().streams, [](const auto& stream) {
+                 return stream.damage != syntax::PageDamage::not_checked;
+               })) {
+      out[i] = Copied::yes;
+    }
+  }
+  return out;
+}
+
 void WritePipeline::damaged_pages(EditPlan& plan, const std::string& pdf,
                                   writer::WriteReport& report) {
   // The source pages the output keeps that could not be read in full, read
@@ -154,41 +190,16 @@ void WritePipeline::damaged_pages(EditPlan& plan, const std::string& pdf,
   for (const TextPlan::StringEdit& edit : text.strings) {
     edited.insert(edit.page);
   }
-  // The output read again by the same walk: a damaged stream copied as it
-  // was, or bytes no operator draws kept by a rewrite, read there as damage
-  // again, while a rewrite of what decoded leaves an undecoded tail behind.
-  // The re-read never fails a write: an output it cannot open or read
-  // within the limits leaves copied_as_is unknown.
-  using Copied = syntax::PageDamage::Copied;
-  std::unique_ptr<syntax::Document> output;
-  try {
-    output = syntax::Document::open(platform::as_bytes(pdf), plan.document().limits());
-  } catch (const platform::Error&) {
-    output.reset();
+  // The output pages of the damaged source pages, each read again.
+  std::vector<std::uint32_t> output_pages;
+  for (std::size_t i = 0; i < report.pages.size(); ++i) {
+    if (source.contains(report.pages[i])) {
+      output_pages.push_back(static_cast<std::uint32_t>(i + 1));
+    }
   }
-  std::optional<text::DamageScan> reread;
-  if (output != nullptr) {
-    reread.emplace(*output);
-  }
-  const auto copied = [&reread](std::uint32_t number) {
-    if (!reread) {
-      return Copied::unknown;
-    }
-    std::vector<syntax::PageDamage> found;
-    try {
-      const std::array<std::uint32_t, 1> page{number};
-      found = reread->pages(page);
-    } catch (const platform::Error&) {
-      return Copied::unknown;
-    }
-    if (found.empty()) {
-      return Copied::no;
-    }
-    const bool known = std::ranges::any_of(found.front().streams, [](const auto& stream) {
-      return stream.damage != syntax::PageDamage::not_checked;
-    });
-    return known ? Copied::yes : Copied::unknown;
-  };
+  const std::vector<syntax::PageDamage::Copied> copied =
+      copied_as_is(pdf, plan.document().limits(), output_pages);
+  std::size_t next = 0;
   for (std::size_t i = 0; i < report.pages.size(); ++i) {
     const auto found = source.find(report.pages[i]);
     if (found == source.end()) {
@@ -199,7 +210,7 @@ void WritePipeline::damaged_pages(EditPlan& plan, const std::string& pdf,
     entry.source_page = found->first;
     // A search string is searched on every page; any other match on its own.
     entry.text_redaction = !text.needles.empty() || edited.contains(found->first);
-    entry.copied_as_is = copied(entry.page);
+    entry.copied_as_is = copied[next++];
     report.damaged_pages.push_back(std::move(entry));
   }
 }

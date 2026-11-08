@@ -358,7 +358,8 @@ std::string PdfBuilder::build(const Layout& layout) const {
         std::string data = entry.stream.flate ? encoded(entry) : entry.data;
         if (cipher != nullptr) {
           data = cipher->encrypt_stream(number, generation, data,
-                                        entry.entries.find("/Metadata") != std::string::npos);
+                                        entry.entries.find("/Metadata") != std::string::npos,
+                                        entry.entries.find("/Name /StdCF") != std::string::npos);
         }
         rows.push_back({*entry.length_object, 1, static_cast<std::uint64_t>(offset_now()), 0});
         out += std::to_string(*entry.length_object) + " 0 obj\n" +
@@ -371,7 +372,8 @@ std::string PdfBuilder::build(const Layout& layout) const {
         std::string data = entry.stream.flate ? encoded(entry) : entry.data;
         if (cipher != nullptr) {
           data = cipher->encrypt_stream(number, generation, data,
-                                        entry.entries.find("/Metadata") != std::string::npos);
+                                        entry.entries.find("/Metadata") != std::string::npos,
+                                        entry.entries.find("/Name /StdCF") != std::string::npos);
         }
         std::string length = entry.length_object
                                  ? std::to_string(*entry.length_object) + " 0 R"

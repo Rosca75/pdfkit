@@ -26,6 +26,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -119,6 +120,20 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_check(const std::uint8_t* bytes, std:
       writer.key("object");
       if (survivor.object != 0) {
         writer.unsigned_integer(survivor.object);
+      } else {
+        writer.null();
+      }
+      writer.end_object();
+    }
+    writer.end_array();
+    // The streams no search could read, because a key they need is not held.
+    writer.key("not_searched").begin_array();
+    for (const pdfkit::redact::SelfCheck::Result::Unsearched& item : result.not_searched) {
+      writer.begin_object();
+      writer.key("object").unsigned_integer(item.object);
+      writer.key("page");
+      if (const std::optional<std::uint32_t> page = item.page) {
+        writer.unsigned_integer(*page);
       } else {
         writer.null();
       }

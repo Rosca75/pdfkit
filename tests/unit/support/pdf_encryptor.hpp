@@ -54,11 +54,14 @@ class PdfEncryptor {
 
   // The encrypted form of a string or of a stream's data held by object
   // number/generation. A stream is_metadata when its dictionary is /Type
-  // /Metadata (left clear when /EncryptMetadata is false).
+  // /Metadata (left clear when /EncryptMetadata is false); own_filter when
+  // its own /Crypt filter names /StdCF, which encrypts it under the crypt
+  // filter's method whatever /StmF says.
   [[nodiscard]] std::string encrypt_string(std::uint32_t number, std::uint32_t generation,
                                            const std::string& bytes) const;
   [[nodiscard]] std::string encrypt_stream(std::uint32_t number, std::uint32_t generation,
-                                           const std::string& bytes, bool is_metadata) const;
+                                           const std::string& bytes, bool is_metadata,
+                                           bool own_filter = false) const;
 
   [[nodiscard]] const Spec& spec() const noexcept { return spec_; }
 

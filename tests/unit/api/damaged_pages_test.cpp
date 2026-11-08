@@ -20,7 +20,9 @@
 #include "platform/json_value.hpp"
 #include "redact/match_finder.hpp"
 #include "redact/self_check.hpp"
+#include "redact/write_pipeline.hpp"
 #include "support/pdf_builder.hpp"
+#include "support/pdf_encryptor.hpp"
 #include "support/require_value.hpp"
 #include "syntax/limits.hpp"
 
@@ -103,6 +105,9 @@ class Fixture {
     (void)builder_.add_page_entries(entries + " /Resources << /Font << /F1 " +
                                     std::to_string(font_) + " 0 R >> " + resources + " >>");
   }
+
+  // Encrypts the file under spec.
+  void encrypt(const pdfkit::test::PdfEncryptor::Spec& spec) { builder_.encrypt(spec); }
 
   [[nodiscard]] std::string bytes() const { return builder_.build(); }
 
@@ -374,6 +379,11 @@ TEST_CASE("content the lexer skips or an operator it drops names the page") {
       {hello() + "[(x) 2] zork\n" + world(), "unknown_operator"},
       {hello() + "/F1 12 Tg\n" + world(), "unknown_operator"},
       {hello() + "<< /A 1 >> zork\n" + world(), "unknown_operator"},
+      // A reference written into a showing, drawing or font operator's
+      // operands, which leaves that operator without them.
+      {hello() + "BT /F1 12 Tf 72 680 Td (Secret) 5 0 R Tj ET\n", "unknown_operator"},
+      {hello() + "/Im1 5 0 R Do\n" + world(), "unknown_operator"},
+      {hello() + "BT /F1 5 0 R 12 Tf 72 680 Td (World) Tj ET\n", "unknown_operator"},
       // Containers nested past the parser's limit.
       {hello() + std::string(70, '[') + std::string(70, ']') + " TJ\n" + world(),
        "unlexable_content"},
@@ -727,4 +737,56 @@ TEST_CASE("inspect and text write the same damaged_pages, byte for byte") {
   CHECK(named(parse(inspected)) ==
         std::vector<std::string>{"1:flate_checksum", "1:unknown_operator", "1:unlexable_content",
                                  "1:flate_checksum", "1:unknown_operator"});
+}
+
+TEST_CASE("a content stream under a crypt filter it has no key for names its page") {
+  // /StmF and /StrF /Identity; the page's content names /StdCF in its own
+  // /Crypt filter. Under the empty user password it decrypts; under another
+  // it cannot be read, which every output names and check lists.
+  for (const std::string& password : {std::string(), std::string("guarded")}) {
+    CAPTURE(password);
+    Fixture fixture;
+    fixture.page("BT /F1 12 Tf 72 700 Td (Secret) Tj ET\n", {},
+                 "/Filter /Crypt /DecodeParms << /Name /StdCF >>");
+    pdfkit::test::PdfEncryptor::Spec spec;
+    spec.revision = 4;
+    spec.user_password = password;
+    spec.stream_filter = "Identity";
+    spec.string_filter = "Identity";
+    fixture.encrypt(spec);
+    const std::string file = fixture.bytes();
+    const JsonValue checked = check_of(file, R"({"strings": [{"text": "Secret"}]})");
+    const JsonValue* not_searched = checked.find("not_searched");
+    REQUIRE(not_searched != nullptr);
+    if (password.empty()) {
+      every_output_names(file, {});
+      INFO(checked.find("survivors")->as_array().size());
+      CHECK(checked.find("count")->as_int64() >= 1);
+      CHECK(checked.find("survivors")->as_array().front().find("surface")->as_string() == "text");
+      CHECK(not_searched->as_array().empty());
+    } else {
+      every_output_names(file, {"1:encrypted_stream"});
+      CHECK(checked.find("count")->as_int64() == 0);
+      REQUIRE(not_searched->as_array().size() == 1);
+      CHECK(not_searched->as_array().front().find("page")->as_int64() == 1);
+    }
+  }
+}
+
+TEST_CASE("copied_as_is is unknown when the output cannot be read again") {
+  using Copied = pdfkit::syntax::PageDamage::Copied;
+  Fixture fixture;
+  fixture.page(hello());
+  fixture.page(hello() + world(), flate(FlateDamage::checksum));
+  const std::string file = fixture.bytes();
+  const std::vector<std::uint32_t> pages{1, 2};
+  CHECK(pdfkit::redact::WritePipeline::copied_as_is(file, pdfkit::syntax::Limits{}, pages) ==
+        std::vector<Copied>{Copied::no, Copied::yes});
+  // Bytes that do not open, and a page past the operator limit.
+  CHECK(pdfkit::redact::WritePipeline::copied_as_is("not a PDF", pdfkit::syntax::Limits{}, pages) ==
+        std::vector<Copied>{Copied::unknown, Copied::unknown});
+  pdfkit::syntax::Limits limits;
+  limits.operators_per_page = 6;
+  CHECK(pdfkit::redact::WritePipeline::copied_as_is(file, limits, pages) ==
+        std::vector<Copied>{Copied::no, Copied::unknown});
 }

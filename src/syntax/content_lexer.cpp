@@ -8,6 +8,7 @@
 
 #include "syntax/content_lexer.hpp"
 
+#include "platform/checked.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/filters.hpp"
 #include "syntax/parser.hpp"
@@ -98,18 +99,20 @@ ContentLexer::Location ContentLexer::locate(std::size_t offset) const noexcept {
 bool ContentLexer::lose(std::string_view damage, std::size_t start,
                         std::optional<std::size_t> bytes) {
   const std::size_t piece = locate(start).piece;
-  for (Loss& loss : losses_) {
-    if (loss.damage == damage && locate(loss.start).piece == piece) {
-      ++loss.count;
-      if (loss.bytes && bytes) {
-        *loss.bytes += *bytes;
+  // Losses arrive in byte order, so the entry of this piece and class, when
+  // there is one, lies after every entry of an earlier piece.
+  for (auto loss = losses_.rbegin(); loss != losses_.rend() && loss->piece == piece; ++loss) {
+    if (loss->damage == damage) {
+      loss->count = platform::saturating_add(loss->count, std::size_t{1});
+      if (loss->bytes && bytes) {
+        loss->bytes = platform::saturating_add(*loss->bytes, *bytes);
       } else {
-        loss.bytes.reset();
+        loss->bytes.reset();
       }
       return false;
     }
   }
-  losses_.push_back({std::string(damage), std::string(), start, bytes, 1});
+  losses_.push_back({std::string(damage), std::string(), start, bytes, 1, piece});
   return true;
 }
 
@@ -138,17 +141,43 @@ void ContentLexer::lose_recoveries(const std::vector<Parser::Recovery>& recoveri
   }
 }
 
-bool ContentLexer::draws_nothing(const Operation& operation) {
-  // No operand, or numbers alone: a mangled keyword or an operator misspelt
-  // (CT for BT) whose operands could carry no text and name no resource.
+bool ContentLexer::draws_nothing(const Operation& operation) const {
+  // No operand, or numbers alone ("n g R" written bare among them): a
+  // mangled keyword or an operator misspelt (CT for BT) whose operands could
+  // carry no text and name no resource.
   if (std::ranges::all_of(operation.operands,
                           [](const Object& operand) { return operand.number().has_value(); })) {
     return true;
   }
-  // "n g R" written in content: the R of a reference after two integers.
-  const std::size_t count = operation.operands.size();
-  return operation.op == "R" && count >= 2 && operation.operands[count - 1].integer().has_value() &&
-         operation.operands[count - 2].integer().has_value();
+  // "/Name n g R" before a marked-content operator (/OC 5 0 R BDC): the
+  // reference takes the operands of BDC or DP, which draws nothing. Before
+  // any other operator (a Tj, a Do, a Tf) it takes operands that drew or
+  // decided text.
+  const std::vector<Object>& operands = operation.operands;
+  if (operation.op != "R" || operands.size() != 3 || operands[0].name() == nullptr ||
+      !operands[1].integer().has_value() || !operands[2].integer().has_value()) {
+    return false;
+  }
+  const std::string next = next_operator(operation.end);
+  return next == "BDC" || next == "DP";
+}
+
+std::string ContentLexer::next_operator(std::size_t position) const {
+  // A bounded look ahead, so a long run of operands costs no more than it
+  // costs the next call; past it the operator is taken as unknown.
+  constexpr int max_tokens = 64;
+  Lexer probe(joined_, position);
+  for (int i = 0; i < max_tokens; ++i) {
+    const Lexer::Token token = probe.next();
+    if (token.kind == Lexer::TokenKind::end) {
+      break;
+    }
+    if (token.kind == Lexer::TokenKind::keyword && token.text != "true" && token.text != "false" &&
+        token.text != "null") {
+      return token.text;
+    }
+  }
+  return {};
 }
 
 std::optional<ContentLexer::Operation> ContentLexer::next() {

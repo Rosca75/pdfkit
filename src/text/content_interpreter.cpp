@@ -120,7 +120,8 @@ using Operation = syntax::ContentLexer::Operation;
 
 // What a decoding leaves of a content stream unread: a filter's fault, a
 // filter it does not apply (an image codec or a filter no reader defines,
-// whose bytes stay encoded), or data in an external file it never reads.
+// whose bytes stay encoded), data encrypted under a key it does not hold, or
+// data in an external file it never reads.
 [[nodiscard]] std::vector<syntax::PageDamage::Stream> decoding_damage(
     syntax::Filters::Result& result) {
   std::vector<syntax::PageDamage::Stream> out;
@@ -137,6 +138,14 @@ using Operation = syntax::ContentLexer::Operation;
     entry.fault = "the content is left encoded with /" + result.remaining.front() +
                   ", which a content stream is not read through";
     entry.unread_bytes = result.bytes.size();
+    out.push_back(entry);
+  }
+  if (result.locked) {
+    entry.damage = "encrypted_stream";
+    entry.fault =
+        "the stream is encrypted under a crypt filter whose key needs a user "
+        "password, which pdfkit does not hold";
+    entry.unread_bytes.reset();
     out.push_back(entry);
   }
   if (result.external) {

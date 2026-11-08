@@ -260,31 +260,66 @@ TEST_CASE("a handler other than /Standard, or an unknown revision, is unsupporte
   }
 }
 
-}  // namespace
+// pdfkit_check's answer over file for "Confidential".
+std::string check_answer(const std::string& file) {
+  pdfkit_buffer out{nullptr, 0, nullptr};
+  const pdfkit_status status =
+      pdfkit_check(reinterpret_cast<const std::uint8_t*>(file.data()), file.size(),
+                   R"({"strings": [{"text": "Confidential"}]})", &out);
+  std::string answer(reinterpret_cast<const char*>(out.data), out.size);
+  pdfkit_buffer_free(&out);
+  INFO(answer);
+  CHECK(status == PDFKIT_OK);
+  return answer;
+}
 
-TEST_CASE("an embedded file under a crypt filter of an /Identity handler is not read") {
-  // The shape of qpdf's own test files: /StmF and /StrF /Identity, and an
-  // embedded file whose /DecodeParms name the AESV3 filter /StdCF, which only
-  // the user password (never checked here) unlocks.
+TEST_CASE(
+    "a stream's own crypt filter under an /Identity handler decrypts with the empty password") {
+  // /StmF and /StrF /Identity, and a stream whose own /Crypt filter names
+  // /StdCF: the empty user password gives the file key when /U accepts it.
+  for (const int revision : {4, 6}) {
+    CAPTURE(revision);
+    PdfEncryptor::Spec spec;
+    spec.revision = revision;
+    spec.stream_filter = "Identity";
+    spec.string_filter = "Identity";
+    Fixture made = fixture();
+    const std::uint32_t own = made.builder.add_stream(
+        "/Filter /Crypt /DecodeParms << /Name /StdCF >>", "BT (Confidential) Tj ET");
+    made.builder.encrypt(spec);
+    const std::string file = made.builder.build();
+    CHECK(file.find("BT (Confidential) Tj ET") == std::string::npos);
+    auto document = open_document(file);
+    CHECK(decoded(*document, own) == "BT (Confidential) Tj ET");
+    CHECK(require_value(document->security()).description().method == "Identity");
+  }
+}
+
+TEST_CASE("a stream under a crypt filter whose key needs a user password is locked, not read") {
+  // The shape of qpdf's own test files: /StmF and /StrF /Identity, a user
+  // password guarding the embedded files, and an embedded file whose own
+  // /Crypt filter names /StdCF, which only that password unlocks.
   PdfEncryptor::Spec spec;
   spec.revision = 6;
+  spec.user_password = "attachment";
   spec.stream_filter = "Identity";
   spec.string_filter = "Identity";
   Fixture made = fixture();
   const std::uint32_t attachment = made.builder.add_stream(
       "/Type /EmbeddedFile /Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name /StdCF >> null]",
-      std::string(64, 'x'));
+      "the attachment's Confidential bytes");
   made.builder.encrypt(spec);
   const std::string file = made.builder.build();
   auto document = open_document(file);
-  CHECK(decoded(*document, attachment).empty());
-  // pdfkit_check reads every stream, this one included, and answers.
-  pdfkit_buffer out{nullptr, 0, nullptr};
-  const pdfkit_status status =
-      pdfkit_check(reinterpret_cast<const std::uint8_t*>(file.data()), file.size(),
-                   R"({"strings": [{"text": "Confidential"}]})", &out);
-  const std::string answer(reinterpret_cast<const char*>(out.data), out.size);
-  pdfkit_buffer_free(&out);
-  INFO(answer);
-  CHECK(status == PDFKIT_OK);
+  const pdfkit::syntax::Object value = document->object({attachment, 0});
+  REQUIRE(value.stream() != nullptr);
+  const auto result = document->decode(*value.stream());
+  CHECK(result.bytes.empty());
+  CHECK(result.locked);
+  // pdfkit_check reads every stream, and names the one it could not search.
+  const std::string answer = check_answer(file);
+  CHECK(answer.find(R"("not_searched":[{"object":)" + std::to_string(attachment) +
+                    R"(,"page":null}])") != std::string::npos);
 }
+
+}  // namespace

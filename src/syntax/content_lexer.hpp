@@ -81,6 +81,8 @@ class ContentLexer {
     std::optional<std::size_t> bytes;
     // The losses of this class in this piece.
     std::size_t count = 0;
+    // The /Contents piece it lies in.
+    std::size_t piece = 0;
   };
 
   // pieces are a /Contents array's decoded streams in order (one for a form or
@@ -125,7 +127,10 @@ class ContentLexer {
   // Records the recoveries of one operand's parse that can take text.
   void lose_recoveries(const std::vector<Parser::Recovery>& recoveries, std::size_t start);
   // Whether an operator Annex A does not know could have drawn nothing.
-  [[nodiscard]] static bool draws_nothing(const Operation& operation);
+  [[nodiscard]] bool draws_nothing(const Operation& operation) const;
+  // The next operator after position, or empty when none comes within a
+  // bounded look ahead.
+  [[nodiscard]] std::string next_operator(std::size_t position) const;
 
   std::vector<std::byte> joined_;
   std::vector<std::size_t> piece_starts_;

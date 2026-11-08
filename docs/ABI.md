@@ -279,6 +279,7 @@ means for the caller's work is the caller's.
 | `predictor` | predictor parameters no predictor defines, or a PNG row of an unknown type | the bytes are read as they came, unpredicted |
 | `unsupported_filter` | a filter the content cannot be read through: an image codec or a filter no reader defines | the whole stream, lexed still encoded |
 | `external_stream` | the stream's data is an external file (`/F`), which pdfkit never reads | the whole stream |
+| `encrypted_stream` | the stream is encrypted under a crypt filter its own `/Crypt` filter names, whose key needs a user password: the handler's `/StmF` and `/StrF` are `/Identity` and its `/U` refuses the empty password, so pdfkit holds no file key (with the empty password accepted, the stream is decrypted and read) | the whole stream |
 | `missing_stream` | a `/Contents` entry that resolves to no stream | whatever it drew |
 | `missing_object` | a `Do` whose XObject resolves to no stream (a name the resources do not hold, or an object the file lacks), which also gives `resource_missing` | whatever the object drew, a form's text included |
 | `unknown_operator` | a keyword the content operators do not hold, outside `BX` and `EX`, with an operand that could have carried or decided text (a string, an array, a name, a dictionary): a corrupted `Tj`, `Tf` or `Do` | the operator and its operands draw nothing |
@@ -292,7 +293,11 @@ or before `BI`, a stray delimiter, a token read leniently, an indirect
 reference written in content (`/OC 5 0 R BDC`, `<< /Foo [5 0 R] >>`, `7 0 R`
 in an inline image's dictionary), and an unknown operator with no operand or
 numbers alone (a mangled `endstreM-'m` a stream recovery leaves, `CT` written
-for `BT`).
+for `BT`). An `R` is lossless only with exactly `n g` as its operands, or a
+name then `n g` before a `BDC` or `DP` (`/OC 5 0 R BDC`); with any other
+operands (`(Secret) 5 0 R Tj`, `/Im1 5 0 R Do`, `/F1 5 0 R 12 Tf`) it takes
+the operands of the operator that follows and names the page
+`unknown_operator`.
 
 ### 4.5 pdfkit_channels (catalogue 8)
 
@@ -742,6 +747,7 @@ the folding as in §4.11 (nothing folded unless asked). Finding a string is the 
 ```json
 {"strings": 2, "pages": 1, "count": 1,
  "survivors": [{"string": "zebulon", "page": 1, "surface": "text", "object": null}],
+ "not_searched": [],
  "damaged_pages": []}
 ```
 
@@ -749,7 +755,11 @@ the folding as in §4.11 (nothing folded unless asked). Finding a string is the 
 `alt`, `expansion`, `info`, `xmp`, `string` (a string object, `object` naming
 it) or `stream` (the decoded bytes of a stream or of a content stream's string
 operands, `object` naming it); `page` is null for a surface outside the pages.
-`damaged_pages` (§4.4.1) names every page of the bytes whose text could not be
+`not_searched` lists each stream no search could read, because it is
+encrypted under a crypt filter whose key needs a user password (the
+`encrypted_stream` of §4.4.1): its `object` and the `page` whose content it
+is (`null` otherwise), so a count of 0 never stands for a stream that was not
+read. `damaged_pages` (§4.4.1) names every page of the bytes whose text could not be
 read in full, whatever strings were given (none included), because a string
 may survive there where no reader of pdfkit's sees it; a limit met on a page
 the search does not read names it `not_checked`.
@@ -973,7 +983,7 @@ named), optionally `pdfkit_check` on the bytes, and `pdfkit_buffer_free`,
 | 1 | `0.1.0-preview` | the catalogue of `CLAUDE.md` §2 |
 | 2 | `0.2.0-preview` | `glued_before`, `glued_after` and `strings` in `pdfkit_find`; the `string` match of `pdfkit_redact_text`; `equivalents` and `ignore` in a folding; **changed meaning**: a folding left out folds nothing (it folded everything in ABI 1), ordered by the owner because pdfkit applies no rule it was not asked for; the overlap rule's tie stated |
 | 3 | `0.3.0-preview` | in `pdfkit_redact_text`: a placeholder over the wider alphabet (printable ASCII, the Latin-1 Supplement and Latin Extended-A, as UTF-8); a match's `style` (`text` or `box`) and a box's `colour`; in the answer, each match's `style`, each occurrence's `boxes` and the answer's `warnings` (`box_not_drawn`). No meaning changes: a match without `style` draws its placeholder as before |
-| 4 | `0.4.0-preview` | `damaged_pages` (§4.4.1) at the end of `pdfkit_inspect`, `pdfkit_text`, `pdfkit_find`, `pdfkit_check` and the write report, the write report's entries with `source_page`, `text_redaction` and `copied_as_is`; `pdfkit_inspect` reads every page's content to name them, so its `warnings` hold the warnings of every page. No meaning changes |
+| 4 | `0.4.0-preview` | `damaged_pages` (§4.4.1) at the end of `pdfkit_inspect`, `pdfkit_text`, `pdfkit_find`, `pdfkit_check` and the write report, `not_searched` in `pdfkit_check`, the write report's entries with `source_page`, `text_redaction` and `copied_as_is`; `pdfkit_inspect` reads every page's content to name them, so its `warnings` hold the warnings of every page. No meaning changes |
 - A caller checks `pdfkit_abi_version() >= N` for the version whose symbols it
   binds, and reads `pdfkit_version`'s `catalogue` to learn which functions this
   build implements.

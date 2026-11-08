@@ -8,7 +8,10 @@
 
 #include "syntax/page_damage.hpp"
 
+#include "platform/checked.hpp"
+
 #include <algorithm>
+#include <ranges>
 #include <utility>
 
 namespace pdfkit::syntax {
@@ -29,24 +32,29 @@ void PageDamage::add(Stream stream) {
 }
 
 void PageDamage::merge(std::vector<Stream>& streams, Stream stream) {
-  const auto same = std::ranges::find_if(streams, [&stream](const Stream& entry) {
-    return entry.known == stream.known && entry.piece == stream.piece &&
-           entry.form == stream.form && entry.form_path == stream.form_path &&
-           entry.damage == stream.damage;
-  });
-  if (same == streams.end()) {
-    streams.push_back(std::move(stream));
+  // From the back: a walk's entries arrive by piece, so the search stops at
+  // an entry of an earlier piece of the same stream.
+  for (Stream& same : std::views::reverse(streams)) {
+    const bool walk = same.known == stream.known && same.form == stream.form &&
+                      same.form_path == stream.form_path;
+    if (walk && same.piece && stream.piece && *same.piece < *stream.piece) {
+      break;
+    }
+    if (!walk || same.piece != stream.piece || same.damage != stream.damage) {
+      continue;
+    }
+    if (same == stream) {
+      return;
+    }
+    same.count = platform::saturating_add(same.count, stream.count);
+    if (same.unread_bytes && stream.unread_bytes) {
+      same.unread_bytes = platform::saturating_add(*same.unread_bytes, *stream.unread_bytes);
+    } else {
+      same.unread_bytes.reset();
+    }
     return;
   }
-  if (*same == stream) {
-    return;
-  }
-  same->count += stream.count;
-  if (same->unread_bytes && stream.unread_bytes) {
-    *same->unread_bytes += *stream.unread_bytes;
-  } else {
-    same->unread_bytes.reset();
-  }
+  streams.push_back(std::move(stream));
 }
 
 void PageDamage::write(platform::JsonWriter& writer, const std::vector<PageDamage>& pages) {

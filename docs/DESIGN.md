@@ -179,11 +179,14 @@ against editing and not against reading, and trying passwords is out of scope.
   object stream (the stream as a whole is decrypted), the `/Encrypt` dictionary's
   own strings, the `/ID` array, and the XMP metadata stream when
   `/EncryptMetadata` is false.
-- **What is not read**: when `/StmF` and `/StrF` are both `/Identity` the user
-  password guards only what `/EFF` names and is not checked, so there is no
-  file key, and a stream whose own `/Crypt` filter names a filter that needs
-  one (an embedded file, in qpdf's test files) decodes to nothing rather than
-  failing the call that reads every stream (`pdfkit_check`).
+- **An /Identity handler**: when `/StmF` and `/StrF` are both `/Identity` the
+  user password guards only what `/EFF` names and is not required; the file
+  key the empty password gives is derived (algorithm 2 or 2.A) and kept when
+  `/U` accepts it, so a stream whose own `/Crypt` filter names a crypt filter
+  is decrypted. When `/U` refuses it there is no file key, and such a stream
+  is locked: it decodes to nothing, marked so, its page is named
+  `encrypted_stream` (§19.1) and `pdfkit_check` lists it in `not_searched`,
+  never refusing the file and never reading the stream as empty.
 - **Refusals**: a non-empty user password, or a revision 5 or 6 `/Perms` that
   does not decrypt, is `password_required`; a handler other than `/Standard` (a
   public-key or vendor handler), or a revision, version, crypt filter or method
@@ -301,9 +304,11 @@ count and the ceiling.
   operator was there to draw them), a stray delimiter (`)`, a lone `>`, `]`,
   `>>`, a brace), a token read leniently (§1.1), an array or dictionary left
   open at the end of the content, an indirect reference written in content
-  (`/OC 5 0 R BDC`, `[5 0 R]`, `7 0 R` in an inline image's dictionary: the
-  `R` after two integers, and a reference's generation and `R` where a
-  dictionary key belongs), and an unknown operator with no operand or numbers
+  (`5 0 R` alone, `/OC 5 0 R BDC` where a `BDC` or `DP` follows, `[5 0 R]`,
+  `7 0 R` in an inline image's dictionary: the `R` after two integers, and a
+  reference's generation and `R` where a dictionary key belongs; an `R` with
+  other operands, or a name before any other operator, is a loss, because the
+  operator after it lost operands that drew or decided text), and an unknown operator with no operand or numbers
   alone (a mangled keyword a stream recovery leaves, `CT` written for `BT`),
   because no operand of it could have carried or decided text; an unknown
   operator with a string, an array, a name or a dictionary among its operands
@@ -1462,7 +1467,8 @@ work is the caller's to decide.
   a form any draw on the page reaches) that met a filter fault (§3.1) or a
   lexer loss (§4), that is left encoded with a filter a content stream is not
   read through (`unsupported_filter`: an image codec, a filter no reader
-  defines) or held in an external file (`external_stream`), a `/Contents`
+  defines), encrypted under a key it does not hold (`encrypted_stream`) or
+  held in an external file (`external_stream`), a `/Contents`
   entry that resolves to no stream (`missing_stream`), and a `Do` whose
   XObject resolves to nothing (`missing_object`, which may have been a form
   with text), because pdfkit cannot show that no text was lost. A

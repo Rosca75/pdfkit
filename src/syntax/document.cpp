@@ -672,6 +672,12 @@ Filters::Result Document::decode(const Stream& stream, std::optional<std::uint32
   }
   platform::ByteSpan data = raw(stream);
   std::vector<std::byte> clear;
+  if (security_ && !stream.owns_data() && security_->locked(dictionary)) {
+    // Encrypted under a crypt filter whose key is not held: never read.
+    Filters::Result locked;
+    locked.locked = true;
+    return locked;
+  }
   if (security_ && !stream.owns_data()) {
     clear = security_->decrypt_stream(stream.owner(), dictionary, data);
     data = clear;
