@@ -36,7 +36,7 @@ performs no OCR.
 | `THIRD-PARTY-NOTICES.md` | the licence notices shipped with every artefact |
 | `build/toolchain.md` | the pinned compiler, CMake, Ninja, clang-format and clang-tidy versions and the proxy behaviour |
 | `build-5.md`, `build-6.md`, `build-10.md` | the build plans whose phase is not marked done (5 and 6 merged gate-failed; 10 is the release phase): each is authoritative for its phase's open measures until its phase is marked done, then moves to `docs/archive/build/` like the plans of phases 1 to 4 and 7 to 9 and 11 to 15 |
-| `docs/change-01.md`, `docs/change-01a.md`, `docs/change-01b.md`, `docs/change-01c.md` | the reference panel order, awaiting the owner's launch: the parent holds its decisions and batch index, each batch file the work of one session |
+| `docs/change-01.md`, `docs/change-01a.md`, `docs/change-01b.md`, `docs/change-01c.md` | the reference panel order, its three batches done and batch C awaiting the owner's landing merge: the parent holds its decisions and batch index, each batch file the work of one session; they are its records until it is archived |
 | `docs/change-02.md` | the replacement alphabet and black box order: a placeholder over printable ASCII, Latin-1 and Latin Extended-A, a per-match box style, and a self-check that cuts no placeholder text out of what it searches |
 | `docs/change-03.md` | the damaged pages order: every output names the pages whose text could not be read in full, and the reference panel's test tiers run on Linux; its §0.4 is the programme's ledger |
 
@@ -229,7 +229,9 @@ fails until all of them agree.
 | self-check | the re-read of an output with the library's own reader, refusing the output when a redacted string survives in any text surface |
 | dataset | the 500 to 1,000 PDF files listed in `dataset/manifest.tsv`, held outside git |
 | gate | a number measured over the dataset that a build phase must reach |
-| independent reader | PDFium, used in `tests/pdfium/` only |
+| reference panel | the test-only readers that judge a reading choice or a gate: PDFium, Poppler's `pdftotext`, MuPDF's `mutool`, pdf_oxide and pdf-extract for text; PDFium, Poppler's `pdfimages` and MuPDF's `mutool` for image pixels; QPDF and lopdf for structure; PDFium is one member and keeps `tests/pdfium/` |
+| panel majority | the answer held by more than half of the members that answered for a file or an image |
+| undecided | a file or an image with too few voters or no majority; listed in every gate report and counted neither way |
 
 ## 5. Why pdfkit is built this way
 
@@ -282,8 +284,8 @@ A session that wants to change a rule reads its reason here first.
 - **Extractors disagree on what is text**, and the specification itself says
   TrueType encoding heuristics are "not described here". The decoding ladder
   records which rung answered each code, and the reading gate is measured
-  agreement with an independent reader over a large dataset, never a count of
-  unit tests.
+  agreement with the reference panel's majority over a large dataset, never a
+  count of unit tests.
 - **Codecs are the one place a dependency beats a rewrite.** JBIG2 and JPEG 2000
   decoders are thousands of lines with a history of bugs, so permissive codec
   libraries are vendored, and only the codecs with no permissive C++ library
@@ -429,14 +431,22 @@ what producers wrote. Each run writes its report to
 `dataset/reports/<run-id>/` (ignored), and the summary goes into the merge
 commit message of the phase.
 
-### 7.5 PDFium, the independent reader
+### 7.5 The reference panel and PDFium
 
-PDFium measures text agreement (the per-file bag-of-words F1, order-insensitive,
+The reading and bitonal gates are judged by the reference panel's majority
+(`tests/dataset/gates/phase5_panel.py`, `phase6_panel.py`): a file counts
+against pdfkit only when pdfkit's per-file bag-of-words F1 (order-insensitive,
 over words of two or more letters or digits, lower-cased under the default
-folding), renders pages before and after a redaction to prove pixel stability
-outside the reported rectangles, and is the second extractor of the leak check.
-It is fetched by hash into the shared cache and loaded by `tests/pdfium/` through
-`ctypes`, never by the library.
+folding) is below 0.90 against a strict majority of at least three text
+members, and an image only when its samples differ from those more than half
+of at least two pixel members hold, because one reader's quirks counted as
+truth make pdfkit's misses and its reference's indistinguishable. PDFium,
+one member, also keeps the old gate scripts the release gate re-runs, renders
+pages before and after a redaction to prove pixel stability outside the
+reported rectangles, and is the second extractor of the leak check. It is
+fetched by hash into the shared cache and loaded by `tests/pdfium/` through
+`ctypes`, never by the library; the other members run as separate processes
+(§6).
 
 ## 8. Testing
 
@@ -448,6 +458,7 @@ It is fetched by hash into the shared cache and loaded by `tests/pdfium/` throug
 | sanitizer | the unit tier under the sanitizers the pinned toolchain supports (`build/toolchain.md` lists them): UBSan in trap mode under GCC, ASan and UBSan under llvm-mingw; at a phase's end, the `clang-sanitize` build's dataset verb over every manifest file, with no sanitizer report | `ctest --preset sanitize`, `ctest --preset clang-sanitize`, `python tests/dataset/run.py --sanitizer --runs 1 --timeout-scale 5 --run-id <run-id>-asan` |
 | dataset | the catalogue's expectations over every manifest file, twice for determinism, with a timeout of 30 s per started block of 200 pages and the refusal invariant; each phase's gate script judges a run | `python tests/dataset/run.py`, `python tests/dataset/gates/phase<n>.py --run <run-id>` |
 | pdfium | text, image and metadata agreement, pixel stability and the second leak check against PDFium; what PDFium says of an input file is kept in `build/cache/pdfium-results/` of the main checkout, keyed by the file's SHA-256, the PDFium release and the request, because neither changes between runs, and every answer is computed in a library just reset, because PDFium carries font state from one document to the next | `tests/pdfium/text_agreement.py`, `image_agreement.py`, `metadata.py`, `compare.py --check write,select,text,redact`, `images.py`, `leak.py --metadata --images`, each with `--run <run-id>` |
+| panel | the reading and bitonal gates judged by the reference panel's majority; every member's answer about an input file is kept in `build/cache/panel-results/` of the main checkout, keyed by the file's SHA-256, the member's binaries and the request, as PDFium's are | `python tests/panel/fetch.py` (the members, by hash), `python tests/panel/collect.py` (their answers), `python tests/dataset/gates/phase5_panel.py --run <run-id>`, `phase6_panel.py --run <run-id>` |
 | abi | the C ABI loaded from .NET and from Python | `python tests/abi/run.py` |
 | checks | layout, headers, comments, catalogue, third party, no-network, repository, paths, generated files, warnings, formatting and tidy, the artefact's imports | `python build/check.py --full` (the merge gate), `python build/check.py` (routine), `--fast` (the pre-push hook) |
 
@@ -635,6 +646,8 @@ out was analysed in full when its last change entered main.
 - The format rules each layer implements: `docs/DESIGN.md`.
 - The exported symbols and their JSON: `docs/ABI.md`.
 - The URL behind every external fact: `docs/SOURCES.md`.
+- The reference panel's members, pins and answers: `tests/panel/members.tsv`,
+  `build/toolchain.md`.
 - The dataset's columns, tags and tools: `dataset/README.md`, `dataset/taxonomy.tsv`.
 - The pinned toolchain: `build/toolchain.md`.
 - A phase's plan: `build-<n>.md` at the root while its phase is not marked

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | awaiting owner launch |
+| Status | done on change/01-c-text-fixes (2026-11-08, on Linux), awaiting the owner's landing merge |
 | Owner approval | with the parent |
 | Depends on | `change-01b.md` |
 | Supersedes | nothing |
@@ -12,7 +12,7 @@
 | Behaviour change | yes: `pdfkit_text` (and every function that reads text: redaction's search, the self-check) reads Type 3 code names and lays out the confirmed cases differently (the CJK items were dropped, §9.1 and §9.2); checked against the 960-file dataset, the panel and every release gate row |
 | New dependency | none (the Adobe CMap resources were dropped with §9.1) |
 | Minimum model | `opus` |
-| Duration and price | 5.5 to 6 hours, $95 to $120 at list prices (parent §11.1); the split point is after the CMaps (§9.6) |
+| Duration and price | 5.5 to 6 hours, $95 to $120 at list prices (parent §11.1); the owner lifted the time limits and split point for the run (Appendix C entry 1) |
 
 Read `docs/change-01.md` §0 to §8 first. This file is §9 onwards for batch C
 alone.
@@ -307,4 +307,106 @@ whether the landing merge closes phase 5 or 6.
 
 ## Appendix C — Deviations recorded by this batch
 
-1. *(none yet)*
+1. **The batch ran on Linux**, as `docs/change-01.md` Appendix C says:
+   `linux-debug` and `linux-release` for `mingw-release`,
+   `ctest --preset unit-linux` and `unit-linux-release` for
+   `ctest --preset unit`, `python build/check.py --fast` for the routine
+   and full checks; the sanitizer presets, `build/check.py --full`,
+   `build/package.py --verify` and `build/check_artefact.py` are the
+   owner's laptop steps. The comparison base is batch B's run
+   `panel-b-full`, and AC6 compares with the Linux baseline
+   `linux-base-09b8d78` (parent Appendix C entry 12). The owner lifted the
+   session's time limits, stop rule and split point for this batch.
+2. **§9.1 and §9.2 were dropped** by the owner's answer of
+   `OPEN-QUESTIONS.md` §1.5: no CMap data, no generator, no budget raise;
+   their rows of `build/paths_pending.tsv` went with the text that cited
+   them, and the 12 CJK files the panel counts against pdfkit keep their
+   rows as known gaps. pdfpig-0002 (§9.4) is Chinese and was not
+   investigated further.
+3. **CR5 needed a layout rule to read words.** pdfjs-0047's Type 3 font
+   (`/FontMatrix [1 0 0 1 0 0]` at 0.24) draws glyphs 72 times its size, so
+   with its codes read every gap ended a line ("P", "ro p e", "rty"). A
+   Type 3 glyph whose box spans more than four times its size across the
+   line is sized by its box. pdfkit then reads "Property Insurance" as
+   PDFium and Poppler do, and four of the six files still count against
+   pdfkit because MuPDF, pdf_oxide and pdf-extract cut the words, each in
+   its own places (`OPEN-QUESTIONS.md` §3.6). The rule also joins
+   pdfjs-0004's "Questions about your bill?" and moves nothing else.
+   opf-0014, pdfpig-0009 and mutate-0036, whose names restate their codes
+   in decimal, read their codes too (`expect_fonts` of the manifest).
+4. **The layout fixes go beyond DFT1 to DFT3**: the brief added W2, the
+   owner's word cuts of `OPEN-QUESTIONS.md` §1.4, and the layout group's
+   other files. Added rules: a space that opens a run and that a `TJ`
+   number moves the next glyph back over stands where that glyph starts
+   (pdfjs-0018); a glyph whose text holds a space counts by what follows
+   it for the direction pass (pypdf-0019 to -0021); on a line whose fonts
+   draw spaces, a word set as a string or an operator of its own after
+   the one before ends at 0.15 of the size (dccc-0124, dccc-0073 and 39
+   other files, where it separates glued words, leaders and punctuation
+   and cuts no word's letters). Each was
+   measured on the whole dataset's text before it was kept; a first form
+   of the last rule at 0.1 of the size cut "Montelius" and "Whitlock"
+   (dccc-0005, rotated text with gaps of 0.096) and "file" (a zero-width
+   "i", pdfplumber-0005) and was narrowed.
+5. **DFT1's direction was not taken as written.** No baseline tolerance
+   can separate pdfdiff-0018's baselines (80 pt apart under glyphs of 500
+   and 660 pt, a fifth of either size being 100 pt or more). The fix
+   separates two baselines whose runs of two glyphs or more cross each
+   other, at least half of each run's glyphs over the other's; a first
+   form that compared every glyph of a baseline split subscripts and
+   LaTeX's raised "A" and was narrowed to runs.
+6. **DFT2's threshold**: pdfkit measured the vertical gap along the
+   advance already; the 0.2 em gap inside pdfium-0049's "Hello" passes the
+   narrow word gap, so glyphs of vertical writing take the spaced one
+   (0.3). The redaction's placeholder fitting
+   (`src/redact/placeholder_fitting.cpp`), which reads the word gaps to
+   tell whether a word break stood after a removed span, was not edited
+   (outside this batch's files): for vertical writing and for a word set
+   apart as a string of its own it still reads the gaps as before, which
+   moves only how much room a placeholder leaves for its bridge.
+7. **Files left in the layout group**, each with its row and reason in
+   `tests/panel/text_causes.tsv`: pdfdiff-0017 (DFT3 fixed; zero-size text
+   read three ways by the members), pypdf-0019 to -0021 ("habibi" whole;
+   the cluster's empty `/ToUnicode` entries read through the program by
+   `docs/DESIGN.md` §5.4), pdfminer-0042 (letter spacing by `Tc` read as
+   words, as PDFium does) and pdfplumber-0014 (music noteheads). They move
+   to the `legitimate` group, with the four Type 3 files.
+8. **dccc-0124's digit pairs stay apart** (`OPEN-QUESTIONS.md` §3.5,
+   `docs/change-01.md` Appendix C entry 27): the rule that joined them
+   also joined pdfplumber-0015's minus sign to its number and was
+   withdrawn with its test.
+9. **`tests/pdfium/text_causes.tsv` keeps pdfpig-0003**, at 0.9008 with
+   PDFium on Linux as at batch B (parent Appendix C entry 23), and the
+   manifest keeps its `expect_text`, `known_gap:pdfkit`, which
+   `text_agreement.py --write-manifest` turned to `agree` on Linux alone;
+   every other moved row of the manifest is a file this batch fixed.
+10. **`build-5.md` and `build-6.md` stay at the root** although both panel
+    gates pass on this tip: a phase closes only through the owner's
+    landing merge (D8), which then carries `Build-Phase: 5 done` and
+    `Build-Phase: 6 done`; their §9 holds the numbers.
+11. **No ABI or JSON shape moves** (`docs/ABI.md` unchanged): the rung of a
+    restated code is `glyph_name`, a value the JSON already carries.
+12. **AC6 on Linux**, run `panel-c-full` (two runs) against the Linux
+    baseline `linux-base-09b8d78` (parent Appendix C entry 12) and, for the
+    rows that baseline did not measure, against `main` at c7601ae run once
+    with the same scripts (`c-main-base`, deleted after the comparison).
+    Unchanged: 961 files, both runs identical, no crash, no hang under
+    `--timeout-scale 3`; the one real expectation miss is `mutate-0048`'s
+    self-check refusal, as in the baseline; re-serialisation 12,121 of
+    12,121 streams (the baseline's 11,722 and dccc-0129's 399); images
+    6,133 of 6,139 occurrences decoded, continuous-tone 3,688 of 3,724, the
+    census equal row for row; Info fields 3,052 of 3,052 (3,048 in the
+    baseline; `main` at c7601ae reads the same 3,052); identity writes,
+    page selections, the self-check (909 of 917 with the 7 laptop-only
+    `office` rows and `mutate-0048`), image treatments and metadata rewrites
+    equal `main`'s row for row; leaks: images 0, metadata 0, and in text
+    the two words of `OPEN-QUESTIONS.md` §1.3 that PDFium reads on
+    damaged pages of opf-0019 and mutate-0046, on `main` too. Moved, all
+    from the text the redaction jobs pick their words from: codes no rung
+    reads 87,677 of 16,562,502 (0.53 %) from 88,787 (0.54 %); placeholders
+    found in PDFium's text 9,452 of 9,499 (99.51 %) from 9,385 of 9,434
+    (99.48 %); pages stable outside the rectangles 8,014 of 8,055 from
+    8,010 of 8,051 (99.49 % both); located outputs one occurrence fewer in
+    PDFium's text 413 of 413 from 411 of 411; occurrence-form matches 213
+    of 213 from 214 of 214. The ABI tier passes from .NET and Python
+    (31 files, 717 calls each).

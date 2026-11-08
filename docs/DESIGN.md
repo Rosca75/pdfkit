@@ -357,7 +357,13 @@ the loader, because one bad font must not lose a page.
   period is dropped (`a.sc` reads as `a`); a name `xx_yy` reads as the ligature
   of its parts. The `gNN`, `Cdd` and `cidNN` forms name glyph or code numbers,
   not characters, so they decode only when the font program maps that glyph
-  through its own `cmap` or charset; otherwise they are unreadable.
+  through its own `cmap` or charset; otherwise they are unreadable, but for
+  one case: in a font with no program (a Type 3 font, a font not embedded), a
+  `Cdd` or `Cxx` name whose number, read as decimal or as hexadecimal, is its
+  own code reads as the character of that code, rung `glyph_name`, because
+  the reference panel's majority reads such a font so (pdfjs-0047's Type 3
+  font names code 65 `/C41`: every member reads its 17 codes as those
+  characters). A control character and any other number stay unreadable.
 - **Symbolic TrueType** (flag 3 of `/Flags` set, or no usable encoding): the
   font program's `cmap` is tried in the order (3,0) with the code, then with the
   code plus `0xF000`, then (1,0) with the code, then (3,1) through the glyph name
@@ -540,9 +546,23 @@ visible set first and the hidden set after (§8).
   between the first's advance end and the second's origin is under 0.1 of the
   font size (pdfminer's `word_margin`), under 0.3 when both glyphs' fonts
   mark their words with space glyphs where they are drawn (their other gaps
-  are letter spacing and kerning), and under 1.0 between two ideographic,
+  are letter spacing and kerning) and between two glyphs of vertical
+  writing (their cells are a full em tall: pdfium-0049's `TJ` numbers leave
+  0.2 em inside a vertical "Hello"), and under 1.0 between two ideographic,
   kana, hangul or full-width glyphs (scripts written without spaces); beyond
-  2.0 of the font size the line ends there, a block boundary. A font marks
+  2.0 of the font size the line ends there, a block boundary. On a line whose
+  fonts mark their words with spaces, a glyph that opens a string drawn
+  straight after the string the glyph before it closes, each string showing
+  other glyphs and the one before advancing, ends a word from 0.15 of the
+  size, the narrowest gap measured between positioned words: a producer that
+  draws its spaces still sets a word anew after a break it draws no space
+  for, as a string operand of its own after a `TJ` number ("Ideas:" "The",
+  pdfjs-0016) or as an operator of its own after a new position (dccc-0124's
+  justified columns, "Jahre" "anführ-"); letters a producer spaces one string
+  each keep the 0.3. A Type 3 glyph whose box spans more than four times its
+  font size across the line is sized by its box, because the font's em is
+  whatever its `/FontMatrix` makes of glyph space (pdfjs-0047: a matrix of 1
+  shown at 0.24 draws glyphs 17 pt tall). A font marks
   its words with spaces in a segment of the line drawn in one go when a
   space glyph of any font is drawn there straight after one of its glyphs:
   a producer that draws every space in one face and every letter in another
@@ -560,7 +580,12 @@ visible set first and the hidden set after (§8).
   no overlap; on a right-to-left line, whose advance overlaps it by that
   much) also ends a word, because it was drawn over that glyph rather than
   after it (a placeholder running over the next word, a stamp over a line).
-  A space is never drawn over; an accent (a combining mark, a spacing
+  A space that opens a run and that a `TJ` number moves the next glyph back
+  over, until the space lies wholly in that glyph's advance, stands where
+  the glyph starts, so it reads before it rather than inside its word
+  (pdfjs-0018: a Hebrew line drawn from its left end opens with a space and
+  sets the word's last letter 0.12 pt before it). A space is never drawn
+  over; an accent (a combining mark, a spacing
   modifier or a spacing accent of ASCII or Latin-1) drawn over its letter in
   another font stays in the letter's word, a subscript or superscript is off
   the baseline, and the same text drawn again where the glyph starts is a
@@ -570,7 +595,14 @@ visible set first and the hidden set after (§8).
   within a fifth of the font size, in the direction their advance runs (a
   negative font size or scaling runs it backwards), so rotated text forms its
   own lines along its rotation; vertical text (`Identity-V` or a text matrix
-  rotated by 90°) forms vertical lines read top to bottom. Along one baseline
+  rotated by 90°) forms vertical lines read top to bottom. Two baselines
+  within that tolerance are two lines when they carry runs drawn across each
+  other: two runs (glyphs drawn one after another on one baseline) of at
+  least two glyphs other than spaces, on baselines more than 0.05 of the size
+  apart, each with at least half of its glyphs' middles in the other's
+  advances (pdfdiff-0018: "B 8" at 500 pt and "8B" at 660 pt on baselines
+  80 pt apart); a superscript, a subscript or a raised letter of a logo
+  crosses a glyph or two rather than a run and stays in its line. Along one baseline
   the content's runs (glyphs drawn one after another, each at or after the
   one before, none in another font starting more than 0.1 of the size
   before the advance of the glyph drawn ahead of it ends) are placed in the
@@ -592,7 +624,10 @@ visible set first and the hidden set after (§8).
   runs from their far ends. This is the logical order the producer's drawing
   order gives when it drew logically, found from the positions so a producer
   drawing in visual order reads the same (author decision); the line carries
-  its direction.
+  its direction. A glyph whose text holds a space and more after it counts
+  by what follows the space, because it stands for a cluster a producer
+  mapped onto it whole (pypdf-0019: the "h" of "habibi" maps to the Arabic
+  word before it, a space and "h"), and it joins the glyphs after it.
 - **Blocks and order**: lines grouped into blocks by Docstrum (lines of one
   direction that overlap along it and lie within 1.3 times the page's
   between-line distance of each other, a ruling drawn between them keeping
@@ -611,7 +646,9 @@ visible set first and the hidden set after (§8).
   together.
 - **Duplicates**: a glyph with the same code and font (by name, so one face
   stated as two font objects is one font) as an earlier glyph whose origin lies
-  within a tenth of the font size of it (a fake bold or a shadow) is folded into
+  within a tenth of the font size of it and whose advance runs within a degree
+  of the same way (a fake bold or a shadow; a glyph half a turn from another
+  at its origin draws elsewhere, pdfdiff-0017) is folded into
   the earlier record: the earlier record lists it among its duplicates, so a
   redaction removes both, and the copy is a record of its own in the hidden
   set with the class `duplicate` and its partner named, so the text is read
@@ -694,7 +731,7 @@ treatments are limited to keep and remove (§14).
   per-image cache of evaluated inputs). CMYK becomes RGB through PDFium's
   Adobe CMYK table (a 9 x 9 x 9 x 9 grid of sRGB samples interpolated per
   axis, ported from PDFium under BSD-3), because the naive complement
-  (`R = (1-C)(1-K)`) differs from the independent reader by 10 to 20 per
+  (`R = (1-C)(1-K)`) differs from PDFium by 10 to 20 per
   channel on real CMYK images; no colour management is vendored, so an
   `ICCBased` profile is read as its device space (both decisions wait on the
   owner in `OPEN-QUESTIONS.md`).

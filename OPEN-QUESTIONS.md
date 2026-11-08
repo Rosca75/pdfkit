@@ -75,7 +75,18 @@ glued to ideographs of `dccc-0073`, judges each cut by the reader panel
 (§2.2), fixes what the panel calls wrong with a test seen red first. Where
 the panel splits, the session judges the cut from the words around it and
 pdfkit's purpose, and changes pdfkit only when the gain in reading is clear
-and costs no quality elsewhere.
+and costs no quality elsewhere. **Done by batch C of `docs/change-01.md`
+(2026-11-08, on its branch until the owner's landing merge)**: the panel
+now calls 5 of the 13 places of `tests/panel/word_cuts.tsv` right. Fixed:
+dccc-0124's "Jahre anführ-", "regenbogenfarbene Ka-" and "in Hermeskeil" (a
+word a producer sets as a string or an operator of its own after a break it
+draws no space for ends at 0.15 of the size), and dccc-0073's "新たに POS"
+(the same rule; the file now agrees with every member); "Upconversion" was
+already whole. Left: dccc-0124's digit pairs ("06 51", "71 99"), asked as
+§3.5; dccc-0139's "INS TALL", caused by the full-width default of Latin in a
+non-embedded CJK font (§1.5); dccc-0097's two Japanese labels, pdfpig-0005's
+Japanese before a URL and dccc-0073's "2021年" and "128件", which only a
+rule about CJK scripts would move (§1.5).
 
 ### 1.5 Chinese, Japanese and Korean fonts
 
@@ -83,7 +94,9 @@ Answered 2026-11-07 by the owner: pdfkit stays a general library, but its
 first caller reads mostly European languages, so CJK reading is a
 nice-to-have that must not add complexity. The Adobe CMap resources are not
 embedded and the CJK misses stay known gaps; the panel's verdicts on CJK
-files are not pursued.
+files are not pursued. Batch C of `docs/change-01.md` dropped its CMap data and
+half-width items accordingly; the 12 CJK files the panel counts against
+pdfkit keep their rows in `tests/panel/text_causes.tsv` as known gaps.
 
 ### 1.6 Damaged pages: choices decided by the session, to confirm
 
@@ -217,7 +230,13 @@ GPL and AGPL readers as separate test processes, never linked or shipped.
 **Action**: a build plan for the panel (fetch by hash, one adapter each,
 answers cached per file), about 10 to 14 hours and $180 to $280; then the
 phase 5 and 6 gates and the choices below re-judged by the panel. This
-replaces old 2.10's suggestion to count only pdfkit-caused files.
+replaces old 2.10's suggestion to count only pdfkit-caused files. **Done** (`docs/change-01.md`, batches A to C, 2026-11-08, on
+Linux): the panel judges both gates; the reading gate under the panel
+passes at 44 of 890 decided files against pdfkit (4.94 %, median 1.0) after
+batch C's fixes, from 50 of 893 (5.60 %) before them, and the bitonal gate
+at 489 of 489 decided images. Old 2.10's items: the Type 3 code names read
+(2.5), the layout faults fixed; the CJK CMap data and half-width Latin
+dropped by §1.5.
 
 Settled through the panel: old **2.5** (Type 3 glyph names that restate their
 code: read or not as the panel majority reads them), old **2.7** (the CMYK
@@ -389,3 +408,45 @@ fixes. About 0.5 to 1 hour and $10 to $20 (the rule, its test, a gate run).
 batch C fixes at least 6 of its confirmed files (the six Type 3 files of
 CR5 alone would bring it to 44 of 893, 4.93 %). Counting the `legitimate`
 group neither way was refused on 2026-10-28 (§2.2) and is not offered.
+
+Batch C's fixes (`docs/change-01c.md`) bring the panel's count to 44 of
+890 decided files (4.94 %), so the gate passes either way; with the
+recommended rule 33 of 890 (3.71 %) count against pdfkit.
+
+### 3.5 A telephone number set in digit pairs stays in pairs
+
+**Decided by the session, to confirm.** dccc-0124 sets "0651/7199-999" as
+five strings, "06", "51", "/", "71" and "99-999", each 1 pt (0.125 of the
+8 pt size) after the one before and no space glyph between them. pdfkit
+reads "06 51 / 71 99-999", as Poppler and pdf-extract do; PDFium, MuPDF and
+pdf_oxide read "0651" and "7199", and §1.4 names "06 51" as a cut the
+document does not have. A rule joining two digits that two operators draw,
+up to 0.15 of the size apart, reads the number whole, and on the dataset it
+moves one other file: pdfplumber-0015, whose font maps its minus sign to
+"2", so "−5.4%" read as "2 5.4%" becomes "25.4%", another number (three of
+five members read it apart). The same gap inside one `TJ` separates numbers
+elsewhere (opf-0018's chart labels "2500" and "4000", 0.11 of the size
+apart), so a gap alone cannot tell grouping from separation. A caller's
+telephone pattern that allows a space between digit groups finds the
+number either way; a number joined wrongly is a number the document does
+not hold.
+
+**Recommended: keep the pairs apart**, no cost. **Alternative: join two
+digits two operators draw up to 0.15 of the size apart**, about 0.5 hour
+and $10 (the rule and its test were written, measured and withdrawn in
+batch C): dccc-0124 reads "0651/7199-999" and pdfplumber-0015 "25.4%".
+
+### 3.6 A Type 3 font whose codes its names restate reads its words whole
+
+**Decided by the session, to confirm.** pdfjs-0047 and its mutations draw
+"Property Insurance" in a Type 3 font whose names restate their codes
+(`65 /C41`), each piece by its own `TJ` (`P`, `ro`, `p`, `e`, ...). pdfkit
+now reads the codes (CR5) and sizes the glyphs by their box, so the words
+read whole, as PDFium and Poppler read them. MuPDF, pdf_oxide and
+pdf-extract read the same letters but cut the words at the pieces, each in
+its own places ("P ro p e rt y", "P ro p e rty Ins ura nce"), so four of
+these six files still count against pdfkit, three voters to two. A caller
+detecting a name needs the word whole. **Recommended: confirm**, no cost.
+**Alternative: read each piece as drawn** (the Type 3 size left as the font
+size), about 0.5 hour and $10: the words are cut at each piece, and the
+files still count against pdfkit, PDFium and Poppler then below.

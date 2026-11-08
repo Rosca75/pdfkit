@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | awaiting owner launch |
+| Status | batches A and B merged into `main`; batch C done on its branch, awaiting the owner's landing merge (Appendix C entry 26) |
 | Owner approval | decided by the owner on 2026-10-28 (`OPEN-QUESTIONS.md` §2.2 and §2.3 on branch chore/owner-answers, and the brief of that date); the author's choices flagged in §7 are for the owner to confirm or flip before launch |
 | Depends on | nothing |
 | Supersedes | nothing |
 | Superseded by | nothing yet |
 | Batches | `change-01a.md` (the panel's readers, adapters and cached answers), `change-01b.md` (majority judging, the re-expressed gates, the three re-decisions), `change-01c.md` (pdfkit's text misses the panel confirms, and the documentation sweep) |
 | `SessionVersion` | not applicable: pdfkit persists no session file. The C ABI version stays 1 and no JSON shape of `docs/ABI.md` moves |
-| Behaviour change | none in batches A and B (test tiers, gate scripts and documents only); yes in batch C: text extraction reads CJK fonts with a predefined CMap, Latin codes of a non-embedded CJK font, and the layout cases the panel confirms, checked against the 960-file dataset and the panel |
-| New dependency | test-only, never linked, vendored or shipped: Poppler's `pdftotext` and `pdfimages`, MuPDF's `mutool`, QPDF, and three Rust crates (pdf_oxide, pdf-extract, lopdf) built by a pinned Rust toolchain, all fetched by hash into the main checkout's `build/cache/` (`CLAUDE.md` §6, "Reference readers judge as a panel, test-only"). Shipped: the Adobe CMap resources (BSD-3), batch C, a row in `third_party/inventory.tsv` and in `CLAUDE.md` §6's vendored table |
+| Behaviour change | none in batches A and B (test tiers, gate scripts and documents only); yes in batch C: text extraction reads Type 3 code names that restate their code and the layout cases the panel confirms (the CJK items were dropped by `OPEN-QUESTIONS.md` §1.5), checked against the dataset and the panel |
+| New dependency | test-only, never linked, vendored or shipped: Poppler's `pdftotext` and `pdfimages`, MuPDF's `mutool`, QPDF, and three Rust crates (pdf_oxide, pdf-extract, lopdf) built by a pinned Rust toolchain, all fetched by hash into the main checkout's `build/cache/` (`CLAUDE.md` §6, "Reference readers judge as a panel, test-only"). Nothing shipped: the Adobe CMap resources batch C was to ship were dropped by `OPEN-QUESTIONS.md` §1.5 |
 | Minimum model | `opus`, for every batch |
 
 ```json
@@ -483,6 +483,14 @@ question (`OPEN-QUESTIONS.md` §3.2); `tests/panel/text_causes.tsv` and
 `tests/panel/word_cuts.tsv` are the lists batch C works from, its CJK groups
 known gaps by `OPEN-QUESTIONS.md` §1.5.
 
+Batch C's result (on Linux, `docs/change-01c.md` Appendix C; run
+`panel-c-full`): the reading gate under the panel passes at 44 of 890 decided
+files against pdfkit (4.94 %, median 1.0; the literal rule 88 of 890), from
+50 of 893; no file that agreed at batch B counts against pdfkit; the bitonal
+gate passes at 489 of 489. Fixed or no longer counted against pdfkit:
+pdfdiff-0018, pdfjs-0018 and dccc-0073 now agree, mutate-0008, mutate-0011
+and pdfium-0049 are undecided. The CJK items (CR3, CR4, D10) were dropped.
+
 | Batch | Hours | Model spend at list prices | Calibrated from |
 |---|---|---|---|
 | A | 5 to 6 (plus about 40 minutes of unattended compile and collection inside it) | $85 to $115 | `docs/archive/build/build-2.md` (the PDFium tier and dataset tools: about 3,500 lines of Python, 9 to 13 h, $130 to $220): about 1,400 lines of Python and 150 of Rust here |
@@ -901,3 +909,30 @@ batch run on Linux; a batch run on the laptop follows its file as written.
     (`mutool pages`), never an inherited box or a default: the `/MediaBox`
     re-decision asks its `page_sizes` answer (`mutool draw -F stext`)
     instead. pdf_oxide gives no size to a page with no `/MediaBox`.
+26. **The order's header described its launch, not its state.** Its
+    status read "awaiting owner launch", its behaviour change and new
+    dependency the CMap data, and its ABI 1. Batches A and B are merged
+    into `main`, batch C is done on change/01-c-text-fixes and lands
+    through the owner's merge, the CMap data and the half-width default
+    are dropped (`OPEN-QUESTIONS.md` §1.5), and the ABI is entry 7's. The
+    table says so; the launcher's JSON block keeps its fields.
+27. **Batch C merged `main` at c7601ae**, which carries W1's report of the
+    pages whose text could not be read in full (`docs/change-03.md`) and
+    raises the C ABI to 4, as entry 7 foresaw; the merge was clean. The
+    unit tier counts 754 cases on that `main` and 762 on batch C's tip,
+    under `linux-debug` and `linux-release` alike.
+28. **dccc-0124's digit pairs stay apart.** The owner's §1.4 names "06 51"
+    a cut where the document has none, and three of five members read
+    "0651". The file sets the number as five strings ("06", "51", "/",
+    "71", "99-999"), each 1 pt, 0.125 of its size, after the last: a gap
+    between the 0.07 measured inside words and the 0.15 measured between
+    them, with no space glyph. A rule joining two digits two operators
+    draw up to 0.15 of the size apart reads it whole and, on the dataset,
+    also turns pdfplumber-0015's "2 5.4%" (a minus sign its font maps to
+    "2", read apart by three of five members) into "25.4%", another
+    number; inside one `TJ` the same gaps separate numbers (opf-0018's
+    chart labels "2500" "4000", 0.11 apart), so no gap tells a group from
+    a separation. For an anonymiser a number joined wrongly is worse than
+    a number in groups, which a telephone pattern that allows spaces
+    finds, so the session withdrew the rule and asks the owner
+    (`OPEN-QUESTIONS.md` §3.5).

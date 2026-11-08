@@ -105,6 +105,7 @@ to find it.
 | The AFM file syntax (FontName, Ascender, Descender, FontBBox, C, WX, N) | Adobe Font Metrics File Format Specification 4.1 (Technical Note 5004), https://adobe-type-tools.github.io/font-tech-notes/pdfs/5004.AFM_Spec.pdf | recalled; the fourteen files are the specimen |
 | Generator behaviours: Chrome/Skia hex `Tj` and ActualText, LibreOffice ActualText, Quartz control characters, Ghostscript wrong ToUnicode, pdfTeX without ToUnicode, Distiller losing ToUnicode, Skia's Type 3 ToUnicode | https://skia.googlesource.com/skia/+/refs/heads/main/src/pdf/SkPDFDevice.cpp; https://bugs.libreoffice.org/show_bug.cgi?id=124191; https://gitlab.freedesktop.org/poppler/poppler/-/issues/1393; https://bugs.ghostscript.com/show_bug.cgi?id=704478; https://tug.org/pipermail/tex-live/2020-May/045763.html; https://community.adobe.com/t5/acrobat-sdk-discussions/missing-tounicode-after-distillation/m-p/9147079; https://codereview.chromium.org/2292303004 | read |
 | Microsoft Print to PDF is XPS-based and drops tags and bookmarks | https://www.bullzip.com/kb/category/pdf-printer/fonts/; https://office-watch.com/2025/pdf-save-or-print-guide/ | read |
+| A `Cdd` or `Cxx` name whose number, decimal or hexadecimal, is its own code, in a font with no program, reads as the character of that code: every member reads pdfjs-0047's Type 3 font (`65 /C41`, `32 /C20`) and its five mutations so, PDFium and Poppler as "Property Insurance" | the members' text of pdfjs-0047, mutate-0008, -0011, -0018, -0023 and -0028; `python tests/panel/redecide.py type3 --run panel-b-full` | measured on 2026-11-08; tested in `tests/unit/fonts/decoding_ladder_test.cpp` |
 
 ## 5. DESIGN.md §7 and §8: layout and hidden text
 
@@ -115,6 +116,13 @@ to find it.
 | The word gap measured on the dataset: inside words within 0.07 of the font size, between positioned words from 0.15 up | `dataset/reports/phase5-try2` (pypdf-0004, pdfjs-0013, dccc-0120), the main checkout's report folder | read (2026-10-25) |
 | PDFium folds no duplicated (fake bold) text in some files and interleaves it, and joins words across positional gaps in others | the PDFium text of pdfminer-0007, dccc-0066 in the dataset | read (2026-10-25) |
 | The Unicode blocks of the scripts written without spaces (CJK punctuation, kana, ideographs and extensions, hangul syllables, full-width forms) and of the right-to-left scripts (Hebrew to Arabic Extended-A, the presentation forms), and the accents a producer may draw over a letter on their own (the combining diacritical marks with their extended and supplement blocks, the combining half marks, the combining marks for symbols, the spacing modifier letters, the spacing accents of ASCII and Latin-1) | https://www.unicode.org/charts/ | recalled |
+| A Type 3 font's size says little of how large it draws: a `/FontMatrix` of 1 shown at 0.24 draws glyphs 72 units (17 pt) tall, its letters 0.2 to 1 pt apart and its words 4.6 pt | the dataset files pdfjs-0047 and pdfjs-0004 | read (2026-11-08); tested in `tests/unit/text/text_layout_test.cpp` |
+| Two runs of very large glyphs on baselines within a fifth of their size (500 pt and 660 pt, 80 pt apart) drawn across each other are two lines for every panel member | the dataset file pdfdiff-0018 and the members' text of it | read (2026-11-08); tested in `tests/unit/text/text_layout_test.cpp` |
+| Vertical writing's `TJ` numbers leave 0.1 and 0.2 em inside a word PDFium and MuPDF read whole | the dataset file pdfium-0049 and the members' text of it | read (2026-11-08); tested in `tests/unit/text/text_layout_test.cpp` |
+| A string at a negative size runs back from where the same string at the positive size ended, so a glyph of one starts where a glyph of the other does, turned half a turn | the dataset file pdfdiff-0017 | read (2026-11-08); tested in `tests/unit/text/hidden_text_test.cpp` |
+| A Hebrew line drawn from its left end opens with a space that a `TJ` number moves the next letter back over, and PDFium and Poppler read the word whole | the dataset file pdfjs-0018 and the members' text of it | read (2026-11-08); tested in `tests/unit/text/text_layout_test.cpp` |
+| A producer maps a cluster's text (an Arabic word, a space and a Latin letter) onto one glyph and the cluster's other glyphs to empty strings | the dataset files pypdf-0019 to -0021 | read (2026-11-08); tested in `tests/unit/text/text_layout_test.cpp` |
+| A producer that draws its spaces sets a word anew as a string or an operator of its own after a break it draws no space for, 0.15 to 0.25 of the size after the word before: the panel reads dccc-0124's three such cuts apart unanimously or by four or three of five | `tests/panel/word_cuts.tsv`; the dataset files dccc-0124, pdfjs-0016, dccc-0020, tika-0012 and the 37 others whose text moved in run `panel-c-full` | measured on 2026-11-08; tested in `tests/unit/text/text_layout_test.cpp` |
 | Word-gap tolerances: PDFBox | PDFBox `PDFTextStripper.java`, https://github.com/apache/pdfbox | read |
 | Word-gap tolerances: pdfminer `word_margin`, `char_margin` | https://pdfminersix.readthedocs.io/en/latest/topic/converting_pdf_to_text.html | read |
 | PdfPig narrow gaps | https://github.com/UglyToad/PdfPig/issues/319 | read |
@@ -234,7 +242,7 @@ to find it.
 | Adobe Glyph List 2.0 and the Zapf Dingbats list at commit 4036a9ca80a62f64f9de4f7321a9a045ad0ecfd6 (BSD-3-Clause, LICENSE.md; tree hash in `third_party/inventory.tsv`) | https://github.com/adobe-type-tools/agl-aglfn/tree/4036a9ca80a62f64f9de4f7321a9a045ad0ecfd6 | read |
 | The Core 14 AFM files and `MustRead.html` as Apache PDFBox carries them at commit 19d3a6799f829051e8efb27197af59935fd8179b (each file's SHA-256 in `build/fonts/core14.lock`) | https://github.com/apache/pdfbox/tree/19d3a6799f829051e8efb27197af59935fd8179b/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm | read |
 
-## 10. CLAUDE.md §7: the dataset and the independent reader
+## 10. CLAUDE.md §7: the dataset and the reference panel
 
 | Set or tool | Source | Licence as recorded | Status |
 |---|---|---|---|

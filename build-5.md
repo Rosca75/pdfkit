@@ -399,6 +399,35 @@ the `text` column of the manifest is reverted with the merge.
     `build-10.md` §9 item 22's 56 of 898 on the laptop
     (`docs/change-01.md` Appendix C entry 22).
 
+22. **The reading gate under the panel after batch C** (`docs/change-01c.md`,
+    measured on Linux, run `panel-c-full`: batch C's tip merged with
+    `main` at c7601ae, `linux-release`, 961 files, two runs identical, no
+    crash, no hang under `--timeout-scale 3`, 685 s). Commands: `python
+    tests/dataset/run.py --runs 2 --timeout-scale 3 --run-id panel-c-full`,
+    `python tests/pdfium/text_agreement.py --run panel-c-full --hidden`,
+    `python tests/dataset/gates/phase5_panel.py --run panel-c-full`.
+    Numbers: 912 files judged, 890 decided, 22 undecided (2.41 %); median
+    1.0; **44 of 890 against pdfkit (4.94 %): the gate passes under the
+    panel**, from item 21's 50 of 893 (5.60 %); the literal rule 88 of 890
+    (9.89 %), from 93 of 893. No file that agreed at batch B counts against
+    pdfkit. Moved: pdfdiff-0018 (DFT1), pdfjs-0018 and dccc-0073 now agree;
+    mutate-0008 and mutate-0011 (CR5; pdf-extract refuses their trailers)
+    and pdfium-0049 (DFT2) are undecided. The 44 by group of
+    `tests/panel/text_causes.tsv`: `legitimate` 27 (item 21's 17, the four
+    Type 3 files pdfkit now reads as PDFium and Poppler do while MuPDF,
+    pdf_oxide and pdf-extract cut their words, pdfdiff-0017 after DFT3,
+    pypdf-0019 to -0021 after their "habibi", pdfminer-0042 and
+    pdfplumber-0014), `subset_unreadable` 5, `cjk` 4, `cjk_cmap` 4,
+    `cjk_width` 2 (the CJK groups known gaps by `OPEN-QUESTIONS.md` §1.5),
+    `other` 2. The old script on the same run: 899 files scored, median
+    1.0, 46 below 0.90 (5.12 %; 12 `pdfkit`, 27 `pdfium`, 7 `legitimate`),
+    from 55 (6.12 %); re-serialisation 12,121 of 12,121 streams; the hidden
+    markers of 24 files all found. The rules batch C changed are in
+    `docs/DESIGN.md` §5.2 and §7. Phase 5 is ready to close once the
+    laptop's merge gate passes (the sanitizer tiers, `python build/check.py
+    --full`): the owner's landing merge of the order carries `Build-Phase:
+    5 done`, and this plan then moves to `docs/archive/build/` (D8).
+
 ### Deviations of earlier phases that affect this one
 
 From `docs/archive/build/build-1.md` §9:
