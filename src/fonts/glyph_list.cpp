@@ -207,4 +207,12 @@ std::optional<GlyphList::Number> GlyphList::number(std::string_view name) noexce
   return std::nullopt;
 }
 
+bool GlyphList::restates_code(std::string_view name, std::uint32_t code) noexcept {
+  if (name.size() < 2 || (name[0] != 'C' && name[0] != 'c')) {
+    return false;
+  }
+  const std::string_view digits = name.substr(1);
+  return decimal_value(digits) == code || hex_value(digits, false) == code;
+}
+
 }  // namespace pdfkit::fonts

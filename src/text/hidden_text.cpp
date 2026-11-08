@@ -27,6 +27,8 @@ constexpr std::uint64_t max_comparisons = 50'000'000;
 // How many earlier glyphs of one code and font a glyph is compared with for
 // the duplicate fold.
 constexpr std::size_t duplicate_window = 8;
+// A copy's direction lies within this many degrees of its original's.
+constexpr double max_copy_turn = 1.0;
 
 [[nodiscard]] Rect rect_of(const syntax::Page::Box& box) {
   return Rect::of(box.left, box.bottom, box.right, box.top);
@@ -92,7 +94,12 @@ void fold_duplicates(std::vector<GlyphRecord>& glyphs) {
     for (std::size_t k = earlier.size(); k > from; --k) {
       GlyphRecord& kept = glyphs[earlier[k - 1]];
       const double limit = 0.1 * std::max(glyph.size, kept.size);
-      if (std::abs(glyph.origin.x - kept.origin.x) <= limit &&
+      // A copy runs the way its original runs: a glyph turned half a turn
+      // from another at its origin draws elsewhere (pdfdiff-0017, a string
+      // at a negative size running back from where the same string ended).
+      double turn = std::fmod(std::abs(glyph.angle - kept.angle), 360.0);
+      turn = std::min(turn, 360.0 - turn);
+      if (turn <= max_copy_turn && std::abs(glyph.origin.x - kept.origin.x) <= limit &&
           std::abs(glyph.origin.y - kept.origin.y) <= limit) {
         glyph.duplicate_of = kept.draw;
         glyph.hidden |= hidden_bit(HiddenClass::duplicate);
