@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string>
 
@@ -65,7 +66,8 @@ constexpr double bridge_minimum = 0.02;
 
 PlaceholderFitting::Result PlaceholderFitting::fit(
     std::span<const text::GlyphRecord* const> removed,
-    std::span<const text::GlyphRecord* const> line_kept, std::string_view placeholder) {
+    std::span<const text::GlyphRecord* const> line_kept,
+    const std::map<std::size_t, std::size_t>& words, std::string_view placeholder) {
   Result result;
   if (removed.empty()) {
     return result;
@@ -83,21 +85,16 @@ PlaceholderFitting::Result PlaceholderFitting::fit(
   // The end of the removed text's last glyph that is not a space, so a
   // removed space after it counts as the white space it is.
   double ink = start;
-  bool spaced_before = false;
   for (const text::GlyphRecord* record : removed) {
-    if (record->is_space()) {
-      spaced_before = true;
-    } else {
+    if (!record->is_space()) {
       ink = std::max({ink, axis.along(record->origin), axis.along(record->advance_end)});
     }
   }
   double stop = end;
   const text::GlyphRecord* next = nullptr;
-  bool spaced_after = false;
   for (const text::GlyphRecord* record : line_kept) {
     // A kept space is part of the white space the hole runs over.
     if (record->is_space()) {
-      spaced_after = true;
       continue;
     }
     const double at = axis.along(record->origin);
@@ -113,20 +110,29 @@ PlaceholderFitting::Result PlaceholderFitting::fit(
                    std::abs(anchor->font_size) * std::abs(anchor->horizontal_scaling / 100.0) *
                    unit_length(*anchor);
   // Whether the original read a word break between the removed text and the
-  // next kept word: a space glyph between them, or a gap the layout reads
-  // as one on that line.
+  // next kept word: a space glyph between them, or the layout's words, which
+  // put the next kept glyph in a word holding none of the removed glyphs
+  // (the layout's one reading of where words end, so the placeholder reads
+  // as the text it replaced did).
   double size = 0.0;
   bool broken = false;
   if (next != nullptr) {
     size = std::max(anchor->size, next->size);
-    const bool spaced = spaced_before || spaced_after;
     bool space_between = ink < end - 0.01;
     for (const text::GlyphRecord* record : line_kept) {
       const double at = axis.along(record->origin);
       space_between = space_between || (record->is_space() && at >= ink - 0.01 && at < stop);
     }
-    const double limit = spaced ? text::TextLayout::spaced_word_gap : text::TextLayout::word_gap;
-    broken = space_between || stop - ink > limit * size;
+    const auto word_of = [&](const text::GlyphRecord& record) -> std::optional<std::size_t> {
+      const auto found = words.find(record.draw);
+      return found == words.end() ? std::nullopt : std::optional<std::size_t>(found->second);
+    };
+    const std::optional<std::size_t> next_word = word_of(*next);
+    const bool apart = next_word.has_value() &&
+                       std::ranges::none_of(removed, [&](const text::GlyphRecord* record) {
+                         return word_of(*record) == next_word;
+                       });
+    broken = space_between || apart;
   }
   // A placeholder the bridge will follow fits into the hole less the
   // bridge's least length.

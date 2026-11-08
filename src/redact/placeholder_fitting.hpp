@@ -32,6 +32,7 @@
 #include "writer/placeholder_font.hpp"
 
 #include <cstdint>
+#include <map>
 #include <span>
 #include <string_view>
 
@@ -66,9 +67,11 @@ class PlaceholderFitting {
 
   // Fits placeholder into the hole of removed (the removed glyphs of the
   // run's first line, not empty), with line_kept the kept glyphs of that
-  // line.
+  // line and words the layout's word of each glyph of the line (draw index
+  // to the word's place on the line).
   [[nodiscard]] static Result fit(std::span<const text::GlyphRecord* const> removed,
                                   std::span<const text::GlyphRecord* const> line_kept,
+                                  const std::map<std::size_t, std::size_t>& words,
                                   std::string_view placeholder);
 
   // The device box of placeholder drawn at anchor with the run's state and

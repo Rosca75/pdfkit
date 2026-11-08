@@ -20,6 +20,7 @@
 
 #include <doctest.h>
 
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,19 +37,32 @@ struct Fitted {
 };
 
 // Fits placeholder into the hole of glyphs [first, last) of the page drawn by
-// content, the rest of the glyphs kept.
+// content, the rest of the glyphs kept, with the words the layout reads.
 Fitted fit(const std::string& content, std::size_t first, std::size_t last,
            const std::string& placeholder, const std::string& fonts = "") {
   pdfkit::test::TextDocument document;
   document.page(content, "", "", fonts);
+  const pdfkit::text::PageText page = document.read();
   Fitted out;
-  out.content = document.interpret();
+  out.content = page.content;
+  std::map<std::size_t, std::size_t> words;
+  std::size_t index = 0;
+  for (const auto& block : page.blocks) {
+    for (const auto& line : block.lines) {
+      for (const auto& word : line.words) {
+        for (std::size_t p = word.first; p < word.last; ++p) {
+          words.emplace(page.order[p], index);
+        }
+        ++index;
+      }
+    }
+  }
   std::vector<const GlyphRecord*> removed;
   std::vector<const GlyphRecord*> kept;
   for (std::size_t i = 0; i < out.content.glyphs.size(); ++i) {
     (i >= first && i < last ? removed : kept).push_back(&out.content.glyphs[i]);
   }
-  out.result = PlaceholderFitting::fit(removed, kept, placeholder);
+  out.result = PlaceholderFitting::fit(removed, kept, words, placeholder);
   return out;
 }
 

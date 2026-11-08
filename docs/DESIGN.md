@@ -1163,8 +1163,9 @@ position the original gave it (CLAUDE.md §5).
   bracketed name does.
 - **The word break after the placeholder**: where the original read a word
   break between the removed text and the next kept glyph of the line (a
-  space glyph, removed or kept, or a gap past the word gap of §7), the
-  placeholder keeps it. One drawn natural or scaled is followed, in its text
+  space glyph, removed or kept, or the layout of §7 putting that glyph in a
+  word that holds none of the removed glyphs, its one reading of where
+  words end), the placeholder keeps it. One drawn natural or scaled is followed, in its text
   object, by one space of its face under a `Tc` that makes the space's
   advance, `(w0 × Tfs + Tc) × Th` (ISO 32000-1 section 9.4.4, read), run
   from the placeholder's end to that glyph's origin (the bridge): the space

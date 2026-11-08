@@ -52,9 +52,7 @@ class TextLayout {
   // A gap between two glyphs of a line ends a word from this many font
   // sizes (words set apart by position alone), and from spaced_word_gap
   // when both glyphs' fonts draw space glyphs on the line, whose other gaps
-  // are letter spacing and kerning (docs/DESIGN.md section 7). The
-  // redaction reads them to tell whether a word break stood after the text
-  // it removes.
+  // are letter spacing and kerning (docs/DESIGN.md section 7).
   static constexpr double word_gap = 0.1;
   static constexpr double spaced_word_gap = 0.3;
   // A glyph in another font than the glyph ahead of it that starts more than
