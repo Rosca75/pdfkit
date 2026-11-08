@@ -53,6 +53,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -94,7 +95,17 @@ def cargo_env() -> dict:
     if readers.platform() == "windows":
         toolchain = readers.cache_dir() / "rust" / RUST_WINDOWS["version"]
         env["PATH"] = str(toolchain / "bin") + os.pathsep + env.get("PATH", "")
+        # The laptop's proxy re-signs TLS with a certificate whose revocation server schannel
+        # cannot reach; the certificate is still verified and every crate is checked against
+        # the checksum Cargo.lock pins.
+        env.setdefault("CARGO_HTTP_CHECK_REVOKE", "false")
     return env
+
+
+def rust_tool(name: str) -> str:
+    """The toolchain program `name` resolved on the PATH of cargo_env(); Windows' process
+    creation searches the parent's PATH, never the one handed to the child."""
+    return shutil.which(name, path=cargo_env()["PATH"]) or name
 
 
 def rust_binary(member: str) -> Path:
@@ -158,7 +169,7 @@ def install_rust(data: bytes, into: Path) -> None:
 
 def rust_version() -> str | None:
     try:
-        out = subprocess.run(["rustc", "--version"], capture_output=True, text=True, env=cargo_env()).stdout
+        out = subprocess.run([rust_tool("rustc"), "--version"], capture_output=True, text=True, env=cargo_env()).stdout
     except OSError:
         return None
     return out.split()[1] if out.startswith("rustc ") else None
@@ -178,7 +189,7 @@ def build_rust() -> None:
             f"rustc is {found or 'absent'}", f"rustc {wanted}",
             "install it with `rustup toolchain install " + wanted + "` and make it the default"
             if readers.platform() == "linux" else "delete build/cache/panel/rust/ and fetch again")
-    proc = subprocess.run(["cargo", "build", "--release", "--locked"], cwd=RUST_DIR, env=cargo_env())
+    proc = subprocess.run([rust_tool("cargo"), "build", "--release", "--locked"], cwd=RUST_DIR, env=cargo_env())
     if proc.returncode != 0:
         raise common.ToolError("cargo build --release --locked failed", "the three panel adapters built",
                                "read cargo's message above; the crates are pinned by tests/panel/rust/Cargo.lock")

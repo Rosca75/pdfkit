@@ -38,7 +38,7 @@
 # the word; whether PDFium reads the word inside that box of the input is
 # reported too, since a word it reads otherwise there is not one it counts.
 # A word is a maximal run of letters, compared with case.
-# With --images it checks an image treatment run instead: for every outcome
+# With --images it also checks the image treatment run: for every outcome
 # whose redact_images output was written, the encoded bytes of every treated
 # and every removed image are taken from the input by PDFium (each image
 # object's FPDFImageObj_GetImageDataRaw, aligned with the treatment by the
@@ -430,7 +430,7 @@ def main() -> int:
     parser.add_argument("--metadata", action="store_true",
                         help="also search every metadata rewrite's output for the original values")
     parser.add_argument("--images", action="store_true",
-                        help="search the image treatment outputs for the treated and removed images' bytes")
+                        help="also search the image treatment outputs for the treated and removed images' bytes")
     args = parser.parse_args()
     try:
         if not pdfium.default_dll().exists():
@@ -442,8 +442,7 @@ def main() -> int:
     rows = common.read_manifest()
     if args.id:
         rows = [r for r in rows if r["id"] in args.id]
-    if args.images:
-        return images_main(args, rows, run_dir)
+    images = images_main(args, rows, run_dir) if args.images else 0
     jobs = []
     for row in rows:
         path = run_dir / "outcomes" / f"{row['id']}.json"
@@ -475,7 +474,7 @@ def main() -> int:
     if not results:
         print("SKIPPED leak check: no outcome of this run carries a redact_text output", file=sys.stderr)
     metadata = metadata_leaks(run_dir, rows, args.workers) if args.metadata else 0
-    return 1 if leaking or metadata or located["summary"]["location_leaks"] else 0
+    return 1 if leaking or metadata or images or located["summary"]["location_leaks"] else 0
 
 
 if __name__ == "__main__":
