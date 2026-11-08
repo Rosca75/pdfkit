@@ -9,6 +9,7 @@
 
 #include "platform/byte_span.hpp"
 #include "platform/crypto/sha2.hpp"
+#include "platform/error.hpp"
 #include "redact/image_treatment_applier.hpp"
 #include "redact/optional_content_remover.hpp"
 #include "redact/self_check.hpp"
@@ -30,6 +31,7 @@
 #include <optional>
 #include <set>
 #include <utility>
+#include <vector>
 
 namespace pdfkit::redact {
 
@@ -155,9 +157,38 @@ void WritePipeline::damaged_pages(EditPlan& plan, const std::string& pdf,
   // The output read again by the same walk: a damaged stream copied as it
   // was, or bytes no operator draws kept by a rewrite, read there as damage
   // again, while a rewrite of what decoded leaves an undecoded tail behind.
-  const std::unique_ptr<syntax::Document> output =
-      syntax::Document::open(platform::as_bytes(pdf), plan.document().limits());
-  text::DamageScan reread(*output);
+  // The re-read never fails a write: an output it cannot open or read
+  // within the limits leaves copied_as_is unknown.
+  using Copied = syntax::PageDamage::Copied;
+  std::unique_ptr<syntax::Document> output;
+  try {
+    output = syntax::Document::open(platform::as_bytes(pdf), plan.document().limits());
+  } catch (const platform::Error&) {
+    output.reset();
+  }
+  std::optional<text::DamageScan> reread;
+  if (output != nullptr) {
+    reread.emplace(*output);
+  }
+  const auto copied = [&reread](std::uint32_t number) {
+    if (!reread) {
+      return Copied::unknown;
+    }
+    std::vector<syntax::PageDamage> found;
+    try {
+      const std::array<std::uint32_t, 1> page{number};
+      found = reread->pages(page);
+    } catch (const platform::Error&) {
+      return Copied::unknown;
+    }
+    if (found.empty()) {
+      return Copied::no;
+    }
+    const bool known = std::ranges::any_of(found.front().streams, [](const auto& stream) {
+      return stream.damage != syntax::PageDamage::not_checked;
+    });
+    return known ? Copied::yes : Copied::unknown;
+  };
   for (std::size_t i = 0; i < report.pages.size(); ++i) {
     const auto found = source.find(report.pages[i]);
     if (found == source.end()) {
@@ -168,8 +199,7 @@ void WritePipeline::damaged_pages(EditPlan& plan, const std::string& pdf,
     entry.source_page = found->first;
     // A search string is searched on every page; any other match on its own.
     entry.text_redaction = !text.needles.empty() || edited.contains(found->first);
-    const std::array<std::uint32_t, 1> page{entry.page};
-    entry.copied_as_is = !reread.pages(page).empty();
+    entry.copied_as_is = copied(entry.page);
     report.damaged_pages.push_back(std::move(entry));
   }
 }

@@ -118,6 +118,36 @@ using Operation = syntax::ContentLexer::Operation;
   return {};
 }
 
+// What a decoding leaves of a content stream unread: a filter's fault, a
+// filter it does not apply (an image codec or a filter no reader defines,
+// whose bytes stay encoded), or data in an external file it never reads.
+[[nodiscard]] std::vector<syntax::PageDamage::Stream> decoding_damage(
+    syntax::Filters::Result& result) {
+  std::vector<syntax::PageDamage::Stream> out;
+  syntax::PageDamage::Stream entry;
+  entry.decoded_bytes = result.bytes.size();
+  if (result.damaged) {
+    entry.damage = std::move(result.damage);
+    entry.fault = std::move(result.fault);
+    entry.unread_bytes = result.unread;
+    out.push_back(entry);
+  }
+  if (!result.remaining.empty()) {
+    entry.damage = "unsupported_filter";
+    entry.fault = "the content is left encoded with /" + result.remaining.front() +
+                  ", which a content stream is not read through";
+    entry.unread_bytes = result.bytes.size();
+    out.push_back(entry);
+  }
+  if (result.external) {
+    entry.damage = "external_stream";
+    entry.fault = "the stream's data is an external file (/F), which pdfkit never reads";
+    entry.unread_bytes.reset();
+    out.push_back(entry);
+  }
+  return out;
+}
+
 }  // namespace
 
 class ContentInterpreter::Walk {
@@ -135,29 +165,38 @@ class ContentInterpreter::Walk {
     bool damaged = false;
     std::vector<syntax::PageDamage::Stream> damage;
     const syntax::Object contents = document_.resolve(page_.contents);
-    const auto add_piece = [&](const syntax::Object& value) {
+    // Each entry of /Contents by its place; an entry that resolves to no
+    // stream loses whatever it drew.
+    const auto add_piece = [&](const syntax::Object& value, std::size_t place) {
       const syntax::Object resolved = document_.resolve(value);
-      if (const syntax::Stream* stream = resolved.stream()) {
-        syntax::Filters::Result result = document_.decode(*stream, page_.number);
-        damaged = damaged || result.damaged;
-        if (result.damaged) {
-          syntax::PageDamage::Stream entry;
-          entry.piece = pieces.size();
-          entry.damage = std::move(result.damage);
-          entry.fault = std::move(result.fault);
-          entry.decoded_bytes = result.bytes.size();
-          entry.unread_bytes = result.unread;
-          damage.push_back(std::move(entry));
-        }
-        pieces.push_back(std::move(result.bytes));
+      const syntax::Stream* stream = resolved.stream();
+      if (stream == nullptr) {
+        syntax::PageDamage::Stream entry;
+        entry.piece = place;
+        entry.damage = "missing_stream";
+        entry.fault =
+            "the /Contents entry " + std::to_string(place) +
+            (value.reference() ? " (object " + std::to_string(value.reference()->number) + ")"
+                               : std::string()) +
+            " resolves to no stream";
+        damage.push_back(std::move(entry));
+        return;
       }
+      syntax::Filters::Result result = document_.decode(*stream, page_.number);
+      damaged = damaged || result.damaged;
+      for (syntax::PageDamage::Stream& entry : decoding_damage(result)) {
+        entry.piece = place;
+        damage.push_back(std::move(entry));
+      }
+      pieces.push_back(std::move(result.bytes));
+      piece_places_.push_back(place);
     };
     if (const syntax::Object::Array* list = contents.array()) {
-      for (const syntax::Object& item : *list) {
-        add_piece(item);
+      for (std::size_t place = 0; place < list->size(); ++place) {
+        add_piece((*list)[place], place);
       }
-    } else {
-      add_piece(contents);
+    } else if (!page_.contents.is_null()) {
+      add_piece(page_.contents, 0);
     }
     ContentStream stream;
     stream.damaged = damaged;
@@ -182,6 +221,32 @@ class ContentInterpreter::Walk {
     Matrix text;
     Matrix line;
   };
+
+  // A Do whose XObject resolves to no stream, named on the walk that drew it.
+  void note_missing(const Operation& operation, std::size_t index, std::size_t stream,
+                    const std::string& name) {
+    ContentStream& walk = content_.streams[stream];
+    syntax::PageDamage::Stream entry;
+    entry.form = walk.form;
+    entry.form_path = walk.form_path;
+    entry.decoded_bytes = walk.bytes != nullptr ? walk.bytes->size() : 0;
+    if (walk.form == 0) {
+      // The piece holding the Do, by its place in /Contents.
+      const auto after = std::ranges::upper_bound(walk.piece_starts, operation.start);
+      const auto piece = static_cast<std::size_t>(
+          std::max<std::ptrdiff_t>(after - walk.piece_starts.begin() - 1, 0));
+      entry.piece = piece < piece_places_.size() ? piece_places_[piece] : piece;
+      const std::size_t begin = piece < walk.piece_starts.size() ? walk.piece_starts[piece] : 0;
+      const std::size_t end = piece + 1 < walk.piece_starts.size()
+                                  ? walk.piece_starts[piece + 1] - 1
+                                  : entry.decoded_bytes;
+      entry.decoded_bytes = end >= begin ? end - begin : 0;
+    }
+    entry.damage = "missing_object";
+    entry.fault = "the XObject /" + name + " drawn by operator " + std::to_string(index) +
+                  " resolves to no stream";
+    syntax::PageDamage::merge(walk.damage, std::move(entry));
+  }
 
   void note_damaged(std::size_t stream_index) {
     content_.streams[stream_index].damaged = true;
@@ -224,7 +289,7 @@ class ContentInterpreter::Walk {
         syntax::PageDamage::Stream entry;
         if (stream.form == 0) {
           const std::size_t piece = lexer.locate(loss.start).piece;
-          entry.piece = piece;
+          entry.piece = piece < piece_places_.size() ? piece_places_[piece] : piece;
           entry.decoded_bytes = piece < pieces.size() ? pieces[piece].size() : 0;
         } else {
           entry.decoded_bytes = joined.size();
@@ -234,6 +299,7 @@ class ContentInterpreter::Walk {
         entry.damage = loss.damage;
         entry.fault = loss.fault;
         entry.unread_bytes = loss.bytes;
+        entry.count = loss.count;
         merged.add(std::move(entry));
       }
       stream.damage = std::move(merged.streams);
@@ -688,6 +754,8 @@ class ContentInterpreter::Walk {
     const syntax::Object value = document_.resolve(raw);
     const syntax::Stream* object = value.stream();
     if (object == nullptr) {
+      // The object may have been a form drawing text.
+      note_missing(operation, index, stream, *name);
       return;
     }
     const syntax::Dictionary& entries = object->dictionary();
@@ -763,15 +831,12 @@ class ContentInterpreter::Walk {
     if (!owner_.forms_.contains(number)) {
       syntax::Filters::Result result = document_.decode(object, page_.number);
       FormBytes decoded;
-      decoded.bytes = std::make_shared<const std::vector<std::byte>>(std::move(result.bytes));
       decoded.damaged = result.damaged;
-      if (result.damaged) {
-        decoded.damage.form = number;
-        decoded.damage.damage = std::move(result.damage);
-        decoded.damage.fault = std::move(result.fault);
-        decoded.damage.decoded_bytes = decoded.bytes->size();
-        decoded.damage.unread_bytes = result.unread;
+      decoded.damage = decoding_damage(result);
+      for (syntax::PageDamage::Stream& entry : decoded.damage) {
+        entry.form = number;
       }
+      decoded.bytes = std::make_shared<const std::vector<std::byte>>(std::move(result.bytes));
       owner_.forms_.emplace(number, std::move(decoded));
     }
     const FormBytes& cached = owner_.forms_.at(number);
@@ -808,10 +873,9 @@ class ContentInterpreter::Walk {
     walk_stream.drawn_at = index;
     walk_stream.matrix = state.ctm;
     walk_stream.damaged = damaged;
-    if (damaged) {
-      // The filter's fault names this draw's walk: every page drawing the
-      // form names it, though the form is decoded once.
-      syntax::PageDamage::Stream entry = cached.damage;
+    // The decoding's damage names this draw's walk: every page drawing the
+    // form names it, though the form is decoded once.
+    for (syntax::PageDamage::Stream entry : cached.damage) {
       entry.form_path = walk_stream.form_path;
       walk_stream.damage.push_back(std::move(entry));
     }
@@ -1062,6 +1126,8 @@ class ContentInterpreter::Walk {
   syntax::Document& document_;
   const syntax::Page& page_;
   Reading reading_;
+  // The place in /Contents of each piece decoded, in order.
+  std::vector<std::size_t> piece_places_;
   PageContent content_;
   GraphicsState state_;
   TextPosition text_;

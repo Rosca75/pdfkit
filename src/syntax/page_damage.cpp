@@ -25,6 +25,10 @@ PageDamage PageDamage::unchecked(std::uint32_t page, const platform::Error& erro
 }
 
 void PageDamage::add(Stream stream) {
+  merge(streams, std::move(stream));
+}
+
+void PageDamage::merge(std::vector<Stream>& streams, Stream stream) {
   const auto same = std::ranges::find_if(streams, [&stream](const Stream& entry) {
     return entry.known == stream.known && entry.piece == stream.piece &&
            entry.form == stream.form && entry.form_path == stream.form_path &&
@@ -37,6 +41,7 @@ void PageDamage::add(Stream stream) {
   if (*same == stream) {
     return;
   }
+  same->count += stream.count;
   if (same->unread_bytes && stream.unread_bytes) {
     *same->unread_bytes += *stream.unread_bytes;
   } else {
@@ -82,6 +87,7 @@ void PageDamage::write(platform::JsonWriter& writer, const std::vector<PageDamag
       }
       writer.key("class").string(stream.damage);
       writer.key("fault").string(stream.fault);
+      writer.key("count").unsigned_integer(stream.count);
       writer.key("decoded_bytes").unsigned_integer(stream.decoded_bytes);
       writer.key("unread_bytes");
       if (const std::optional<std::size_t> unread = stream.unread_bytes) {
@@ -95,8 +101,10 @@ void PageDamage::write(platform::JsonWriter& writer, const std::vector<PageDamag
     if (const std::optional<bool> searched = page.text_redaction) {
       writer.key("text_redaction").boolean(*searched);
     }
-    if (const std::optional<bool> copied = page.copied_as_is) {
-      writer.key("copied_as_is").boolean(*copied);
+    if (page.copied_as_is == Copied::unknown) {
+      writer.key("copied_as_is").null();
+    } else if (page.copied_as_is != Copied::unasked) {
+      writer.key("copied_as_is").boolean(page.copied_as_is == Copied::yes);
     }
     writer.end_object();
   }

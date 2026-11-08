@@ -28,21 +28,28 @@ std::vector<syntax::PageDamage> DamageScan::pages(std::span<const std::uint32_t>
       if (reader == nullptr) {
         reader = std::make_unique<TextReader>(*document_);
       }
+      // The damage reading first, and the full one, which counts the glyphs,
+      // only for a page it found damaged. A limit met by the full reading
+      // keeps what the damage reading found beside not_checked.
+      std::optional<syntax::PageDamage> damage;
       try {
-        // The damage reading first, and the full one, which counts the
-        // glyphs, only for a page it found damaged.
-        std::optional<syntax::PageDamage> damage =
-            reader->interpret(number, ContentInterpreter::Reading::damage).damaged_page();
+        damage = reader->interpret(number, ContentInterpreter::Reading::damage).damaged_page();
         if (damage) {
           damage = reader->interpret(number).damaged_page();
         }
-        read_[number] = std::move(damage);
       } catch (const platform::Error& error) {
         if (error.code() != platform::ErrorCode::limit_exceeded) {
           throw;
         }
-        read_[number] = syntax::PageDamage::unchecked(number, error);
+        syntax::PageDamage unchecked = syntax::PageDamage::unchecked(number, error);
+        if (damage) {
+          damage->glyphs = 0;
+          damage->add(std::move(unchecked.streams.front()));
+        } else {
+          damage = std::move(unchecked);
+        }
       }
+      read_[number] = std::move(damage);
     }
     if (const std::optional<syntax::PageDamage>& damage = read_.at(number)) {
       out.push_back(*damage);

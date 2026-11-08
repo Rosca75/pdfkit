@@ -145,6 +145,9 @@ class PdfBuilder {
   // stream dictionary entries (a /Filter the data is already encoded with).
   std::uint32_t add_page(const std::string& content, const std::string& extra_entries,
                          const StreamOptions& options, const std::string& stream_entries = "");
+  // Adds a page of the given entries (its /Contents among them, or none)
+  // beside /Type, /Parent and /MediaBox; returns the page object's number.
+  std::uint32_t add_page_entries(const std::string& entries);
   [[nodiscard]] std::uint32_t catalog() const noexcept { return root_; }
   [[nodiscard]] std::uint32_t page_tree() const noexcept { return pages_; }
   [[nodiscard]] const std::vector<std::uint32_t>& pages() const noexcept { return page_list_; }

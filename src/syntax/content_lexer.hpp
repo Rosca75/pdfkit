@@ -23,11 +23,13 @@
 #include "syntax/lexer.hpp"
 #include "syntax/limits.hpp"
 #include "syntax/object.hpp"
+#include "syntax/parser.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace pdfkit::syntax {
@@ -55,23 +57,30 @@ class ContentLexer {
     std::size_t offset = 0;
   };
 
-  // A recovery that can take text from the page (docs/DESIGN.md chapter 4):
-  // bytes the lexer read as no operation, or an operation it could not read
-  // whole. A recovery that skips no byte and drops no operator (operands
-  // left before BI or at the end, a stray delimiter, a token read leniently)
-  // is no loss.
+  // The recoveries that can take text from the page (docs/DESIGN.md chapter
+  // 4), one entry per class and /Contents piece, so their memory is bounded
+  // by the classes whatever the content holds: bytes the lexer read as no
+  // operation, or an operation it could not read whole. A recovery that
+  // skips no byte and drops no operator (operands left before BI or at the
+  // end, a stray delimiter, a token read leniently, a reference written in
+  // content, an unknown operator with no operand or numbers alone) is no
+  // loss.
   struct Loss {
-    // unknown_operator: a keyword Annex A does not know, outside BX and EX;
+    // unknown_operator: a keyword Annex A does not know, outside BX and EX,
+    // with an operand that is not a number;
     // unlexable_content: an operator read as an operand's value, a
     // dictionary key that is not a name, containers nested past the limit,
     // operands past their bound, a string that runs to the end;
     // inline_image: an inline image whose dictionary or end is not read.
     std::string damage;
+    // The first loss's message.
     std::string fault;
-    // Where it starts in the joined bytes.
+    // Where the first loss starts in the joined bytes.
     std::size_t start = 0;
-    // The bytes it takes from the drawing, when known.
+    // The bytes the losses take from the drawing, summed, when each is known.
     std::optional<std::size_t> bytes;
+    // The losses of this class in this piece.
+    std::size_t count = 0;
   };
 
   // pieces are a /Contents array's decoded streams in order (one for a form or
@@ -98,7 +107,7 @@ class ContentLexer {
   // Recoveries met so far: a stray delimiter, an unterminated string, an
   // inline image without EI.
   [[nodiscard]] std::size_t faults() const noexcept { return faults_; }
-  // The recoveries met so far that can take text, in the order met.
+  // The losses met so far, one per class and piece, in the order first met.
   [[nodiscard]] const std::vector<Loss>& losses() const noexcept { return losses_; }
 
   // Whether a keyword is one of the content operators of ISO 32000-1 Annex A
@@ -109,10 +118,14 @@ class ContentLexer {
   [[nodiscard]] Operation inline_image(std::size_t start, std::size_t operator_start);
   [[nodiscard]] std::optional<std::size_t> computed_length(const Object& dictionary) const;
   [[nodiscard]] bool plausible_after(std::size_t position) const;
-  void lose(std::string damage, std::string fault, std::size_t start,
-            std::optional<std::size_t> bytes);
+  // Counts a loss of class damage starting at start into the entry of its
+  // class and piece; true when it opened that entry, whose fault the caller
+  // then writes, so a message is formatted once per entry.
+  bool lose(std::string_view damage, std::size_t start, std::optional<std::size_t> bytes);
   // Records the recoveries of one operand's parse that can take text.
-  void lose_recoveries(const std::vector<std::string>& recoveries, std::size_t start);
+  void lose_recoveries(const std::vector<Parser::Recovery>& recoveries, std::size_t start);
+  // Whether an operator Annex A does not know could have drawn nothing.
+  [[nodiscard]] static bool draws_nothing(const Operation& operation);
 
   std::vector<std::byte> joined_;
   std::vector<std::size_t> piece_starts_;

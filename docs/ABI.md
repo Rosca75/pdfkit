@@ -247,22 +247,23 @@ means for the caller's work is the caller's.
 
 ```json
 "damaged_pages": [
-  {"page": 13, "glyphs": 699,
+  {"page": 13, "glyphs": 700,
    "streams": [{"stream": {"piece": 0, "form": null, "form_path": []},
                 "class": "flate_checksum",
-                "fault": "FlateDecode: the Flate data's Adler-32 checksum does not match its decoded bytes",
-                "decoded_bytes": 31470, "unread_bytes": 0}]}]
+                "fault": "FlateDecode: the Flate data's Adler-32 checksum does not match its decoded bytes (48388 bytes decoded)",
+                "count": 1, "decoded_bytes": 48388, "unread_bytes": 0}]}]
 ```
 
 | Key | Holds |
 |---|---|
 | `page` | the page, from 1 (in the write report, the output page) |
 | `glyphs` | the glyphs read on the page, hidden ones included |
-| `streams` | per content stream that lost text and per class, in the order the page's content and its form draws are walked: `stream`, `class`, `fault`, `decoded_bytes`, `unread_bytes` |
-| `stream` | `piece`, the index from 0 of the page's `/Contents` piece (`null` for a form); `form`, the form's object number (`null` for the page's content); `form_path`, the forms the draw was reached through, outermost first, ending with the form, as a glyph record's `stream` names them (§4.9). A form drawn on several pages names every one; `null` for `not_checked` |
+| `streams` | per content stream that lost text and per class, in the order the page's content and its form draws are walked: `stream`, `class`, `fault`, `count`, `decoded_bytes`, `unread_bytes` |
+| `stream` | `piece`, the place from 0 of the piece in the page's `/Contents` (0 for a single stream; `null` for a form); `form`, the form's object number (`null` for the page's content); `form_path`, the forms the draw was reached through, outermost first, ending with the form, as a glyph record's `stream` names them (§4.9). A form drawn on several pages names every one; `null` for `not_checked` |
 | `class` | one of the classes below |
-| `fault` | the decoder's or the content lexer's message for the first fault of that class |
-| `decoded_bytes` | the bytes the stream decoded to |
+| `fault` | the decoder's, the content lexer's or the interpreter's message for the first fault of that class |
+| `count` | the faults of that class in that stream (the unknown operators of one piece are one entry) |
+| `decoded_bytes` | the bytes the stream decoded to (0 for a stream that is missing or external; for `missing_object`, the bytes of the stream that drew it) |
 | `unread_bytes` | for a filter's class, the bytes of the faulting filter's input it did not read; for a lexer's class, the content bytes the losses of that class took from the drawing, summed; `null` when not known |
 
 | `class` | What met it | What is lost |
@@ -276,14 +277,22 @@ means for the caller's work is the caller's.
 | `ascii85` | an invalid byte, a group past 2^32 - 1, or a single final digit | everything after it |
 | `run_length` | the data ends inside a run | the rest of the run |
 | `predictor` | predictor parameters no predictor defines, or a PNG row of an unknown type | the bytes are read as they came, unpredicted |
-| `unknown_operator` | a keyword the content operators do not hold, outside `BX` and `EX` | the operator and its operands draw nothing |
+| `unsupported_filter` | a filter the content cannot be read through: an image codec or a filter no reader defines | the whole stream, lexed still encoded |
+| `external_stream` | the stream's data is an external file (`/F`), which pdfkit never reads | the whole stream |
+| `missing_stream` | a `/Contents` entry that resolves to no stream | whatever it drew |
+| `missing_object` | a `Do` whose XObject resolves to no stream (a name the resources do not hold, or an object the file lacks), which also gives `resource_missing` | whatever the object drew, a form's text included |
+| `unknown_operator` | a keyword the content operators do not hold, outside `BX` and `EX`, with an operand that could have carried or decided text (a string, an array, a name, a dictionary): a corrupted `Tj`, `Tf` or `Do` | the operator and its operands draw nothing |
 | `unlexable_content` | an operator read as an operand's value (inside an array or a dictionary), a dictionary key that is not a name, containers nested past 64, more than 65,536 operands before an operator, a string that runs to the end of the content | the operators inside it |
 | `inline_image` | an inline image whose dictionary does not read (a key that is not a name, a key with no value, no `ID`) or whose `EI` is not found | the rest of the content, read as its data |
-| `not_checked` | a limit of §4.3 met while inspect or the write report read the page | not known; the page is not read |
+| `not_checked` | a limit of §4.3 met while inspect, the write report or `pdfkit_check` read the page (check's own limits are the defaults); beside the classes found before it when the limit was met by the full reading of a page already found damaged | not known; the page is not read in full, and its `glyphs` is 0 |
 
-A lexer recovery that skips no byte and drops no operator (operands left at
-the end of the content or before `BI`, a stray delimiter, a token read
-leniently) names no page; it keeps its `damaged_stream` warning.
+A lexer recovery that skips no byte and drops no operator names no page and
+keeps its `damaged_stream` warning: operands left at the end of the content
+or before `BI`, a stray delimiter, a token read leniently, an indirect
+reference written in content (`/OC 5 0 R BDC`, `<< /Foo [5 0 R] >>`, `7 0 R`
+in an inline image's dictionary), and an unknown operator with no operand or
+numbers alone (a mangled `endstreM-'m` a stream recovery leaves, `CT` written
+for `BT`).
 
 ### 4.5 pdfkit_channels (catalogue 8)
 
@@ -367,7 +376,7 @@ bytes.
   "images": [],
   "self_check": {"status": "not_run", "reason": "no text redaction in the edit plan"},
   "warnings": [],
-  "damaged_pages": [{"page": 1, "source_page": 3, "glyphs": 699, "streams": [...],
+  "damaged_pages": [{"page": 1, "source_page": 3, "glyphs": 700, "streams": [...],
                      "text_redaction": true, "copied_as_is": true}]
 }
 ```
@@ -393,7 +402,7 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `images` | per image identity the plan treats, in identity order: `identity`, `treatment` (`box`, `blur`, `remove`, or `region` for region boxes alone), `objects` (the image objects replaced or emptied), `inline_draws` (the inline draws rewritten or removed), `draws_removed` (the `Do` and `BI` operations removed), `sha256` (per replaced object, and once per rewritten inline image, the SHA-256 of the new encoded data as stored: the stream's bytes, or the inline data from after `ID` to its closing `>`); empty without a treatment |
 | `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match and no rewritten metadata field; `{"status": "passed", "strings": n, "located": l, "metadata_values": m}` when the output was re-read and none of the n requests verified survives where it is verified (`docs/DESIGN.md` §18): the search strings in every surface, the l glyph-range matches at their location, the m original values of the metadata fields rewritten (those the plan does not also search for) in the Info dictionary, the XMP packet and the string objects; a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface (`location` for a glyph range's text at its location) and page, and no PDF is returned |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode or scan and was dropped |
-| `damaged_pages` | §4.4.1, per output page whose source page could not be read in full, in output order: `page` (the output page), then `source_page` before `glyphs`, and after `streams` `text_redaction` (true when a search string of the plan, searched on every page, or a match of the plan on that page searched or edited it, so the self-check's verification over that page is incomplete) and `copied_as_is` (true when the output page, read again by the same walk, still holds damage: a damaged stream copied as it was, or bytes no operator draws that a rewrite kept; false when a rewrite wrote only what decoded); the streams named are the source's |
+| `damaged_pages` | §4.4.1, per output page whose source page could not be read in full, in output order: `page` (the output page), then `source_page` before `glyphs`, and after `streams` `text_redaction` (true when a search string of the plan, searched on every page, or a match of the plan on that page searched or edited it, so the self-check's verification over that page is incomplete) and `copied_as_is` (true when the output page, read again by the same walk, still holds damage: a damaged stream copied as it was, or bytes no operator draws that a rewrite kept; false when a rewrite wrote only what decoded; `null` when it is not known, because the output could not be opened or its page read again within the open limits (it then names only `not_checked`); for a source page named `not_checked`, the output's own reading decides it like any other); the streams named are the source's; the reading never fails a write |
 
 ### 4.8 pdfkit_image_data (catalogue 3.2)
 

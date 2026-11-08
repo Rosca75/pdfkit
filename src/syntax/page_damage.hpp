@@ -51,6 +51,8 @@ class PageDamage {
     // took from the drawing.
     std::size_t decoded_bytes = 0;
     std::optional<std::size_t> unread_bytes;
+    // The faults of this class in this stream.
+    std::size_t count = 1;
 
     friend bool operator==(const Stream&, const Stream&) = default;
   };
@@ -62,18 +64,26 @@ class PageDamage {
   // The glyphs read on the page, hidden ones included.
   std::size_t glyphs = 0;
   std::vector<Stream> streams;
+  // Whether damaged bytes of a page reach a write's output as they were: not
+  // asked (outside the write report), no, yes, or not known (the output's
+  // page could not be read again within the limits).
+  enum class Copied : std::uint8_t { unasked, no, yes, unknown };
+
   // The write report's own: whether a text redaction searched or edited the
-  // page, and whether damaged bytes of the page reach the output as they
-  // were.
+  // page, and whether its damaged bytes reach the output as they were.
   std::optional<bool> text_redaction;
-  std::optional<bool> copied_as_is;
+  Copied copied_as_is = Copied::unasked;
 
   // A page whose reading met the limit error names.
   [[nodiscard]] static PageDamage unchecked(std::uint32_t page, const platform::Error& error);
 
   // Adds a stream, or merges it into an entry of the same stream and class:
-  // the first fault kept, the unread bytes summed while each is known.
+  // the first fault kept, the counts summed, the unread bytes summed while
+  // each is known. An entry equal to one held is the same stream read again
+  // (a form drawn twice from one place) and is kept once.
   void add(Stream stream);
+  // The same over a walk's list of streams.
+  static void merge(std::vector<Stream>& streams, Stream stream);
 
   // Writes the value of "damaged_pages": the pages in the order given.
   static void write(platform::JsonWriter& writer, const std::vector<PageDamage>& pages);

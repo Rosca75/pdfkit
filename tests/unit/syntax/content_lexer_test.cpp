@@ -191,8 +191,16 @@ TEST_CASE("only a recovery that can lose text is a loss") {
       {"BX 1 zork EX (a) Tj", ""},
       {"BX BX zork EX zork EX", ""},
       {"1 2 BI /W 1 /H 1 /CS /G /BPC 8 ID \x01 EI", ""},
-      {"(a) Tj 1 zork", "unknown_operator"},
-      {"BX EX zork", "unknown_operator"},
+      {"(a) Tj 1 zork", ""},
+      {"BX EX zork", ""},
+      {"/OC 5 0 R BDC (a) Tj EMC", ""},
+      {"[5 0 R] TJ", ""},
+      {"<< /OC 5 0 R /MCID 2 >> BDC", ""},
+      {"BI /W 1 /H 1 /CS /G /BPC 8 /X 7 0 R ID \x01 EI", ""},
+      {"(a) Tj (b) zork", "unknown_operator"},
+      {"BX EX /N zork", "unknown_operator"},
+      {"/N 5 R", "unknown_operator"},
+      {"[(a) R] TJ", "unlexable_content"},
       {"[(a) Tj (b)] TJ", "unlexable_content"},
       {"<< 1 /A 2 >> BDC", "unlexable_content"},
       {"(a) Tj (b Tj", "unlexable_content"},
@@ -219,7 +227,7 @@ TEST_CASE("only a recovery that can lose text is a loss") {
 
 TEST_CASE("a loss names where it starts and the bytes it took") {
   const std::vector<std::vector<std::byte>> pieces{bytes_of("(a) Tj"),
-                                                   bytes_of("1 2 zork\n(b) Tj")};
+                                                   bytes_of("1 (x) zork\n(b) Tj")};
   const Limits limits;
   ContentLexer lexer(pieces, limits, "page 1");
   while (lexer.next()) {
@@ -227,5 +235,6 @@ TEST_CASE("a loss names where it starts and the bytes it took") {
   REQUIRE(lexer.losses().size() == 1);
   const ContentLexer::Loss& loss = lexer.losses().front();
   CHECK(lexer.locate(loss.start).piece == 1);
-  CHECK(loss.bytes == std::size_t{8});
+  CHECK(loss.bytes == std::size_t{10});
+  CHECK(loss.count == 1U);
 }

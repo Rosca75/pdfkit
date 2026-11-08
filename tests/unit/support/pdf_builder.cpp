@@ -274,6 +274,13 @@ std::uint32_t PdfBuilder::add_page(const std::string& content, const std::string
   return page;
 }
 
+std::uint32_t PdfBuilder::add_page_entries(const std::string& entries) {
+  const std::uint32_t page = add("<< /Type /Page /Parent " + std::to_string(pages_) +
+                                 " 0 R /MediaBox [0 0 612 792] " + entries + " >>");
+  page_list_.push_back(page);
+  return page;
+}
+
 std::string PdfBuilder::build(const Layout& layout) const {
   const std::string id0 = "pdfkit-fixture-0";
   std::optional<PdfEncryptor> encryptor;

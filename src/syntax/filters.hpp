@@ -48,6 +48,9 @@ class Filters {
     // The bytes of the faulting filter's input it did not read, when the
     // filter knows where it stopped.
     std::optional<std::size_t> unread;
+    // The stream's data is an external file (/F), which is never read, so
+    // bytes is empty.
+    bool external = false;
   };
 
   // Applies the chain filter (a name, an array of names or null) with its

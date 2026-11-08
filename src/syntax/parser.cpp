@@ -74,10 +74,24 @@ std::optional<std::size_t> Parser::find_keyword(platform::ByteSpan bytes, std::s
 
 Object Parser::parse_value(Lexer& lexer, const Lexer::Token& first, bool references,
                            std::vector<std::string>& repairs, int depth) {
+  std::vector<Recovery> recoveries;
+  Object value = parse_value(lexer, first, references, recoveries, depth);
+  for (Recovery& recovery : recoveries) {
+    repairs.push_back(std::move(recovery.message));
+  }
+  return value;
+}
+
+Object Parser::parse_value(Lexer& lexer, const Lexer::Token& first, bool references,
+                           std::vector<Recovery>& recoveries, int depth) {
   using Kind = Lexer::TokenKind;
+  using Why = Recovery::Kind;
+  const auto recover = [&recoveries](Why kind, std::string message) {
+    recoveries.push_back({kind, std::move(message)});
+  };
   if (first.repaired) {
-    repairs.emplace_back("a malformed token at byte " + std::to_string(first.start) +
-                         " was read leniently");
+    recover(Why::lenient_token,
+            "a malformed token at byte " + std::to_string(first.start) + " was read leniently");
   }
   switch (first.kind) {
     case Kind::integer: {
@@ -111,14 +125,15 @@ Object Parser::parse_value(Lexer& lexer, const Lexer::Token& first, bool referen
         return Object::make_boolean(false);
       }
       if (first.text != "null") {
-        repairs.emplace_back("the keyword '" + first.text + "' at byte " +
-                             std::to_string(first.start) + " is not a value and reads as null");
+        recover(Why::keyword_value, "the keyword '" + first.text + "' at byte " +
+                                        std::to_string(first.start) +
+                                        " is not a value and reads as null");
       }
       return {};
     case Kind::array_open: {
       if (depth >= max_depth) {
-        repairs.emplace_back("containers nest deeper than " + std::to_string(max_depth) +
-                             " at byte " + std::to_string(first.start));
+        recover(Why::nesting, "containers nest deeper than " + std::to_string(max_depth) +
+                                  " at byte " + std::to_string(first.start));
         return Object::make_array({});
       }
       Object::Array items;
@@ -129,8 +144,8 @@ Object Parser::parse_value(Lexer& lexer, const Lexer::Token& first, bool referen
           break;
         }
         if (token.kind == Kind::end || is_structural(token) || token.kind == Kind::dict_close) {
-          repairs.emplace_back("an array opened at byte " + std::to_string(first.start) +
-                               " is not closed");
+          recover(Why::open_container,
+                  "an array opened at byte " + std::to_string(first.start) + " is not closed");
           if (token.kind != Kind::end) {
             lexer.seek(mark);
           }
@@ -138,21 +153,36 @@ Object Parser::parse_value(Lexer& lexer, const Lexer::Token& first, bool referen
         }
         if (token.kind == Kind::stray || token.kind == Kind::brace_open ||
             token.kind == Kind::brace_close) {
-          repairs.emplace_back("a stray delimiter at byte " + std::to_string(token.start) +
-                               " is skipped");
+          recover(Why::stray_delimiter,
+                  "a stray delimiter at byte " + std::to_string(token.start) + " is skipped");
           continue;
         }
-        items.push_back(parse_value(lexer, token, references, repairs, depth + 1));
+        // "n g R" read with references off: two integers and the keyword R,
+        // which reads as null as any keyword does and drops no operator.
+        if (token.is_keyword("R") && items.size() >= 2 &&
+            items[items.size() - 1].integer().has_value() &&
+            items[items.size() - 2].integer().has_value()) {
+          recover(Why::reference, "the keyword 'R' at byte " + std::to_string(token.start) +
+                                      " ends a reference and reads as null");
+          items.emplace_back();
+          continue;
+        }
+        items.push_back(parse_value(lexer, token, references, recoveries, depth + 1));
       }
       return Object::make_array(std::move(items));
     }
     case Kind::dict_open: {
       if (depth >= max_depth) {
-        repairs.emplace_back("containers nest deeper than " + std::to_string(max_depth) +
-                             " at byte " + std::to_string(first.start));
+        recover(Why::nesting, "containers nest deeper than " + std::to_string(max_depth) +
+                                  " at byte " + std::to_string(first.start));
         return Object::make_dictionary({});
       }
       Dictionary dictionary;
+      // The integer value just read, and whether a generation of a reference
+      // read with references off came after it, so the R that follows is
+      // known for what it is.
+      bool integer_value = false;
+      bool generation_read = false;
       while (true) {
         const std::size_t mark = lexer.position();
         const Lexer::Token key = lexer.next();
@@ -160,43 +190,55 @@ Object Parser::parse_value(Lexer& lexer, const Lexer::Token& first, bool referen
           break;
         }
         if (key.kind == Kind::end || is_structural(key)) {
-          repairs.emplace_back("a dictionary opened at byte " + std::to_string(first.start) +
-                               " is not closed");
+          recover(Why::open_container,
+                  "a dictionary opened at byte " + std::to_string(first.start) + " is not closed");
           if (key.kind != Kind::end) {
             lexer.seek(mark);
           }
           break;
         }
         if (key.kind != Kind::name) {
-          repairs.emplace_back("a dictionary key at byte " + std::to_string(key.start) +
-                               " is not a name and is skipped");
+          // "/Key n g R" read with references off: the generation and the R
+          // stand where keys belong.
+          const bool generation = integer_value && key.kind == Kind::integer &&
+                                  Lexer(lexer.bytes(), lexer.position()).next().is_keyword("R");
+          const bool reference = generation || (generation_read && key.is_keyword("R"));
+          generation_read = generation;
+          integer_value = false;
+          recover(reference ? Why::reference : Why::key_not_name,
+                  "a dictionary key at byte " + std::to_string(key.start) +
+                      " is not a name and is skipped");
           if (key.kind == Kind::array_open || key.kind == Kind::dict_open) {
-            (void)parse_value(lexer, key, references, repairs, depth + 1);
+            (void)parse_value(lexer, key, references, recoveries, depth + 1);
           }
           continue;
         }
+        generation_read = false;
         const std::size_t value_mark = lexer.position();
         const Lexer::Token value = lexer.next();
         if (value.kind == Kind::dict_close || value.kind == Kind::end || is_structural(value)) {
-          repairs.emplace_back("the key /" + key.text + " at byte " + std::to_string(key.start) +
-                               " has no value");
+          recover(Why::key_without_value, "the key /" + key.text + " at byte " +
+                                              std::to_string(key.start) + " has no value");
           lexer.seek(value_mark);
+          integer_value = false;
           continue;
         }
-        dictionary.set(key.text, parse_value(lexer, value, references, repairs, depth + 1));
+        Object parsed = parse_value(lexer, value, references, recoveries, depth + 1);
+        integer_value = parsed.integer().has_value();
+        dictionary.set(key.text, std::move(parsed));
       }
       return Object::make_dictionary(std::move(dictionary));
     }
     case Kind::end:
-      repairs.emplace_back("the data ends where a value was expected");
+      recover(Why::end_of_data, "the data ends where a value was expected");
       return {};
     case Kind::array_close:
     case Kind::dict_close:
     case Kind::brace_open:
     case Kind::brace_close:
     case Kind::stray:
-      repairs.emplace_back("a stray delimiter at byte " + std::to_string(first.start) +
-                           " reads as null");
+      recover(Why::stray_delimiter,
+              "a stray delimiter at byte " + std::to_string(first.start) + " reads as null");
       return {};
   }
   return {};

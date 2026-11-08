@@ -102,22 +102,33 @@ the price given is that of changing it.
    ...}]}`. Text and find still fail with `limit_exceeded` on such a page.
    **Recommended: keep.** Alternative: inspect fails with `limit_exceeded`,
    which breaks its catalogue promise; about 0.5 hour, $10.
-2. **Which damage names a page.** Named: every filter fault (`flate_checksum`,
-   `flate_corrupt`, `flate_truncated`, `flate_dictionary`, `lzw`,
-   `ascii_hex`, `ascii85`, `run_length`, `predictor`), an operator the content
-   operators do not hold outside `BX` and `EX` (`unknown_operator`), an
-   operator read into an operand or a string that runs to the end
-   (`unlexable_content`), an inline image without a readable dictionary or an
-   `EI` (`inline_image`). Not named: a wrong `/Length` or a missing
-   `endstream` (a `repaired` reason), operands left at the end or before
-   `BI`, a stray delimiter. Two borderline cases name the page: a checksum
-   that disagrees though every byte decoded (page 13 of `opf-0019` reads 700
-   glyphs whole but holds garbage after byte 38,206), and an unknown operator
-   (`1 2 zork` between two lines of text). **Recommended: keep**, because a
-   false silence costs more than a false mention; the caller can ignore a
-   class it trusts. Alternative: leave `flate_checksum` or `unknown_operator`
-   out when nothing else is wrong with the stream; about 1 hour, $20, and a
-   page whose garbage hides a word goes unnamed.
+2. **Which damage names a page.** The rule: a page is named only when a
+   dropped or unread operator could have carried or decided text. Named:
+   every filter fault (`flate_checksum`, `flate_corrupt`, `flate_truncated`,
+   `flate_dictionary`, `lzw`, `ascii_hex`, `ascii85`, `run_length`,
+   `predictor`); a stream left encoded with an image codec or an unknown
+   filter (`unsupported_filter`) or held in an external file
+   (`external_stream`); a `/Contents` entry that resolves to nothing
+   (`missing_stream`); a `Do` of an XObject that resolves to nothing
+   (`missing_object`, which may have been a form with text); an unknown
+   operator outside `BX` and `EX` with a string, an array, a name or a
+   dictionary among its operands (`unknown_operator`: `(x) zork`, a
+   corrupted `Tj`, `Tf` or `Do`); an operator read into an operand or a
+   string that runs to the end (`unlexable_content`); an inline image without
+   a readable dictionary or an `EI` (`inline_image`). Not named: a wrong
+   `/Length` or a missing `endstream` (a `repaired` reason), operands left at
+   the end or before `BI`, a stray delimiter, an unknown operator with no
+   operand or numbers alone (`qpdf-0060` page 14's mangled `endstreM-'m`
+   after a stream recovery, page 5's `CT` written for `BT`, whose 8 glyphs
+   read), an indirect reference written in content (`/OC 5 0 R BDC`,
+   `<< /Foo [5 0 R] >> BDC`, `safedocs-0005` page 1's `7 0 R` in an inline
+   image's dictionary). One borderline case names the page: a checksum that
+   disagrees though every byte decoded (`pdfminer-0048`; page 13 of
+   `opf-0019` reads 700 glyphs whole but holds garbage after byte 38,206).
+   **Recommended: keep**, because a false silence costs more than a false
+   mention; the caller can ignore a class it trusts. Alternative: leave
+   `flate_checksum` out when nothing else is wrong with the stream; about 1
+   hour, $20, and a page whose garbage hides a word goes unnamed.
 3. **What `text_redaction` means in the write report.** True on every damaged
    output page when the plan holds a search string (a value is searched on
    every page, so its verification over a damaged page is incomplete), and
@@ -134,7 +145,10 @@ the price given is that of changing it.
    further), or bytes no operator draws that a rewrite kept (`4budget` in
    `mutate-0046` page 30, which a byte search finds and no reader shows).
    False where a rewrite wrote only what decoded (a truncated stream's lost
-   tail is not in the output). **Recommended: keep.** Alternative: a rewrite
+   tail is not in the output). `null` when the output could not be read
+   again within the open limits, because unknown is neither copied nor not
+   copied; that reading never fails a write. **Recommended: keep.**
+   Alternative: a rewrite
    drops the bytes no operator draws, so the flag is false on every page a
    text redaction rewrote; about 3 to 4 hours, $60 to $80, a change to what
    the write copies.

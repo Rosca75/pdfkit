@@ -281,10 +281,6 @@ class RedactTextTest(unittest.TestCase):
         self.assertEqual(self.judge(refused, "known_gap:metadata"), ("pass", "known_gap"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class DamageTest(unittest.TestCase):
     def judge(self, expected, inspect_pages, text_pages=None, text_status="ok"):
         body = {"id": "x", "sha256": "h", "open": {"status": "ok", "pages": 3, "repairs": []},
@@ -318,3 +314,7 @@ class DamageTest(unittest.TestCase):
             for i, pages in (("a", [1, 4]), ("b", []), ("c", [2]), ("d", [2]))}
         first["e"] = {"result": "hang"}
         self.assertEqual(run.damage_values(rows, first), {"a": "pages:1,4", "b": "none"})
+
+
+if __name__ == "__main__":
+    unittest.main()

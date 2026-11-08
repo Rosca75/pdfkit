@@ -67,12 +67,12 @@ class ContentInterpreter {
   syntax::Document* document_;
   fonts::FontLoader* loader_;
   const OptionalContent* optional_content_;
-  // A form stream decoded: its bytes, whether a filter met a fault, and that
-  // fault as a damaged stream of the page drawing it.
+  // A form stream decoded: its bytes, whether a filter met a fault, and what
+  // the decoding left unread, as damaged streams of the page drawing it.
   struct FormBytes {
     std::shared_ptr<const std::vector<std::byte>> bytes;
     bool damaged = false;
-    syntax::PageDamage::Stream damage;
+    std::vector<syntax::PageDamage::Stream> damage;
   };
 
   // The decoded bytes of each form stream, by object number, so a form drawn
