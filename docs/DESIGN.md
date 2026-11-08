@@ -611,7 +611,10 @@ visible set first and the hidden set after (§8).
   80 pt apart); a raised letter of a logo crosses a glyph or two rather
   than a run and stays in its line, and so does a run under 0.75 of the size
   of the run it crosses (subscripts and superscripts, dccc-0128's "m1 x m2";
-  pdfdiff-0018's two runs are 0.76 of each other). Along one baseline
+  pdfdiff-0018's two runs are 0.76 of each other). The search spends at most
+  a million visits of baseline and run pairs and glyph comparisons per
+  cluster; past that, the lines it cut stay cut and every later baseline
+  joins the line under way. Along one baseline
   the content's runs (glyphs drawn one after another, each at or after the
   one before, none in another font starting more than 0.1 of the size
   before the advance of the glyph drawn ahead of it ends) are placed in the
@@ -1173,8 +1176,9 @@ position the original gave it (CLAUDE.md §5).
 - **The word break after the placeholder**: where the original read a word
   break between the removed text and the next kept glyph of the line (a
   space glyph, removed or kept, or the layout of §7 putting that glyph in a
-  word that holds none of the removed glyphs, its one reading of where
-  words end), the placeholder keeps it. One drawn natural or scaled is followed, in its text
+  word that holds none of the removed glyphs), the placeholder keeps it, so
+  a break the extractor reads before the redaction it also reads after. One
+  drawn natural or scaled is followed, in its text
   object, by one space of its face under a `Tc` that makes the space's
   advance, `(w0 × Tfs + Tc) × Th` (ISO 32000-1 section 9.4.4, read), run
   from the placeholder's end to that glyph's origin (the bridge): the space
@@ -1188,7 +1192,10 @@ position the original gave it (CLAUDE.md §5).
   the size past it, never wider than its natural width, so the reader reads
   it as drawn over that word (§7) rather than glued to it. A match inside a
   word (no break before the next kept glyph) and a run at its line's end
-  draw neither.
+  draw neither. The converse does not hold: a placeholder drawn in its own
+  face inside a word may still read as a word of its own beside the kept
+  rest of that word ("Jahre" in "Jahreanfuhr" replaced by "*" reads "*"
+  "anfuhr"), a gap `OPEN-QUESTIONS.md` §3.7 puts to the owner.
 - A placeholder with a character outside the alphabet (named as `U+XXXX`), or
   that is not well-formed UTF-8, is refused before anything is written.
 

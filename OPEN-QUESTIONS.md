@@ -481,3 +481,13 @@ one `TJ` array are left out of the rule, because a `TJ` number is letter
 spacing as often as a word break ("Sp" "aced", "TRAV" "EL", "3." "14"),
 so pdfjs-0016's "Ideas:" and "The", 0.2 apart in one `TJ`, read
 "Ideas:The".
+
+A placeholder follows the layout's word breaks in one direction only, a
+gap that predates this rule. Where the removed text ended a word, the
+placeholder keeps the break; where it was part of a word, the placeholder,
+drawn in its own face, can still read as a word of its own: "Jahre" in
+"Jahreanfuhr" replaced by "*" reads "*" "anfuhr". A caller that searches the
+output for the whole word then misses it. Option: end the placeholder's
+last glyph with a character spacing that makes its advance stop where the
+kept rest of the word starts, so the two read as one word; about 1 to 2
+hours and $20 to $40 with its tests. No change is made until you ask.
