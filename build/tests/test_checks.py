@@ -191,6 +191,10 @@ class CommentsTest(CheckTest):
         append(self.tree / "src/platform/error.cpp", "// This no longer throws.\n")
         self.assert_fails("check_comments.py", "src/platform/error.cpp", "no longer")
 
+    def test_a_comment_citing_a_batch_of_a_change_order(self) -> None:
+        append(self.tree / "build/check_repo.py", "# Written for docs/change-01a.md section 9.1.\n")
+        self.assert_fails("check_comments.py", "build/check_repo.py", "cites a change order")
+
 
 class CatalogueTest(CheckTest):
     def test_a_registry_row_removed(self) -> None:

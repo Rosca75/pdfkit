@@ -372,6 +372,38 @@ room for a loaded machine. Run as documented (`bs-final-asan`): all 960 files
 in 1,039 s, every expectation held, no sanitizer report, the slowest at 3.6
 times its release limit.
 
+### 6.6 The reference panel
+
+The panel's members (`tests/panel/`, `CLAUDE.md` §6) are test-only and never
+linked, vendored or shipped. Each is pinned in `tests/panel/members.tsv`, one
+row per member and platform: its version, its upstream, its archive's SHA-256
+and its binaries with theirs, whose combined digest (the SHA-256 of the
+binaries' digests, sorted) keys its cached answers. `python
+tests/panel/fetch.py` fetches or builds every member; `--verify` re-hashes
+every archive and binary against the rows; `--record` writes the digests found
+on disk into the rows of this platform, which are then reviewed and committed.
+
+| Member | Windows pin | Its digest |
+|---|---|---|
+| PDFium | the PDFium tier's `pdfium-win-x64.tgz` of chromium/8111 (§6.2) | archive `3452d110...`; `pdfium.dll` to record on the laptop |
+| Poppler | `Release-<version>.zip` of oschwartz10612/poppler-windows | version and digest to record on the laptop: the release page answers 403 through the Linux host's proxy |
+| MuPDF | `mupdf-1.28.5-windows.zip` | `13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99`, read on https://mupdf.com/releases |
+| QPDF | `qpdf-<version>-mingw64.zip` of qpdf/qpdf | version and digest to record on the laptop, as Poppler's |
+| Rust toolchain | `rust-1.99.1-x86_64-pc-windows-gnu.tar.xz` unpacked into `build/cache/panel/rust/1.99.1/` | `0210624b2eb2bdf4ec32c2a6caf5c3bd2ab84e5df66c7530023e37f02add1084`, read in `channel-rust-stable.toml` of 2026-10-15 |
+
+The three Rust adapters (`tests/panel/rust/`: `panel-oxide`, `panel-extract`,
+`panel-lopdf`) are built by `cargo build --release --locked` with `CARGO_HOME`
+in `build/cache/panel/cargo-home/` and `CARGO_TARGET_DIR` in
+`build/cache/panel/cargo-target/` of the main checkout, so every worktree
+shares one build. Every crate is pinned by checksum in the committed
+`Cargo.lock` (203 packages): pdf_oxide 0.3.78 with office_oxide 0.1.9 (the pin
+that makes pdf_oxide compile), pdf-extract 0.12.1 (which reads through lopdf
+0.42.0) and lopdf 0.47.0, the latest of each on 2026-11-07. The Windows path
+(the archives, the toolchain and the build with the pinned WinLibs GCC) is
+written in `tests/panel/fetch.py` and has not run: the laptop runs it once
+with `--record`. Its answers are kept under the Windows binaries' digests, so
+no Linux answer is reused there.
+
 ## 7. Linux (test only)
 
 The test tiers also run on a Linux host, for the reference readers that are
@@ -490,3 +522,33 @@ the archive refused the two faces are copied there from
 `third_party/liberation-fonts/`, which holds the same members of the same
 archive (`third_party/inventory.tsv`); `python3 dataset/tools/synth/run.py
 --check` then reproduces every synthesised row byte for byte.
+
+The reference panel on this host (§6.6 holds the Windows pins). Poppler,
+MuPDF and QPDF are the packages above, pinned in `tests/panel/members.tsv` by
+package version (`poppler-utils` and `libpoppler134`, `mupdf-tools`, `qpdf`
+and `libqpdf29t64`, read with `dpkg-query`) and by each executable's SHA-256;
+`tests/panel/fetch.py` downloads none of them and refuses a member whose
+package or binary differs, naming the `apt-get install` that supplies it.
+MuPDF's package is built without ICC support (`mutool` prints "ICC support is
+not available"), so its CMYK conversion is MuPDF's own formula. The Rust
+adapters are built with the rustup toolchain above (rustc 1.97.0, which
+`fetch.py` requires) and link with the host's C compiler; cargo needs no
+proxy setting here, since crates.io answers cargo's requests, which carry a
+`User-Agent`. A clean `cargo build --release --locked` of the three adapters
+took 3 min 35 s at `-j3`, and a relink gives the same bytes:
+
+| Binary | SHA-256 |
+|---|---|
+| `build/cache/panel/cargo-target/release/panel-oxide` | `b2afc3a83d73d2d35cb88c8e3a0c08abc7e2bddee0bbe82f24314d384eeafd17` |
+| `build/cache/panel/cargo-target/release/panel-extract` | `15462d09dad5b2a2dcc392cb87b05716c8c46d5ee323eb27fa737d484bda95ec` |
+| `build/cache/panel/cargo-target/release/panel-lopdf` | `18262db823831ca7196fe48e648dcef5b7621d2afe1e0deef7ba842ee4ecf4da` |
+| PDFium's lib/libpdfium.so (chromium/8111) | `dca41ec4a2496ea7378b144cc4bad2d9e050692aaac75b9cc22411c1835f7f6e` |
+
+The collection (`python3 tests/panel/collect.py --workers 3 --run-id <id>`,
+the 961 files, the 669 bitonal and CMYK images of the census of run
+`linux-base-09b8d78`) took 266 s with 274 of the files' answers already
+cached by the smoke set and an interrupted first pass, then 159 s for the six
+files whose member had timed out or crashed once (each asked again at twice
+the limit), and 3.2 s warm, starting no child process. The caches then hold
+891 MB in `build/cache/panel/` (the cargo target folder 718 MB, the crate
+sources 167 MB) and 304 MB of answers in `build/cache/panel-results/`.

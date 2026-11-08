@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The pdfkit authors
+#
+# The Rust members of the reference panel: three small command-line adapters
+# that each read one PDF with one crate and write what it says as JSON, so the
+# panel's Python adapters run them as child processes like every other member.
+# Test-only: nothing here is linked, vendored or shipped (CLAUDE.md section 6).
+# Every crate is pinned with `=` here and by checksum in the committed
+# Cargo.lock; pdf_oxide compiles as published only with office_oxide pinned to
+# 0.1.9 (the owner's evaluation of pdf_oxide 0.3.78).
+
+[package]
+name = "pdfkit-panel"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[lib]
+name = "pdfkit_panel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "panel-oxide"
+path = "src/bin/panel-oxide.rs"
+
+[[bin]]
+name = "panel-extract"
+path = "src/bin/panel-extract.rs"
+
+[[bin]]
+name = "panel-lopdf"
+path = "src/bin/panel-lopdf.rs"
+
+[dependencies]
+pdf_oxide = "=0.3.78"
+office_oxide = { version = "=0.1.9", default-features = false }
+pdf-extract = "=0.12.1"
+lopdf = "=0.47.0"
+
+[profile.release]
+opt-level = 2

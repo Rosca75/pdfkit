@@ -23,6 +23,8 @@ EXEMPTIONS = {
                               "ignored dataset cache; a developer tool that never ships",
     "tests/pdfium/fetch.py": "downloads the pinned PDFium test binary into the shared cache; "
                              "test-only, never linked or shipped",
+    "tests/panel/fetch.py": "downloads the pinned reference readers into the shared cache; "
+                            "a developer tool that never ships",
 }
 C_APIS = re.compile(
     r"\b(socket|WSAStartup|getaddrinfo|gethostbyname|URLDownloadToFile\w*|InternetOpen\w*|"

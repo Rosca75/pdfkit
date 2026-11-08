@@ -469,6 +469,14 @@ tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
 | B | `change-01b.md` | the judge, the two panel gate scripts, `tests/panel/text_causes.tsv`, the re-decisions, `build-5.md` and `build-6.md` §9, `OPEN-QUESTIONS.md` | A | nothing | `opus` | both panel gates run on the full dataset with their numbers in the build files; each re-decision settled or asked |
 | C | `change-01c.md` | `src/fonts/`, `src/text/`, `third_party/adobe-cmaps/`, the generator, the order-wide documentation sweep | B | nothing | `opus` | the files the panel confirms as pdfkit's fixed or named, both gates re-run, the documents describing what landed |
 
+Batch A's note for batch B (on Linux, `docs/change-01a.md` Appendix C): every
+member is present and answers for the 961 files on disk from the cache;
+Poppler's pixels abstain on stencil masks, whose `/Decode` it leaves
+unapplied (`abstains` in `tests/panel/members.tsv`, Appendix C entry 21);
+MuPDF's Linux vote on CMYK carries no ICC (Appendix C entry 17); a member that
+times out or crashes twice on a file keeps a `repeated_failure`, an
+abstention.
+
 | Batch | Hours | Model spend at list prices | Calibrated from |
 |---|---|---|---|
 | A | 5 to 6 (plus about 40 minutes of unattended compile and collection inside it) | $85 to $115 | `docs/archive/build/build-2.md` (the PDFium tier and dataset tools: about 3,500 lines of Python, 9 to 13 h, $130 to $220): about 1,400 lines of Python and 150 of Rust here |
@@ -803,3 +811,58 @@ batch run on Linux; a batch run on the laptop follows its file as written.
     The Linux tiers therefore measure the dataset as the laptop's did within
     one image and one file, and a batch's Linux numbers are compared
     with a Linux baseline, never with the laptop's.
+
+13. **`main` is at 2acdddb, not 7cd2968** as §0.4 says. It carries the
+    "Reference readers judge as a panel, test-only" bullet of `CLAUDE.md` §6
+    and the chore/owner-answers merge, and batch A branches from it.
+14. **`tests/panel/members.tsv` holds one row per member and platform**, with
+    a `packages` column (the Debian packages and their versions) and a
+    `binaries` column (every executable with its SHA-256). The Linux rows hold
+    what this host runs. The Windows rows hold the archive pins of
+    `docs/change-01a.md` §9.1: MuPDF 1.28.5's and Rust 1.99.1's digests are
+    read on their release pages, while the poppler-windows and QPDF versions
+    and digests, `pdfium.dll`'s digest and the Rust adapters' Windows digests
+    say "to record on the laptop", because those GitHub release pages answer
+    403 here. No digest is invented. The Windows path of
+    `tests/panel/fetch.py` is written and has not run; the laptop runs it once
+    with `--record`.
+15. **A Linux member's cached answers are keyed by its executables' digest
+    alone.** Its shared libraries (`libpoppler.so.134`, `libqpdf.so.29`) are
+    held by the package versions that `tests/panel/fetch.py` checks with
+    `dpkg-query`, and a member whose package or binary differs is skipped by
+    name with the `apt-get install` that supplies it.
+16. **The Rust crates are pdf_oxide 0.3.78 with office_oxide 0.1.9,
+    pdf-extract 0.12.1 and lopdf 0.47.0**, the latest pdf-extract and lopdf on
+    2026-11-07, pinned with `=` and by checksum in
+    `tests/panel/rust/Cargo.lock` (203 packages); pdf-extract reads through
+    its own lopdf 0.42.0. They build with the host's rustc 1.97.0 in 3 min
+    35 s at `-j3`, into `build/cache/panel/cargo-target/` of the main
+    checkout.
+17. **MuPDF's Linux package is built without ICC support.** Its CMYK
+    conversion is MuPDF's own formula: on the smoke set's 80 small CMYK
+    images its RGB differs from PDFium's and Poppler's by a median mean
+    absolute difference of about 21 and 19 per channel, where PDFium's and
+    Poppler's differ by 4.6. The CMYK re-decision reads MuPDF's Linux vote
+    with that in mind.
+18. **The images the pixel members answer for come from the Linux baseline's
+    census**, `dataset/reports/linux-base-09b8d78/images/images.tsv`: 518
+    bitonal images (JBIG2 and CCITT) and 151 DeviceCMYK, four-component
+    ICCBased, Separation and DeviceN images, in 70 files.
+19. **CJK stays out of scope** (`OPEN-QUESTIONS.md` §1.5): no Adobe CMap is
+    fetched. The panel still reads every file, CJK included; pdf-extract
+    panics on predefined CJK CMaps (`UniGB-UCS2-H`, `GBK-EUC-H`,
+    `UniJIS-UCS2-V` and others), which its adapter keeps as refusals.
+20. **AC7's `python build/check.py --full` is `--fast` on Linux** (entry 9);
+    the full check is the owner's laptop step. `build/tests/test_checks.py`
+    has one failure on Linux that `main` has too: `ArtefactTest` builds a
+    planted `pdfkit.dll` with the host's `g++`, which cannot link one.
+21. **Poppler abstains on stencil masks, which narrows §9.5 of
+    `docs/change-01a.md` and D7.** Those say a member that fails a pixel fact
+    gets no `image_pixels` capability. Poppler fails one fact on one class
+    only: it writes a stencil mask's samples as stored, leaving its `/Decode`
+    unapplied (synth-0263 object 3), and applies `/Decode` on images
+    (synth-0265 object 4). So it keeps the capability and abstains on stencil
+    masks alone, recorded as data in the `abstains` column of
+    `tests/panel/members.tsv` (`image_pixels:stencil`, read by
+    `readers.abstains`), which the judge reads rather than a rule in code.
+    The Windows rows of the pixel members say "to record on the laptop".
