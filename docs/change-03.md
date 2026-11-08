@@ -300,3 +300,14 @@ Revert the merge on `main`. Nothing is released by this order.
 21. `not_checked` in `pdfkit_check` is tested through `SelfCheck::run` with a
     lowered operator limit, because the call opens with the default limits,
     which a unit fixture cannot reach in reasonable time.
+22. The review's run over the 961 present dataset files (release CLI, two
+    runs, run id `w1-fix`): no hang, crash or non-deterministic file; the
+    `expect_damage` column changed on five rows, written by `--write-damage`
+    and confirmed: `qpdf-0060` (pages 5 and 14 to none) and `safedocs-0005`
+    (page 1 to none) lose their false mentions; `pdfplumber-0010` gains page
+    3 (`missing_stream`, object 86 absent), `pdfplumber-0012` pages 1 and 2
+    (`missing_stream`: object 6's dictionary is commented out, object 12 does
+    not read as a stream after reconstruction, and both pages read no text),
+    `qpdf-0037` pages 1 and 5 (`missing_stream`: object 32 absent, and a
+    direct non-stream `/Contents`). The one other failure, `mutate-0048`'s
+    self-check refusal, predates this order.
