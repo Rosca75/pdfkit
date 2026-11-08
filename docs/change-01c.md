@@ -344,30 +344,42 @@ whether the landing merge closes phase 5 or 6.
    number moves the next glyph back over stands where that glyph starts
    (pdfjs-0018); a glyph whose text holds a space counts by what follows
    it for the direction pass (pypdf-0019 to -0021); on a line whose fonts
-   draw spaces, a word set as a string or an operator of its own after
-   the one before ends at 0.15 of the size (dccc-0124, dccc-0073 and 39
-   other files, where it separates glued words, leaders and punctuation
-   and cuts no word's letters). Each was
-   measured on the whole dataset's text before it was kept; a first form
-   of the last rule at 0.1 of the size cut "Montelius" and "Whitlock"
-   (dccc-0005, rotated text with gaps of 0.096) and "file" (a zero-width
-   "i", pdfplumber-0005) and was narrowed.
+   draw spaces, a word set as an operator of its own after the one before
+   ends at 0.15 of the size (dccc-0124's three cuts, dccc-0073's
+   "新たに POS", and the other files of run `panel-c-full2` whose glued
+   words, leaders and punctuation it separates). Each was measured on the
+   whole dataset's text before it was kept. A first form at 0.1 of the size
+   cut "Montelius" and "Whitlock" (dccc-0005, rotated text with gaps of
+   0.096) and "file" (a zero-width "i", pdfplumber-0005). A second form also
+   took two strings of one `TJ` array, which separated pdfjs-0016's
+   "Ideas:" "The" and 16 other files' glued words but cut synthetic words a
+   `TJ` letter-spaces ("Sp" "aced", "TRAV" "EL", "3." "14"); after review the
+   rule takes operators alone, those 17 files read as before it, and unit
+   cases pin the shapes. Two operators 0.16 of the size apart still read as
+   two words ("Bo" "ld"), the price of dccc-0124's "in" "Hermeskeil" at
+   0.158 (`OPEN-QUESTIONS.md` §3.7).
 5. **DFT1's direction was not taken as written.** No baseline tolerance
    can separate pdfdiff-0018's baselines (80 pt apart under glyphs of 500
    and 660 pt, a fifth of either size being 100 pt or more). The fix
    separates two baselines whose runs of two glyphs or more cross each
-   other, at least half of each run's glyphs over the other's; a first
-   form that compared every glyph of a baseline split subscripts and
-   LaTeX's raised "A" and was narrowed to runs.
+   other, at least half of each run's glyphs over the other's, the smaller
+   run at least 0.75 of the larger's size (pdfdiff-0018's are 0.76), within
+   a budget of a million glyph comparisons per cluster. A first form that
+   compared every glyph of a baseline split subscripts and LaTeX's raised
+   "A" and was narrowed to runs; a second split dccc-0128's subscripts of
+   "m1 x m2" and was narrowed by the size share after review. dccc-0128
+   still reads a display formula's "∏" and its limits "k=1" on two lines,
+   as it read them on one in another order before the batch.
 6. **DFT2's threshold**: pdfkit measured the vertical gap along the
    advance already; the 0.2 em gap inside pdfium-0049's "Hello" passes the
    narrow word gap, so glyphs of vertical writing take the spaced one
    (0.3). The redaction's placeholder fitting
-   (`src/redact/placeholder_fitting.cpp`), which reads the word gaps to
-   tell whether a word break stood after a removed span, was not edited
-   (outside this batch's files): for vertical writing and for a word set
-   apart as a string of its own it still reads the gaps as before, which
-   moves only how much room a placeholder leaves for its bridge.
+   (`src/redact/placeholder_fitting.cpp`) kept its own copy of the word
+   gaps and glued a narrowed placeholder to a word the layout sets apart
+   ("viele Huismannanfuhr und"); after review it reads the word break from
+   the layout's words of the line instead (`src/redact/text_redactor.cpp`
+   passes them), so the two cannot disagree. This edits `src/redact/`,
+   which §0 assigned to other branches; no other branch held those files.
 7. **Files left in the layout group**, each with its row and reason in
    `tests/panel/text_causes.tsv`: pdfdiff-0017 (DFT3 fixed; zero-size text
    read three ways by the members), pypdf-0019 to -0021 ("habibi" whole;

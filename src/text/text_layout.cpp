@@ -40,9 +40,17 @@ constexpr double run_backstep = 0.5;
 // text it replaces, a subscript or a superscript off it.
 constexpr double overprint_baseline = 0.05;
 // On a line whose words are marked by space glyphs, a gap between two
-// strings drawn one after the other ends a word from this many font sizes:
+// text-showing operators drawn one after the other ends a word from this
+// many font sizes:
 // the narrowest gap the dataset measured between positioned words.
 constexpr double repositioned_word_gap = 0.15;
+// Two runs cross only when the smaller's size is at least this share of the
+// larger's: a subscript or a superscript is set at 0.7 of its line or less,
+// pdfdiff-0018's two lines at 500 and 660 pt (0.76).
+constexpr double crossing_size_share = 0.75;
+// The glyphs one baseline cluster may compare to find runs drawn across
+// each other, so a page of many baselines in one cluster stays linear.
+constexpr std::size_t crossing_budget = 1'000'000;
 // Runs of at most this many glyphs take their place by position.
 constexpr std::size_t short_run = 2;
 // A Type 3 glyph whose box spans more than this many times its font size
@@ -404,8 +412,11 @@ class Builder {
   // in order, and one starts a new line when a run of it crosses a run of a
   // baseline already in the line. Glyphs drawn over others on their own
   // baseline (a name struck out, a bold of two draws) stay in one line, and
-  // so do a superscript, a subscript and a raised letter of a logo, which
-  // cross a glyph or two of their line rather than each other's runs.
+  // so do a raised letter of a logo, which crosses a glyph or two of its line
+  // rather than a run, and a run of subscripts or superscripts, smaller than
+  // crossing_size_share of the run it crosses (dccc-0128's "m1 x m2"). The
+  // comparisons of one cluster stop at crossing_budget, and the cluster then
+  // stays one line.
   [[nodiscard]] std::vector<std::vector<std::size_t>> split_crossing(
       std::vector<std::size_t> cluster) const {
     // The baselines, each with its glyphs and its runs (glyphs other than
@@ -450,11 +461,17 @@ class Builder {
         std::ranges::stable_sort(run, [&](std::size_t a, std::size_t b) { return ahead(a, b); });
       }
     }
+    // The glyphs of a run compared so far, against crossing_budget.
+    std::size_t compared = 0;
     // Whether at least half of from's glyphs have their middles in an
     // advance of a glyph of onto.
     const auto mostly_over = [&](const std::vector<std::size_t>& from,
                                  const std::vector<std::size_t>& onto) {
       std::size_t count = 0;
+      compared += from.size();
+      if (compared > crossing_budget) {
+        return false;
+      }
       for (const std::size_t i : from) {
         const double middle = (items_[i].low + items_[i].high) / 2.0;
         auto at = std::ranges::upper_bound(onto, middle, {},
@@ -475,9 +492,19 @@ class Builder {
       if (std::abs(a.across - b.across) <= overprint_baseline * std::max(a.size, b.size)) {
         return false;
       }
+      const auto size_of = [&](const std::vector<std::size_t>& run) {
+        double size = 0.0;
+        for (const std::size_t i : run) {
+          size = std::max(size, items_[i].size);
+        }
+        return size;
+      };
       return std::ranges::any_of(a.runs, [&](const std::vector<std::size_t>& run) {
         return std::ranges::any_of(b.runs, [&](const std::vector<std::size_t>& other) {
-          return mostly_over(run, other) && mostly_over(other, run);
+          const double small = std::min(size_of(run), size_of(other));
+          const double large = std::max(size_of(run), size_of(other));
+          return small >= crossing_size_share * large && mostly_over(run, other) &&
+                 mostly_over(other, run);
         });
       });
     };
@@ -721,7 +748,7 @@ class Builder {
   // string of hyphens placed later into the gaps of a hymn's syllables)
   // leave the words as they were, and so does a placeholder's space, drawn
   // just after a glyph of the placeholder. On such a line a word a producer
-  // sets apart as a string of its own takes the narrower repositioned gap
+  // sets apart as an operator of its own takes the narrower repositioned gap
   // (repositioned()), and glyphs of vertical writing take the spaced gap.
   void split_words(RawLine& line) const {
     std::vector<std::size_t> draws;
@@ -806,17 +833,17 @@ class Builder {
     }
   }
 
-  // Whether item opens a string drawn straight after the string that before
-  // closes, before advancing and each string showing other glyphs: a
-  // producer that draws its spaces sets a word anew after a word break it
-  // draws no space for, as a string operand of its own after a TJ number
-  // ("Ideas:" and "The", pdfjs-0016) or as an operator of its own after a
-  // new text position (dccc-0124: "Jahre" ends one TJ and "anführ-" opens
-  // the next 0.2 of the size further on, a justified column, its "e" a
-  // string of its own after a kerning number). The gap between the two is
-  // read with repositioned_word_gap. Letter spacing a producer sets glyph by
-  // glyph, one string or one operator each, keeps the spaced gap, and so
-  // does a glyph of no advance, which gives no place its string ends.
+  // Whether item opens a text-showing operator drawn straight after the one
+  // that before closes, before advancing and each operator showing other
+  // glyphs: a producer that draws its spaces sets a word anew after a word
+  // break it draws no space for, as an operator of its own after a new text
+  // position (dccc-0124: "Jahre" ends one TJ and "anführ-" opens the next 0.2
+  // of the size further on, a justified column). The gap between the two is
+  // read with repositioned_word_gap. The strings of one TJ array keep the
+  // spaced gap, because a TJ number between them is letter spacing as often
+  // as a word break ("Sp" "aced", "TRAV" "EL", "3." "14"); so does letter
+  // spacing a producer sets glyph by glyph, one operator each, and a glyph
+  // of no advance, which gives no place its operator's text ends.
   [[nodiscard]] bool repositioned(const Item& before, const Item& item) const {
     if (before.high <= before.low || item.draw != before.draw + 1 || before.draw == 0 ||
         item.draw + 1 >= glyphs_.size()) {
@@ -825,16 +852,8 @@ class Builder {
     const auto same_operator = [&](std::size_t a, std::size_t b) {
       return glyphs_[a].stream == glyphs_[b].stream && glyphs_[a].operation == glyphs_[b].operation;
     };
-    const auto same_string = [&](std::size_t a, std::size_t b) {
-      return same_operator(a, b) && glyphs_[a].operand == glyphs_[b].operand;
-    };
-    const std::size_t first = before.draw - 1;
-    const std::size_t last = item.draw + 1;
-    if (!same_operator(before.draw, item.draw)) {
-      return same_operator(first, before.draw) && same_operator(item.draw, last);
-    }
-    return !same_string(before.draw, item.draw) && same_string(first, before.draw) &&
-           same_string(item.draw, last);
+    return !same_operator(before.draw, item.draw) && same_operator(before.draw - 1, before.draw) &&
+           same_operator(item.draw, item.draw + 1);
   }
 
   [[nodiscard]] std::vector<std::size_t> order_blocks(

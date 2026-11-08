@@ -415,38 +415,69 @@ recommended rule 33 of 890 (3.71 %) count against pdfkit.
 
 ### 3.5 A telephone number set in digit pairs stays in pairs
 
-**Decided by the session, to confirm.** dccc-0124 sets "0651/7199-999" as
-five strings, "06", "51", "/", "71" and "99-999", each 1 pt (0.125 of the
-8 pt size) after the one before and no space glyph between them. pdfkit
-reads "06 51 / 71 99-999", as Poppler and pdf-extract do; PDFium, MuPDF and
-pdf_oxide read "0651" and "7199", and §1.4 names "06 51" as a cut the
-document does not have. A rule joining two digits that two operators draw,
-up to 0.15 of the size apart, reads the number whole, and on the dataset it
-moves one other file: pdfplumber-0015, whose font maps its minus sign to
-"2", so "−5.4%" read as "2 5.4%" becomes "25.4%", another number (three of
-five members read it apart). The same gap inside one `TJ` separates numbers
-elsewhere (opf-0018's chart labels "2500" and "4000", 0.11 of the size
+**Recommended: keep the pairs apart**, no cost. **Alternative: join two
+digits two operators draw up to 0.15 of the size apart**, about 0.5 hour
+and $10 (the rule and its test were written, measured and withdrawn in
+batch C): dccc-0124 reads "0651/7199-999", and pdfplumber-0015 reads
+"25.4%" where it shows "−5.4%". Decided by the session, to confirm.
+
+dccc-0124 sets "0651/7199-999" as five strings, "06", "51", "/", "71" and
+"99-999", each 1 pt (0.125 of the 8 pt size) after the one before and no
+space glyph between them. pdfkit reads "06 51 / 71 99-999", as Poppler and
+pdf-extract do; PDFium, MuPDF and pdf_oxide read "0651" and "7199", and
+§1.4 names "06 51" as a cut the document does not have. The joining rule
+moves one other file on the dataset: pdfplumber-0015, whose font maps its
+minus sign to "2", so "2 5.4%" becomes "25.4%", another number (three of
+five members read it apart). Inside one `TJ` the same gap separates
+numbers (opf-0018's chart labels "2500" and "4000", 0.11 of the size
 apart), so a gap alone cannot tell grouping from separation. A caller's
 telephone pattern that allows a space between digit groups finds the
 number either way; a number joined wrongly is a number the document does
 not hold.
 
-**Recommended: keep the pairs apart**, no cost. **Alternative: join two
-digits two operators draw up to 0.15 of the size apart**, about 0.5 hour
-and $10 (the rule and its test were written, measured and withdrawn in
-batch C): dccc-0124 reads "0651/7199-999" and pdfplumber-0015 "25.4%".
-
 ### 3.6 A Type 3 font whose codes its names restate reads its words whole
 
-**Decided by the session, to confirm.** pdfjs-0047 and its mutations draw
-"Property Insurance" in a Type 3 font whose names restate their codes
-(`65 /C41`), each piece by its own `TJ` (`P`, `ro`, `p`, `e`, ...). pdfkit
-now reads the codes (CR5) and sizes the glyphs by their box, so the words
-read whole, as PDFium and Poppler read them. MuPDF, pdf_oxide and
-pdf-extract read the same letters but cut the words at the pieces, each in
-its own places ("P ro p e rt y", "P ro p e rty Ins ura nce"), so four of
-these six files still count against pdfkit, three voters to two. A caller
-detecting a name needs the word whole. **Recommended: confirm**, no cost.
-**Alternative: read each piece as drawn** (the Type 3 size left as the font
-size), about 0.5 hour and $10: the words are cut at each piece, and the
-files still count against pdfkit, PDFium and Poppler then below.
+**Recommended: confirm**, no cost. **Alternative: read each piece as
+drawn** (the Type 3 size left as the font size), about 0.5 hour and $10:
+the words are cut at each piece and the files still count against pdfkit,
+PDFium and Poppler then below. Decided by the session, to confirm.
+
+pdfjs-0047 and its mutations draw "Property Insurance" in a Type 3 font
+whose names restate their codes (`65 /C41`), each piece by its own `TJ`
+(`P`, `ro`, `p`, `e`, ...). pdfkit reads the codes (CR5) and sizes the
+glyphs by their box, so the words read whole, as PDFium and Poppler read
+them. MuPDF, pdf_oxide and pdf-extract read the same letters but cut the
+words at the pieces, each in its own places ("P ro p e rt y", "P ro p e
+rty Ins ura nce"), so four of these six files still count against pdfkit,
+three voters to two. A caller detecting a name needs the word whole.
+
+The code reading itself rests on thin evidence: two independent files,
+pdfjs-0047 (hexadecimal names) and opf-0014 (decimal, where no member's
+characters match the codes exactly). It is narrowed to that shape, an
+upper-case `C` and digits: dvips's lower-case `cNN` names of bitmap
+fonts read as their codes gave pdfpig-0009 letters shifted by three
+("QXOOIlOOWHLQQHJDWLYHU"), text no member reads, and wrong text is worse
+than unreadable text for a caller, who then believes it read the page.
+pdfpig-0009 keeps its 76 unreadable codes and their warning.
+
+### 3.7 Two strings a producer sets 0.15 of the size apart read as two words
+
+**Recommended: keep the rule**, no cost. **Alternative: drop it**, about
+0.5 hour and $10: dccc-0124's three cuts the panel reads apart and
+dccc-0073's "新たに POS" read glued again ("Jahreanführ",
+"inHermeskeil"), with the glued words of the 32 other files the rule
+separates. Decided by the session, to confirm.
+
+On a line that draws its space glyphs, a word a producer sets in a
+text-showing operator of its own straight after the last ends from 0.15 of
+the size, the narrowest gap measured between positioned words, where such
+a line otherwise keeps gaps up to 0.3 inside a word as letter spacing. It
+fixes the owner's cuts of §1.4 in dccc-0124 ("in Hermeskeil" stands 0.158
+apart) and separates glued words, leaders and punctuation elsewhere,
+cutting no word's letters on the dataset. Its price is a word a producer
+splits into two operators with a gap between 0.15 and 0.3 of the size: a
+synthetic "(a Bo)" then "(ld word)" 0.16 apart reads "Bo" "ld". Strings of
+one `TJ` array are left out of the rule, because a `TJ` number is letter
+spacing as often as a word break ("Sp" "aced", "TRAV" "EL", "3." "14"),
+so pdfjs-0016's "Ideas:" and "The", 0.2 apart in one `TJ`, read
+"Ideas:The".

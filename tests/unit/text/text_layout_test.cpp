@@ -85,19 +85,31 @@ TEST_CASE("a line drawing space glyphs keeps its letter spacing inside words") {
 }
 
 TEST_CASE(
-    "a word a producer sets apart in a string of its own is a word on a line drawing spaces") {
+    "a word a producer sets apart in an operator of its own is a word on a line drawing spaces") {
   // dccc-0124: a justified column draws its spaces, but sets "anfuhr" in a
-  // TJ of its own 0.2 of the size after "Jahre", which ends the TJ before;
-  // pdfjs-0016: "The" a string of its own 0.2 of the size after "Ideas:" in
-  // one TJ.
-  const PageText page = read(
-      "BT /F1 10 Tf 100 700 Td (viele Jahre) Tj 1 0 0 1 150.35 700 Tm (anfuhr) Tj ET "
-      "BT /F1 10 Tf 100 680 Td [(New Ideas:) -200 (The end)] TJ ET");
-  CHECK(words_of(page.blocks) ==
-        std::vector<std::string>{"viele", "Jahre", "anfuhr", "New", "Ideas:", "The", "end"});
-  // Letters a TJ spaces one string each keep their letter spacing.
-  const PageText letters = read("BT /F1 10 Tf 100 700 Td [(a) -200 (b) -200 (c) ( d)] TJ ET");
-  CHECK(words_of(letters.blocks) == std::vector<std::string>{"abc", "d"});
+  // TJ of its own 0.2 of the size after "Jahre", which ends the TJ before.
+  const PageText page =
+      read("BT /F1 10 Tf 100 700 Td (viele Jahre) Tj 1 0 0 1 150.35 700 Tm (anfuhr) Tj ET");
+  CHECK(words_of(page.blocks) == std::vector<std::string>{"viele", "Jahre", "anfuhr"});
+  // Two strings of one TJ array keep the spaced gap, so letter spacing, a
+  // letter-spaced heading and a number a TJ number spaces stay whole
+  // (pdfjs-0016's "Ideas:" "The", 0.2 apart in one TJ, stays glued with
+  // them).
+  for (const auto& [line, words] : std::vector<std::pair<std::string, std::vector<std::string>>>{
+           {"[(Sp) -200 (aced out)]", {"Spaced", "out"}},
+           {"[(T) -200 (R) -200 (AV) -180 (EL) ( now)]", {"TRAVEL", "now"}},
+           {"[(3.) -200 (14 is pi)]", {"3.14", "is", "pi"}},
+           {"[(New Ideas:) -200 (The end)]", {"New", "Ideas:The", "end"}},
+           {"[(a) -200 (b) -200 (c) ( d)]", {"abc", "d"}}}) {
+    INFO(line);
+    CHECK(words_of(read("BT /F1 10 Tf 100 700 Td " + line + " TJ ET").blocks) == words);
+  }
+  // Two operators 0.16 of the size apart are two words, whatever the
+  // producer meant: "a Bo" and "ld word" read "Bo" "ld", the cost of reading
+  // dccc-0124's "in" "Hermeskeil", 0.158 apart, as two words.
+  const PageText bold =
+      read("BT /F1 10 Tf 100 700 Td (a Bo) Tj 1 0 0 1 122.17 700 Tm (ld word) Tj ET");
+  CHECK(words_of(bold.blocks) == std::vector<std::string>{"a", "Bo", "ld", "word"});
 }
 
 TEST_CASE("glyphs within a fifth of the size of one baseline form one line") {
@@ -119,6 +131,15 @@ TEST_CASE("two runs of large glyphs on baselines a fifth of their size apart are
                 "", "", times);
   // The two lines are read top edge first, as every block's lines are.
   CHECK(document.read().text() == "8B\nB 8");
+}
+
+TEST_CASE("subscripts drawn across their line's letters stay in the line") {
+  // dccc-0128's "m1 x m2": the subscripts "1" and "2" at 7 pt, one run 2 pt
+  // below the 10 pt "m x m", each over a letter of it and it over them.
+  const PageText page = read(
+      "BT /F1 10 Tf 100 700 Td (m\327m) Tj ET BT /F1 7 Tf 109 698 Td [(1) -444 (2)] TJ ET");
+  REQUIRE(page.blocks.size() == 1U);
+  CHECK(page.blocks.front().lines.size() == 1U);
 }
 
 TEST_CASE("two and three columns read column by column") {

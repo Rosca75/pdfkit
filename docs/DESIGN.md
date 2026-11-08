@@ -555,15 +555,18 @@ visible set first and the hidden set after (§8).
   0.2 em inside a vertical "Hello"), and under 1.0 between two ideographic,
   kana, hangul or full-width glyphs (scripts written without spaces); beyond
   2.0 of the font size the line ends there, a block boundary. On a line whose
-  fonts mark their words with spaces, a glyph that opens a string drawn
-  straight after the string the glyph before it closes, each string showing
-  other glyphs and the one before advancing, ends a word from 0.15 of the
-  size, the narrowest gap measured between positioned words: a producer that
-  draws its spaces still sets a word anew after a break it draws no space
-  for, as a string operand of its own after a `TJ` number ("Ideas:" "The",
-  pdfjs-0016) or as an operator of its own after a new position (dccc-0124's
-  justified columns, "Jahre" "anführ-"); letters a producer spaces one string
-  each keep the 0.3. A Type 3 glyph whose box spans more than four times its
+  fonts mark their words with spaces, a glyph that opens a text-showing
+  operator drawn straight after the operator the glyph before it closes,
+  each operator showing other glyphs and the one before advancing, ends a
+  word from 0.15 of the size, the narrowest gap measured between positioned
+  words: a producer that draws its spaces still sets a word anew after a
+  break it draws no space for, as an operator of its own after a new
+  position (dccc-0124's justified columns, "Jahre" "anführ-"). The strings
+  of one `TJ` array keep the 0.3, because a `TJ` number is letter spacing as
+  often as a word break ("Sp" "aced", "TRAV" "EL", "3." "14"), and so do
+  letters a producer spaces one operator each; two operators a word's width
+  apart from 0.15 are two words even where the producer meant one ("Bo"
+  "ld"). A Type 3 glyph whose box spans more than four times its
   font size across the line is sized by its box, because the font's em is
   whatever its `/FontMatrix` makes of glyph space (pdfjs-0047: a matrix of 1
   shown at 0.24 draws glyphs 17 pt tall). A font marks
@@ -605,8 +608,10 @@ visible set first and the hidden set after (§8).
   least two glyphs other than spaces, on baselines more than 0.05 of the size
   apart, each with at least half of its glyphs' middles in the other's
   advances (pdfdiff-0018: "B 8" at 500 pt and "8B" at 660 pt on baselines
-  80 pt apart); a superscript, a subscript or a raised letter of a logo
-  crosses a glyph or two rather than a run and stays in its line. Along one baseline
+  80 pt apart); a raised letter of a logo crosses a glyph or two rather
+  than a run and stays in its line, and so does a run under 0.75 of the size
+  of the run it crosses (subscripts and superscripts, dccc-0128's "m1 x m2";
+  pdfdiff-0018's two runs are 0.76 of each other). Along one baseline
   the content's runs (glyphs drawn one after another, each at or after the
   one before, none in another font starting more than 0.1 of the size
   before the advance of the glyph drawn ahead of it ends) are placed in the
