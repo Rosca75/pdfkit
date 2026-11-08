@@ -477,6 +477,14 @@ MuPDF's Linux vote on CMYK carries no ICC (Appendix C entry 17); a member that
 times out or crashes twice on a file keeps a `repeated_failure`, an
 abstention.
 
+Batch B's note for batch C (on Linux, `docs/change-01b.md` Appendix C): the
+reading gate under the panel fails at 48 of 892 decided files (5.38 %) and
+the bitonal gate passes (489 of 489); CR5 is ordered (the code itself);
+the CMYK table and the Letter default stand, the first with an owner
+question (`OPEN-QUESTIONS.md` §3.2); `tests/panel/text_causes.tsv` and
+`tests/panel/word_cuts.tsv` are the lists batch C works from, its CJK groups
+known gaps by `OPEN-QUESTIONS.md` §1.5.
+
 | Batch | Hours | Model spend at list prices | Calibrated from |
 |---|---|---|---|
 | A | 5 to 6 (plus about 40 minutes of unattended compile and collection inside it) | $85 to $115 | `docs/archive/build/build-2.md` (the PDFium tier and dataset tools: about 3,500 lines of Python, 9 to 13 h, $130 to $220): about 1,400 lines of Python and 150 of Rust here |
@@ -866,3 +874,32 @@ batch run on Linux; a batch run on the laptop follows its file as written.
     `tests/panel/members.tsv` (`image_pixels:stencil`, read by
     `readers.abstains`), which the judge reads rather than a rule in code.
     The Windows rows of the pixel members say "to record on the laptop".
+22. **The old gate scripts on Linux equal the Linux baseline** (AC4a of
+    `docs/change-01b.md`, run `panel-b-full`, `main`'s text and images code
+    unchanged since 09b8d78): the reading gate scores 899 files, 55 below
+    0.90 (6.12 %; 20 `pdfkit`, 27 `pdfium`, 8 `legitimate`), its table equal
+    to `linux-base-09b8d78`'s row for row but for `dccc-0129` (F1 1.0),
+    which hung in the baseline at the 60 s limit and answers under
+    `--timeout-scale 3`; re-serialisation 12,121 of 12,121 streams, the
+    baseline's 11,722 plus that file's 399. The image census equals the
+    baseline's row for row: 6,133 of 6,139 occurrences decoded, bitonal
+    495 of 498, continuous-tone 3,688 of 3,724. The laptop's
+    `build-10.md` §9 item 22 (56 of 898, 495 of 498, 3,687 of 3,723) stays
+    one file and one image away, as entry 12 says.
+23. **`tests/pdfium/text_causes.tsv` holds the laptop's 56 rows of
+    p10-final**, not the 55 files below 0.90 on Linux: `pdfpig-0003` reads
+    0.9008 with PDFium here and is no longer listed by the old script, while
+    the panel counts it against pdfkit (group `cjk`). The layout changes of
+    `docs/change-02.md` Appendix C entries 15 and 16 have since joined
+    "Upconversion" in `dccc-0139`, which the owner's `OPEN-QUESTIONS.md` §1.4
+    quotes as "Upconv ersion" (`tests/panel/word_cuts.tsv`). The reading
+    gate under the panel judges 912 files: every file whose text pdfkit
+    read, where the old script scores only the 899 PDFium also read.
+24. **The pixel members are asked with requests rebuilt from the run's
+    census** (`tests/panel/evidence.py`, as `collect.py` builds them), so a
+    gate reads the answers batch A cached only while the census is unchanged:
+    `panel-b-full`'s equals `linux-base-09b8d78`'s, which the collection read.
+25. **MuPDF's `pages` answer prints only the boxes a page dictionary states**
+    (`mutool pages`), never an inherited box or a default: the `/MediaBox`
+    re-decision asks its `page_sizes` answer (`mutool draw -F stext`)
+    instead. pdf_oxide gives no size to a page with no `/MediaBox`.

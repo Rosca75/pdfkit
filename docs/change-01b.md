@@ -250,4 +250,75 @@ at the end of the batch.
 
 ## Appendix C — Deviations recorded by this batch
 
-1. *(none yet)*
+Batch B ran on the Linux host (`docs/change-01.md` Appendix C holds the
+departures every Linux batch shares; entries 22 to 25 are this batch's).
+Its own:
+
+1. **The numbers.** Run `panel-b-full` (`linux-release`, `--checks
+   open,text,images --runs 1 --timeout-scale 3`, two workers, 961 files, no
+   hang or crash). AC2: 912 files judged, 892 decided, 20 undecided
+   (2.19 %; the kill criterion is not fired); median 1.0; 48 of 892 against
+   pdfkit (5.38 %): **the reading gate fails under the panel**. AC3: 489 of
+   489 decided bitonal images agree, 29 undecided; qpdf-0026, synth-0263
+   and synth-0265 agree with the pixel majority: **the bitonal gate
+   passes**. AC4: R1 against the rule (CR5 ordered, the code itself), R2
+   against the table by its measure with no conversion holding a majority
+   (kept, `OPEN-QUESTIONS.md` §3.2), R3 confirms Letter (PDFium, Poppler and
+   MuPDF). AC4a: entry 22 of the parent's Appendix C. AC7: the panel's 72
+   tests and the four gate tests pass, `ctest --preset unit-linux-release` passes,
+   `python build/check.py --fast` passes but for the paths check's finding
+   in `docs/change-03.md` §0.4 (the ledger, which this batch does not edit;
+   it fails on the base too).
+2. **The judge compares pdfkit and each member on one surface** (D6
+   narrowed): a right-to-left word reads either way, pdfkit's visible and
+   every-copy readings count, and Poppler, MuPDF and pdf_oxide are scored
+   one-sidedly on a file with annotations or a form. The literal rule gives
+   93 of 893 (10.41 %) and the gate reports it beside. Decided by the
+   session, for the owner to confirm (`OPEN-QUESTIONS.md` §3.3).
+3. **pdfkit's other readings come from `pdfkit text`**, run by the reading
+   gate for the 226 files with hidden or duplicate text, because a run's
+   outcome holds only the full text (`cli/verbs/dataset_text.cpp`), and a
+   change to the outcome is not this batch's.
+4. **A stencil mask is compared by what it paints**: PDFium's rendered
+   bitmap is dark where the mask paints, sometimes in a fill colour (a
+   pixel paints where any channel is not white), pdfkit's dump and MuPDF's
+   output are 255 there; Poppler abstains (`OPEN-QUESTIONS.md` §3.1).
+5. **R1 is measured on characters, not words**: a member's letters and
+   digits beyond pdfkit's must number at least 10 (or every unreadable code
+   of a file with fewer) and agree with another member's at 0.90 by
+   character F1. §9.3's ten words cannot hold on pdfjs-0047, whose two words
+   three members cut into fragments. The reading is told per file from the
+   `/Differences` arrays: hexadecimal names on pdfjs-0047 and its five
+   mutations, decimal on opf-0014; both are the code itself.
+6. **R3 asks MuPDF a new kind**, `page_sizes` (`mutool draw -F stext`),
+   added to `tests/panel/readers/mupdf.py` with a parsing test seen red,
+   because its `pages` answer prints only the boxes a page dictionary
+   states. A new kind leaves every cached answer valid. pdf_oxide gives the
+   box-less page no size and abstains. The `/CropBox`-only specimen is laid
+   out at its crop box by every member and its media box is Letter in
+   Poppler and pdfkit alike. No dataset page lacks a `/MediaBox` but two
+   (pdfium-0013, pdfium-0020), both Letter in every member that sizes them.
+7. **R2's action is the question**: by §9.3's measure the majority is
+   against the table, but the members also disagree with each other, so no
+   conversion is named closer than PDFium's, which pdfkit equals.
+8. **New files beyond §10.1**: `tests/panel/evidence.py` (what the gates and
+   the re-decisions read: cached answers without starting a process, the
+   pixel requests, pdfkit's readings and dumps) and `tests/panel/word_cuts.tsv`
+   (the owner's `OPEN-QUESTIONS.md` §1.4 places, each with each member's
+   reading and the verdict, rewritten by `python tests/panel/redecide.py cuts
+   --run <run-id> --write`).
+9. **`tests/panel/text_causes.tsv` adds two groups**: `cjk`, Chinese and
+   Japanese word grouping (out of scope by `OPEN-QUESTIONS.md` §1.5, as
+   `cjk_cmap` and `cjk_width` are), and `legitimate`, where pdfkit is right
+   or follows its own rule (§9.3 names it for R1's other outcome).
+10. **The bitonal gate dumps pdfkit's pixels itself** into
+    `<run>/panel-pixels/<id>/` for the 70 files with wanted images, rather
+    than `image_agreement.py --keep` over every file, whose dumps would not
+    fit the Linux host's free disk.
+11. **The tests**: `tests/panel/test_judge.py` was written first and seen red
+    (no module); its two mistaken expectations were corrected before the
+    judge passed. `tests/dataset/test_panel_gates.py` was written after the
+    gate scripts and seen red by seeded faults (the bitonal threshold at
+    0.5, the one-sided rule off).
+12. **Not done here**: `python build/check.py --full`, the sanitizer tiers and
+    the push, which are the laptop's and the orchestrator's (the brief).

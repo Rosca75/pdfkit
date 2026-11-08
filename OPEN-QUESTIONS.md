@@ -189,3 +189,109 @@ Each answer below keeps the rule as written; no action.
 | 2.14 item 1 | four reading orders | session: needed to remove a value everywhere |
 | 2.14 item 3 | Arabic presentation forms read as their letters | owner |
 | 2.16, 2.17 | ccache; PDFium reset per request | session: build and test tools, measured, never shipped |
+
+## 3. Waiting on the owner: the reference panel's verdicts
+
+Raised on 2026-11-08 by the session that built the panel's judge, on the
+Linux run `panel-b-full` (`build-5.md` §9 item 21, `build-6.md` §9 item 18).
+
+### 3.1 Poppler does not vote on the pixels of a stencil mask
+
+**Decided by the session, to confirm.** A stencil mask is a one-bit image
+that says where the page's fill colour is painted; its `/Decode [1 0]`
+swaps which bit paints. Poppler's `pdfimages` applies `/Decode` to an
+ordinary image but writes a stencil mask's bits as stored: synth-0263
+draws the same bits three times, the third with `/Decode [1 0]`, and
+Poppler writes all three alike while PDFium and MuPDF show the third
+inverted. So the panel lets Poppler vote on every image but stencil masks,
+where PDFium and MuPDF vote alone (`abstains` in `tests/panel/members.tsv`).
+On the dataset this leaves 518 bitonal images, 489 decided, all 489
+agreeing with pdfkit; 29 stencil-heavy images stay undecided because one of
+the two remaining voters does not reach them.
+
+**Recommended: confirm**, no cost. **Alternative: drop Poppler's pixel vote
+everywhere**, about 0.5 hour and $5 to $10 (one line of `members.tsv` and a
+gate run): the same stencils are judged as now and the other bitonal images
+lose a voter. **Alternative: invert Poppler's stencil bits where the file
+says `/Decode [1 0]`**, about 1 to 2 hours and $15 to $30: the 29 undecided
+images gain a voter, but the panel would then repair a member's output,
+which `docs/change-01.md` §8.3 rules out.
+
+### 3.2 CMYK images convert through PDFium's Adobe table: the panel does not confirm it
+
+The re-decision R2 measured pdfkit's RGB of the 151 CMYK-class images
+(DeviceCMYK, four-component ICCBased, Separation, DeviceN) against each
+pixel member's. The table holds by the measure when, on most images, most
+voters lie within a mean of 2 per channel of pdfkit; that is so on 24 of
+146 images. PDFium agrees with pdfkit on 102 of 144 (median distance 0),
+Poppler on 25 of 146 (median 5.1), MuPDF on 14 of 146 (median 25.3; its
+Linux package converts without ICC). The members do not agree with each
+other either (PDFium and Poppler within 2 on 18 images, Poppler and MuPDF
+on 11, PDFium and MuPDF on 9): three readers, three conversions, none held
+by a majority. For example, on a 271 by 273 CMYK picture of dccc-0124
+(object 50) pdfkit and PDFium are identical, Poppler is 5.9 apart and MuPDF
+22.9. The table stays until you answer.
+
+**Recommended: keep the table and re-measure on the laptop**, where MuPDF
+1.28.5 converts with ICC: about 0.5 hour and $5 to $10 inside the laptop's
+panel session; if MuPDF with ICC sits within 2 of pdfkit, the table is
+confirmed by two of three. **Alternative: move to Poppler's conversion**,
+about 0.5 to 2 hours and $10 to $40 (one function, its tests, the notice
+row and a gate run); it moves pdfkit away from PDFium on about 100 images
+and towards no majority. **Alternative: the naive complement**, the same
+price; it failed the continuous-tone gate against PDFium before the table
+was ported (`build-6.md` §9 item 5).
+
+### 3.3 The panel compares pdfkit with each member on the same surface
+
+**Decided by the session, to confirm.** Read literally (pdfkit's full text
+against each member's, word for word), the reading gate counts 93 of 893
+decided files against pdfkit (10.4 %), most of them where the members read
+something pdfkit leaves out by design or write it in another order. Three
+rules make the comparison like for like (`tests/panel/judge.py`):
+
+- **A right-to-left word reads the same in either direction.** MuPDF,
+  pdf_oxide and pdf-extract write Hebrew in visual order ("םולש" for
+  "שלום"); pdfkit, PDFium and Poppler in logical order.
+- **pdfkit's visible text and its text with every duplicate copy count as
+  other readings.** pdfkit reads off-page and hidden text on purpose;
+  Poppler, MuPDF and pdf_oxide leave it out (mutate-0006: "Background" four
+  times off the page, read by pdfkit and PDFium, by no other member).
+- **Poppler, MuPDF and pdf_oxide are asked, on a file with annotations or a
+  form, only whether pdfkit's words are in their text.** They print
+  form-field values (synth-0011's `MARKER-ACROFORM-01`), which pdfkit drops
+  as a channel (`CLAUDE.md` §2). PDFium and pdf-extract still compare both
+  ways, so a page word pdfkit missed is still caught by them.
+
+With them 48 of 892 decided files count against pdfkit (5.38 %). The
+Type 3 re-decision is measured on characters rather than words for the
+same reason ("Property" read as "P ro p e rty" by three members), and the
+causes table adds a `cjk` group for Chinese and Japanese word grouping,
+out of scope by §1.5.
+
+**Recommended: confirm**, no cost. **Alternative: the literal rule**, about
+0.5 hour and $5 to $10 to switch the gate: 93 files against pdfkit, about
+45 of them form fields, off-page text and right-to-left order that pdfkit
+reads as designed.
+
+### 3.4 The reading gate under the panel fails at 5.38 %, and 11 of the 48 are specimens pdfkit reads right
+
+Of the 48 files the panel counts against pdfkit, 11 are synthesised
+specimens (synth-0195 to synth-0204, synth-0209) whose manifest notes state
+their text, for example synth-0196 "Contract number 4711 signed by Maria
+Test": pdfkit reads exactly that (F1 1.0 against the notes) through the
+font program, and all five members print the raw codes
+(`"&%#$2*.-!+&&/1!`). The panel's majority is wrong there, and no majority
+rule can see it. Six more are pdfkit's rules (Type 3 shape glyphs,
+an unknown filter, the duplicate fold) or Czech that pdfkit and pdf_oxide
+read and the others garble.
+
+**Recommended: judge a synthesised specimen that states its text by that
+text**: it agrees when pdfkit's F1 against the stated text is at least 0.90,
+whatever the panel says, because the generator wrote the truth; 37 of 892
+(4.15 %) then count against pdfkit and the gate passes before batch C's
+fixes. About 0.5 to 1 hour and $10 to $20 (the rule, its test, a gate run).
+**Alternative: keep the panel's count** at no cost: the gate fails until
+batch C fixes at least 4 of its confirmed files (the six Type 3 files of
+CR5 alone would bring it to 42 of 892, 4.71 %). Counting the `legitimate`
+group neither way was refused on 2026-10-28 (§2.2) and is not offered.

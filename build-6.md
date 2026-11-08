@@ -383,6 +383,45 @@ to their phase-1 stubs. Nothing persisted changes shape.
     times and the content draws it once (not investigated further; the
     interpreter is phase 5's). The dataset tier (`--checks open,images`)
     passes every `expect_images` row and has no hang.
+18. **The bitonal gate judged by the reference panel** (`docs/change-01.md`
+    D2 and D7, measured on Linux, run `panel-b-full`, whose census equals
+    `linux-base-09b8d78`'s row for row): every JBIG2 and CCITT image of the
+    census is compared pixel for pixel with the pixel members' answers
+    (PDFium's `FPDFImageObj_GetRenderedBitmap` at the image's own size,
+    Poppler's `pdfimages`, MuPDF's `mutool extract`); an image counts
+    against pdfkit only when it differs from the sample array held by more
+    than half of at least two voters at its size; a stencil mask is
+    compared by what it paints, and Poppler abstains on stencil masks,
+    whose `/Decode` it leaves unapplied (`tests/panel/members.tsv`
+    `abstains`; `OPEN-QUESTIONS.md` §3.1). Commands: `python
+    tests/pdfium/image_agreement.py --out dataset/reports/panel-b-full/images`,
+    then `python tests/dataset/gates/phase6_panel.py --run panel-b-full`.
+    Numbers: 518 bitonal images, 489 decided, **489 of 489 agree with the
+    majority (100 %): the gate passes under the panel**. The three images
+    PDFium's bitmap call disputes agree: qpdf-0026 object 16 (PDFium,
+    Poppler and MuPDF), synth-0263 object 3 (PDFium and MuPDF, Poppler
+    abstaining on the stencil) and synth-0265 object 4 (all three). 29
+    are undecided, all but one stencil masks: 25 with MuPDF alone (PDFium's
+    image object `not_found` 17 times or `ambiguous` 8 times, in
+    mutate-0046, opf-0016, opf-0019 and pdfjs-0022), 3 where PDFium and
+    MuPDF differ (pdfdiff-0025 and pdfdiff-0026 object 8, where PDFium's
+    rendering differs on 45 of 5,245,608 pixels from MuPDF's and pdfkit's,
+    which are equal; pdfpig-0001 object 10, painted white, which PDFium's
+    white backdrop hides), and pdfjs-0022 object 103, a gray image that
+    neither PDFium nor Poppler reaches. **CMYK through PDFium's Adobe
+    table (re-decision R2): against the table by the measure, kept until
+    the owner answers** (`OPEN-QUESTIONS.md` §3.2; `python
+    tests/panel/redecide.py cmyk --run panel-b-full`). Over the 151
+    DeviceCMYK, four-component ICCBased, Separation and DeviceN images,
+    146 with two voters or more, a majority of voters lies within a mean
+    of 2 per channel of pdfkit on 24: PDFium on 102 of 144 (median 0.0),
+    Poppler on 25 of 146 (median 5.1), MuPDF on 14 of 146 (median 25.3,
+    its Linux package converting without ICC, `docs/change-01.md`
+    Appendix C entry 17). The members disagree as much with each other:
+    within 2 of each other on 18 (PDFium and Poppler, median 5.9), 11
+    (Poppler and MuPDF, 23.9) and 9 (PDFium and MuPDF, 28.4) images, so no
+    conversion holds a majority and none is named closer than PDFium's,
+    the one pdfkit sits on.
 
 ### Deviations of earlier phases that affect this one
 
