@@ -478,7 +478,7 @@ times out or crashes twice on a file keeps a `repeated_failure`, an
 abstention.
 
 Batch B's note for batch C (on Linux, `docs/change-01b.md` Appendix C): the
-reading gate under the panel fails at 48 of 892 decided files (5.38 %) and
+reading gate under the panel fails at 50 of 893 decided files (5.60 %) and
 the bitonal gate passes (489 of 489); CR5 is ordered (the code itself);
 the CMYK table and the Letter default stand, the first with an owner
 question (`OPEN-QUESTIONS.md` §3.2); `tests/panel/text_causes.tsv` and

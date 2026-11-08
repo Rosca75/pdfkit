@@ -256,29 +256,35 @@ Its own:
 
 1. **The numbers.** Run `panel-b-full` (`linux-release`, `--checks
    open,text,images --runs 1 --timeout-scale 3`, two workers, 961 files, no
-   hang or crash). AC2: 912 files judged, 892 decided, 20 undecided
-   (2.19 %; the kill criterion is not fired); median 1.0; 48 of 892 against
-   pdfkit (5.38 %): **the reading gate fails under the panel**. AC3: 489 of
+   hang or crash). AC2: 912 files judged, 893 decided, 19 undecided
+   (2.08 %; the kill criterion is not fired); median 1.0; 50 of 893 against
+   pdfkit (5.60 %): **the reading gate fails under the panel**; the literal
+   rule gives 93 of 893 (10.41 %), median 1.0. AC3: 489 of
    489 decided bitonal images agree, 29 undecided; qpdf-0026, synth-0263
    and synth-0265 agree with the pixel majority: **the bitonal gate
    passes**. AC4: R1 against the rule (CR5 ordered, the code itself), R2
    against the table by its measure with no conversion holding a majority
    (kept, `OPEN-QUESTIONS.md` §3.2), R3 confirms Letter (PDFium, Poppler and
-   MuPDF). AC4a: entry 22 of the parent's Appendix C. AC7: the panel's 72
-   tests and the four gate tests pass, `ctest --preset unit-linux-release` passes,
-   `python build/check.py --fast` passes but for the paths check's finding
-   in `docs/change-03.md` §0.4 (the ledger, which this batch does not edit;
-   it fails on the base too).
+   MuPDF). AC4a: entry 22 of the parent's Appendix C. AC7: the panel's
+   tests and the gate tests pass, `ctest --preset unit-linux-release` passes,
+   `python build/check.py --fast` passes (with `main` merged, whose ledger
+   no longer cites a missing path).
 2. **The judge compares pdfkit and each member on one surface** (D6
-   narrowed): a right-to-left word reads either way, pdfkit's visible and
-   every-copy readings count, and Poppler, MuPDF and pdf_oxide are scored
-   one-sidedly on a file with annotations or a form. The literal rule gives
-   93 of 893 (10.41 %) and the gate reports it beside. Decided by the
-   session, for the owner to confirm (`OPEN-QUESTIONS.md` §3.3).
+   narrowed): for MuPDF, pdf_oxide and pdf-extract, which write visual
+   order, a right-to-left word reads either way; pdfkit's visible and
+   every-copy readings count; and where QPDF finds annotations that draw
+   text (91 files), Poppler, MuPDF and pdf_oxide are judged on their text of
+   a copy QPDF writes without the annotations and the form
+   (`tests/panel/readers/qpdf.py` `annotations` and `copy`). The literal
+   rule gives 93 of 893 (10.41 %) and the gate reports it beside. Decided by
+   the session, for the owner to confirm (`OPEN-QUESTIONS.md` §3.3).
 3. **pdfkit's other readings come from `pdfkit text`**, run by the reading
    gate for the 226 files with hidden or duplicate text, because a run's
    outcome holds only the full text (`cli/verbs/dataset_text.cpp`), and a
-   change to the outcome is not this batch's.
+   change to the outcome is not this batch's. The binary must give each
+   such file the run's own full text, or the gate refuses naming the files,
+   and the report records its SHA-256, because `tests/dataset/run.py`
+   records no digest of the binary it ran.
 4. **A stencil mask is compared by what it paints**: PDFium's rendered
    bitmap is dark where the mask paints, sometimes in a fill colour (a
    pixel paints where any channel is not white), pdfkit's dump and MuPDF's
@@ -287,9 +293,16 @@ Its own:
    digits beyond pdfkit's must number at least 10 (or every unreadable code
    of a file with fewer) and agree with another member's at 0.90 by
    character F1. §9.3's ten words cannot hold on pdfjs-0047, whose two words
-   three members cut into fragments. The reading is told per file from the
-   `/Differences` arrays: hexadecimal names on pdfjs-0047 and its five
-   mutations, decimal on opf-0014; both are the code itself.
+   three members cut into fragments, and the change turns the outcome: on
+   words pdfjs-0047's six files read `unread` and would be `legitimate`, on
+   characters 7 of 8 decided files read and CR5 is ordered. 6 of those 7 are
+   pdfjs-0047 and its mutations: two independent files, pdfjs-0047 and
+   opf-0014. A check holds each member's surplus to the unreadable codes
+   (`pdfkit text --glyphs`): on pdfjs-0047's files every member's is the 17
+   codes exactly, by count and value; on opf-0014 none is exact (704 to 904
+   characters against 799, character F1 0.93 to 0.995). The reading is told
+   per file from the `/Differences` arrays: hexadecimal names on pdfjs-0047
+   and its five mutations, decimal on opf-0014; both are the code itself.
 6. **R3 asks MuPDF a new kind**, `page_sizes` (`mutool draw -F stext`),
    added to `tests/panel/readers/mupdf.py` with a parsing test seen red,
    because its `pages` answer prints only the boxes a page dictionary
@@ -322,3 +335,17 @@ Its own:
     0.5, the one-sided rule off).
 12. **Not done here**: `python build/check.py --full`, the sanitizer tiers and
     the push, which are the laptop's and the orchestrator's (the brief).
+13. **The review's changes**: the one-sided score of an annotation-drawing
+    member (the better of F1 and pdfkit's precision, 1.0 for an empty pdfkit
+    text) let pdfkit drop words on every annotated file, because those three
+    members outvote the other two; QPDF's copy replaces it, and an empty
+    pdfkit text scores 0 (a gate test holds both). QPDF's survey follows the
+    form XObjects an appearance draws (pdfminer-0012's stamp draws its text
+    through one). With it, pdfpig-0002 (undecided before) and qpdf-0051
+    (agreeing before; QPDF cannot open it, so no copy) count against pdfkit,
+    and no file leaves the list. The right-to-left fold applies to the
+    visual-order members alone. dccc-0073 moves to `cjk`, pdfjs-0002 to
+    `subset_unreadable` (a CFF font with glyph-index names, not Type 3, so
+    CR5 does not cover it). The bitonal gate names a missing census
+    executable, and the reading gate skips by name when no text member is
+    present. Each change came with a test seen failing first.

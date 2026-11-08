@@ -1,6 +1,6 @@
 id	group	evidence
 dccc-0012	cjk_width	Latin text in a non-embedded CJK font (STSongStd-Light, UniGB-UCS2-H, no /W) at /DW 1000 runs past the media box and splits at its edge ("Algebr" "a"); PDFium, MuPDF and pdf_oxide 0.84, Poppler 0.54
-dccc-0073	layout	Latin digits and words glued to the ideographs beside them ("2021年", "128件", "新たにPOS"): PDFium, Poppler, MuPDF and pdf-extract read them apart (0.89 each), pdf_oxide glues as pdfkit (0.96); tests/panel/word_cuts.tsv
+dccc-0073	cjk	Japanese text with Latin digits and words glued to the ideographs beside them ("2021年", "128件", "新たにPOS"): PDFium, Poppler, MuPDF and pdf-extract read them apart (0.89 each), pdf_oxide glues as pdfkit (0.96); the owner's places are in tests/panel/word_cuts.tsv
 dccc-0147	cjk	a letter-spaced Japanese heading (令和3年度沼津市中体連バレーボール大会): pdfkit joins it into one word, PDFium, MuPDF and pdf-extract cut it after "3年", Poppler reads "2021" and "10" pdfkit does not
 mutate-0008	type3_code_names	Type 3 /Differences names /Cxx that restate their code in hexadecimal (65 /C41); pdfkit counts the 17 codes unreadable, PDFium, Poppler, MuPDF and pdf_oxide read the same 17 letters ("Property Insurance"); pdf-extract refuses the damaged trailer
 mutate-0011	type3_code_names	as mutate-0008 (a damaged copy of pdfjs-0047)
@@ -14,7 +14,7 @@ pdfdiff-0026	subset_unreadable	as pdfdiff-0025 (728 codes); not work
 pdfdiff-0034	legitimate	the page's only font lies in an object stream with the unknown filter XXXDecode; docs/DESIGN.md section 4 draws nothing for a resource that resolves to nothing; Poppler alone reads the words (1.0)
 pdfdiff-0036	cjk_cmap	HiraMinPro-W3, Adobe-Japan1 written Identity-V with no /ToUnicode: 52 codes unreadable without the ordering; Poppler and pdf-extract read the page (1.0), PDFium and MuPDF read as pdfkit (0.46), pdf_oxide 0.75
 pdfium-0049	layout	vertical text whose TJ adjustments leave a 0.2 em gap inside "Hello": pdfkit cuts the word; PDFium and MuPDF 0.67, pdf_oxide 0.50, Poppler 0.0
-pdfjs-0002	other	math Type 3 fonts, 49,914 codes unreadable: Poppler and MuPDF agree with pdfkit (0.98, 0.99), PDFium, pdf_oxide and pdf-extract read the codes as digits and letters (0.72 to 0.83); see whether the code reading of the Type 3 names covers them
+pdfjs-0002	subset_unreadable	a subset CFF font (EMMOLK+Cambria, FontFile3) with /Differences glyph-index names (/g18, /g152) and no /ToUnicode: 49,909 codes no rung reads, and Poppler and MuPDF read nothing there either (0.98, 0.99); PDFium, pdf_oxide and pdf-extract print the raw codes as digits and letters (0.72 to 0.83). Not a Type 3 font, so the code reading of Type 3 names does not cover it; not work
 pdfjs-0018	layout	a Hebrew word cut at its last letter ("המדינ ה"): PDFium and Poppler read "המדינה" (0.96), MuPDF, pdf_oxide and pdf-extract read the line in visual order and cut elsewhere (0.898)
 pdfjs-0042	subset_unreadable	a subset font (MSTT31c64e) whose three codes no rung reads; MuPDF reads nothing as pdfkit does, PDFium, Poppler, pdf_oxide and pdf-extract emit punctuation; not work
 pdfjs-0047	type3_code_names	as mutate-0018: the source of the five mutations
@@ -24,6 +24,7 @@ pdfminer-0019	legitimate	the words are Czech ("Peněžní prostředky na účtec
 pdfminer-0023	cjk	two Chinese characters: pdfkit and pdf_oxide read "黎荣" through the file's /ToUnicode, PDFium and Poppler read other characters (0.83), pdf-extract 0.60, MuPDF 0.91
 pdfminer-0039	cjk_cmap	Ryumin-Light, Adobe-Japan1 written Identity-V with no /ToUnicode, 898 codes unreadable; Poppler and pdf-extract read it (1.0), PDFium, MuPDF and pdf_oxide read nothing pdfkit reads (0.0)
 pdfminer-0042	layout	letter-spaced "H e l l o W o r l d" drawn twice: pdfkit joins one copy into "Hello World", Poppler and MuPDF keep both copies letter by letter (0.80), pdf_oxide reads one line (0.50), PDFium joins it as pdfkit (1.0)
+pdfpig-0002	subset_unreadable	Chinese subset fonts (SBBIJP+FzBookMaker1DlFont10536871991 and others) with 7,493 codes no rung reads; MuPDF reads nothing there either (0.96), PDFium, Poppler and pdf_oxide print the raw codes as digits and letters ("01234", 0.01 to 0.59); its form field's text is left out through QPDF's copy; not work
 pdfpig-0003	cjk	Japanese text with Latin digits: pdfkit glues digits to the ideographs either side ("1泊につき2", "000円を控除した額の"), PDFium, Poppler and MuPDF read them apart; PDFium 0.90, Poppler 0.92, MuPDF 0.89, pdf_oxide 0.64, pdf-extract 0.84
 pdfplumber-0013	cjk	Chinese prose without spaces: pdfkit's runs ("用的技术也比较丰富") are cut elsewhere than each member's; PDFium and MuPDF 0.96, Poppler, pdf_oxide and pdf-extract 0.84 to 0.89
 pdfplumber-0014	layout	a hymn's music notation: Poppler, MuPDF, pdf_oxide and pdf-extract read noteheads in pairs ("œœ" 33 to 68 times) where pdfkit reads them apart (0.75 to 0.84); PDFium reads them apart (0.97)
@@ -32,6 +33,7 @@ pikepdf-0022	other	the /ToUnicode maps byte-swapped ("倀甀爀攀" for "Pure") 
 pypdf-0019	layout	"habibi" inside an Arabic line read as "h" and "abibi"; MuPDF, Poppler and pdf-extract read "habibi" (0.57), PDFium and pdf_oxide join it to the Arabic word beside it
 pypdf-0020	layout	as pypdf-0019
 pypdf-0021	layout	as pypdf-0019
+qpdf-0051	other	an AES-256 file QPDF cannot open, so no copy without annotations is made: Poppler prints a file-attachment annotation's text ("Click for attachment2", 0.40), pdf_oxide reads nothing (0.0), MuPDF and pdf-extract refuse the password; PDFium agrees (1.0)
 safedocs-0007	legitimate	the Type 3 glyphs /rect and /triangle draw shapes, not letters (docs/change-01.md section 8.3); PDFium and Poppler emit "a" and "b", MuPDF "ccc a△", pdf_oxide and pdf-extract read nothing or a shape as pdfkit does
 safedocs-0008	legitimate	as safedocs-0007
 safedocs-0010	legitimate	as safedocs-0007

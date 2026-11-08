@@ -245,38 +245,47 @@ was ported (`build-6.md` §9 item 5).
 ### 3.3 The panel compares pdfkit with each member on the same surface
 
 **Decided by the session, to confirm.** Read literally (pdfkit's full text
-against each member's, word for word), the reading gate counts 93 of 893
-decided files against pdfkit (10.4 %), most of them where the members read
-something pdfkit leaves out by design or write it in another order. Three
-rules make the comparison like for like (`tests/panel/judge.py`):
+against each member's own text, word for word), the reading gate counts 93
+of 893 decided files against pdfkit (10.4 %), many of them where a member
+reads something pdfkit leaves out by design or writes it in another order.
+Three rules make the comparison like for like (`tests/panel/judge.py`):
 
-- **A right-to-left word reads the same in either direction.** MuPDF,
-  pdf_oxide and pdf-extract write Hebrew in visual order ("םולש" for
-  "שלום"); pdfkit, PDFium and Poppler in logical order.
+- **A right-to-left word reads the same in either direction, for the
+  members that write visual order.** MuPDF, pdf_oxide and pdf-extract
+  write Hebrew in visual order ("םולש" for "שלום"); PDFium and Poppler
+  write logical order, as pdfkit does, and are compared word for word.
 - **pdfkit's visible text and its text with every duplicate copy count as
   other readings.** pdfkit reads off-page and hidden text on purpose;
   Poppler, MuPDF and pdf_oxide leave it out (mutate-0006: "Background" four
   times off the page, read by pdfkit and PDFium, by no other member).
-- **Poppler, MuPDF and pdf_oxide are asked, on a file with annotations or a
-  form, only whether pdfkit's words are in their text.** They print
-  form-field values (synth-0011's `MARKER-ACROFORM-01`), which pdfkit drops
-  as a channel (`CLAUDE.md` §2). PDFium and pdf-extract still compare both
-  ways, so a page word pdfkit missed is still caught by them.
+- **Where annotations draw text, Poppler, MuPDF and pdf_oxide read a copy
+  of the file without them.** They print form-field values and the text of
+  stamps and notes (synth-0011's `MARKER-ACROFORM-01`), which pdfkit leaves
+  out as a channel (`CLAUDE.md` §2). On the 91 files where QPDF finds an
+  annotation that draws text (a widget, a FreeText, or another whose
+  appearance shows a string; never a link alone), QPDF writes a copy with
+  the annotations and the form left out, and those three members are
+  judged on their text of the copy, word for word like the others. pdfkit
+  is the reader under test, so it never makes the copy. A file QPDF cannot
+  open (10, qpdf-0051 among them) keeps the members' own text.
 
-With them 48 of 892 decided files count against pdfkit (5.38 %). The
+With them 50 of 893 decided files count against pdfkit (5.60 %), median
+1.0. An earlier draft scored those three members by the share of pdfkit's
+words found in their text, which let pdfkit miss words on any annotated
+file (three of five outvote the two others); the copy replaces it. The
 Type 3 re-decision is measured on characters rather than words for the
 same reason ("Property" read as "P ro p e rty" by three members), and the
-causes table adds a `cjk` group for Chinese and Japanese word grouping,
-out of scope by §1.5.
+causes table adds a `cjk` group for Chinese and Japanese word grouping, out
+of scope by §1.5.
 
 **Recommended: confirm**, no cost. **Alternative: the literal rule**, about
-0.5 hour and $5 to $10 to switch the gate: 93 files against pdfkit, about
-45 of them form fields, off-page text and right-to-left order that pdfkit
-reads as designed.
+0.5 hour and $5 to $10 to switch the gate: 93 files against pdfkit, 43 more
+than the rules count, most of them form fields, off-page text and
+right-to-left order that pdfkit reads as designed.
 
-### 3.4 The reading gate under the panel fails at 5.38 %, and 11 of the 48 are specimens pdfkit reads right
+### 3.4 The reading gate under the panel fails at 5.60 %, and 11 of the 50 are specimens pdfkit reads right
 
-Of the 48 files the panel counts against pdfkit, 11 are synthesised
+Of the 50 files the panel counts against pdfkit, 11 are synthesised
 specimens (synth-0195 to synth-0204, synth-0209) whose manifest notes state
 their text, for example synth-0196 "Contract number 4711 signed by Maria
 Test": pdfkit reads exactly that (F1 1.0 against the notes) through the
@@ -284,14 +293,15 @@ font program, and all five members print the raw codes
 (`"&%#$2*.-!+&&/1!`). The panel's majority is wrong there, and no majority
 rule can see it. Six more are pdfkit's rules (Type 3 shape glyphs,
 an unknown filter, the duplicate fold) or Czech that pdfkit and pdf_oxide
-read and the others garble.
+read and the others garble. These numbers assume §3.3's rules are
+confirmed; under the literal rule the count is 93.
 
 **Recommended: judge a synthesised specimen that states its text by that
 text**: it agrees when pdfkit's F1 against the stated text is at least 0.90,
-whatever the panel says, because the generator wrote the truth; 37 of 892
-(4.15 %) then count against pdfkit and the gate passes before batch C's
+whatever the panel says, because the generator wrote the truth; 39 of 893
+(4.37 %) then count against pdfkit and the gate passes before batch C's
 fixes. About 0.5 to 1 hour and $10 to $20 (the rule, its test, a gate run).
 **Alternative: keep the panel's count** at no cost: the gate fails until
-batch C fixes at least 4 of its confirmed files (the six Type 3 files of
-CR5 alone would bring it to 42 of 892, 4.71 %). Counting the `legitimate`
+batch C fixes at least 6 of its confirmed files (the six Type 3 files of
+CR5 alone would bring it to 44 of 893, 4.93 %). Counting the `legitimate`
 group neither way was refused on 2026-10-28 (§2.2) and is not offered.

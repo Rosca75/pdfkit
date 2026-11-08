@@ -29,21 +29,24 @@ Inherited from the parent. Facts the batch needs beside it:
   whose group is not below is left with its row, and named in the final
   message.
 - **What batch B left** (`docs/change-01b.md` Appendix C; run `panel-b-full`
-  on Linux): `tests/panel/text_causes.tsv` holds 48 files in eight groups:
+  on Linux): `tests/panel/text_causes.tsv` holds 50 files in eight groups:
   `type3_code_names` 6 (CR5 ordered, the reading the code itself),
-  `layout` 10 (pdfdiff-0017, pdfdiff-0018, pdfium-0049, dccc-0073,
-  pdfjs-0018, pdfminer-0042, pdfplumber-0014, pypdf-0019 to -0021),
-  `other` 2 (pdfjs-0002, pikepdf-0022), `cjk_cmap` 4, `cjk_width` 2 and
-  `cjk` 4, which `OPEN-QUESTIONS.md` §1.5 makes known gaps, not work,
-  `subset_unreadable` 3, which no member reads either (§8.2: not work),
-  and `legitimate` 17, where pdfkit is right or follows its own rule. The
+  `layout` 9 (pdfdiff-0017, pdfdiff-0018, pdfium-0049, pdfjs-0018,
+  pdfminer-0042, pdfplumber-0014, pypdf-0019 to -0021), `other` 2
+  (pikepdf-0022, qpdf-0051), `cjk_cmap` 4, `cjk_width` 2 and `cjk` 5
+  (dccc-0073 among them), which `OPEN-QUESTIONS.md` §1.5 makes known gaps,
+  not work, `subset_unreadable` 5 (pdfjs-0002 and pdfpig-0002 among them),
+  which no member reads either (§8.2: not work), and `legitimate` 17, where
+  pdfkit is right or follows its own rule. The
   owner's word cuts (§1.4) are `tests/panel/word_cuts.tsv`: 12 places the
   panel calls pdfkit's miss, in dccc-0124, dccc-0139, dccc-0097, pdfpig-0005
-  and dccc-0073, and one it calls right. pdfminer-0044 and pdfpig-0002 are
-  undecided (two of four voters below), so §9.1 and §9.4 leave them. Re-run
+  and dccc-0073, and one it calls right. pdfminer-0044 is undecided (two of
+  four voters below), so §9.1 leaves it. Re-run
   the gate with `python tests/dataset/gates/phase5_panel.py --run <run-id>`
   after a dataset run; it runs `pdfkit text` for the files with hidden or
-  duplicate text, so build `linux-release` (or `mingw-release`) first.
+  duplicate text and refuses when that binary reads them otherwise than the
+  run did, so build the run's commit first; `--collect` asks QPDF's survey
+  and the members' text of a new copy without annotations.
 - **CR5 is ordered or not by batch B.** It is ordered when `build-5.md` §9's
   panel item says "CR5 ordered" and the `type3_code_names` rows are in
   `tests/panel/text_causes.tsv`; that item also names the reading the panel's
