@@ -173,8 +173,9 @@ draw to the values the gate's Python copy is pinned to.
 
 ## 12. Tests
 
-The unit tier on Linux (gcc 13 Debug): 721 cases at the base, 739 after W1,
-none failing. The dataset tier's rules in `tests/dataset/test_run.py` and the
+The unit tier on Linux (gcc 13 Debug, and clang 18 Release): 721 cases at
+the base, 739 after W1, 750 after the review's changes on the merged branch
+(740 there before them), none failing. The dataset tier's rules in `tests/dataset/test_run.py` and the
 manifest vocabulary in `dataset/tools/tests/test_common.py`. The dataset,
 sanitizer and PDFium tiers need the owner's laptop; `opf-0019` and
 `mutate-0046` were run through the dataset verb on Linux (§14).
@@ -258,3 +259,44 @@ Revert the merge on `main`. Nothing is released by this order.
 12. clang-tidy 23.1.3 from PyPI ran on Linux over every changed source and
     test with the Linux compile database (the gcc-only warning flags aside, which
     clang does not know); its findings in the new code are fixed.
+13. On review, a content stream that cannot be decoded at all names its page:
+    `unsupported_filter` for a page piece or form left encoded with an image
+    codec or a filter no reader defines (it is still lexed as it is), and
+    `external_stream` for data in an external file (`/F`), which decodes to
+    nothing.
+14. On review, a missing object names its page: `missing_stream` for a
+    `/Contents` entry that resolves to no stream, `missing_object` for a `Do`
+    whose XObject resolves to nothing (beside its `resource_missing`
+    warning), because it may have been a form with text. A page piece is
+    named by its place in `/Contents`, so a missing entry keeps the places of
+    the others; a page without `/Contents` is an empty page.
+15. On review, the content lexer keeps one loss per class and piece (the
+    first fault, the count, the bytes summed), so its memory is bounded by
+    the classes and not by `operators_per_page`; each `damaged_pages` stream
+    entry gains `count`.
+16. On review, the parser names each recovery's kind (`Parser::Recovery`), and
+    the lexer classifies by kind, never by a message's prefix; the string
+    overload keeps every message as it was.
+17. On review, measured on the dataset: an unknown operator with no operand or
+    numbers alone names no page (`qpdf-0060` page 14's `endstreM-'m`, page 5's
+    `CT`), and an indirect reference written in content (`/OC 5 0 R BDC`,
+    `[5 0 R]`, `safedocs-0005` page 1's `7 0 R` in an inline image's
+    dictionary) is a lossless recovery; both by classification alone, the
+    tokens and the operators' numbering unchanged. An unknown operator with a
+    string, an array, a name or a dictionary still names the page;
+    `pdfminer-0048` (a bad Adler-32, every byte decoded) stays named.
+18. On review, a limit met by the full reading of a page the damage reading
+    found damaged keeps those classes beside `not_checked` (its `glyphs` 0).
+19. On review, the write report's re-read never fails a write: an output it
+    cannot open, or a page it reads only as `not_checked`, answers
+    `copied_as_is` `null` (unknown is neither copied nor not copied).
+20. On review, `pdfkit_check` failed with `invalid_argument` ("an AES key of 0
+    bytes") on `qpdf-0017`, `qpdf-0051` and `qpdf-0059`, which open reads, on
+    `main` too: their handler's `/StmF` and `/StrF` are `/Identity`, so no
+    file key is derived (the user password is not checked), and their
+    embedded files name the AESV3 filter `/StdCF` in their own `/Crypt`
+    `/DecodeParms`; check decodes every stream and reached AES with an empty
+    key. Such a stream now decodes to nothing.
+21. `not_checked` in `pdfkit_check` is tested through `SelfCheck::run` with a
+    lowered operator limit, because the call opens with the default limits,
+    which a unit fixture cannot reach in reasonable time.
