@@ -322,3 +322,9 @@ Revert the merge on `main`. Nothing is released by this order.
     and 5 (pages 1 and 5 `missing_stream`: object 32 absent, and a direct
     non-stream `/Contents`). The one other failure, `mutate-0048`'s
     self-check refusal, reproduces on 0.2.1-preview.
+23. The run over the 961 present files with the rules of entries 13 to 20 in
+    full (run id `w1-fix2`, release CLI, two runs) has no hang, crash or
+    non-deterministic file, and every `expect_damage` row passes (912 judged,
+    49 refused files skipped): no file of the dataset holds a stream under a
+    locked crypt filter or an `R` that takes another operator's operands.
+    Its one failure is `mutate-0048`'s self-check refusal of entry 22.
