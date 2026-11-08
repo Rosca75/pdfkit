@@ -5,11 +5,14 @@
 // fixture encrypted by the test tree's own encryptor under revisions 2, 3, 4
 // (RC4 40, RC4 128, RC4 and AESV2 through crypt filters), 5 and 6 (AESV3)
 // reads as the clear one; /EncryptMetadata false leaves the metadata stream
-// clear; /Identity crypt filters decrypt nothing; a non-empty user password
+// clear; /Identity crypt filters decrypt nothing, and an embedded file under
+// a crypt filter of such a handler is not read; a non-empty user password
 // is password_required and a handler other than /Standard is
 // unsupported_security_handler, each with its three message parts.
 
 #include "syntax/security_handler.hpp"
+
+#include "pdfkit/pdfkit.h"
 
 #include "platform/error.hpp"
 #include "support/document_summary.hpp"
@@ -20,6 +23,7 @@
 
 #include <doctest.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -257,3 +261,30 @@ TEST_CASE("a handler other than /Standard, or an unknown revision, is unsupporte
 }
 
 }  // namespace
+
+TEST_CASE("an embedded file under a crypt filter of an /Identity handler is not read") {
+  // The shape of qpdf's own test files: /StmF and /StrF /Identity, and an
+  // embedded file whose /DecodeParms name the AESV3 filter /StdCF, which only
+  // the user password (never checked here) unlocks.
+  PdfEncryptor::Spec spec;
+  spec.revision = 6;
+  spec.stream_filter = "Identity";
+  spec.string_filter = "Identity";
+  Fixture made = fixture();
+  const std::uint32_t attachment = made.builder.add_stream(
+      "/Type /EmbeddedFile /Filter [/Crypt /FlateDecode] /DecodeParms [<< /Name /StdCF >> null]",
+      std::string(64, 'x'));
+  made.builder.encrypt(spec);
+  const std::string file = made.builder.build();
+  auto document = open_document(file);
+  CHECK(decoded(*document, attachment).empty());
+  // pdfkit_check reads every stream, this one included, and answers.
+  pdfkit_buffer out{nullptr, 0, nullptr};
+  const pdfkit_status status =
+      pdfkit_check(reinterpret_cast<const std::uint8_t*>(file.data()), file.size(),
+                   R"({"strings": [{"text": "Confidential"}]})", &out);
+  const std::string answer(reinterpret_cast<const char*>(out.data), out.size);
+  pdfkit_buffer_free(&out);
+  INFO(answer);
+  CHECK(status == PDFKIT_OK);
+}

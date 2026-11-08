@@ -321,6 +321,12 @@ std::vector<std::byte> SecurityHandler::apply(Method method, Object::Reference o
   if (method == Method::identity) {
     return {data.begin(), data.end()};
   }
+  if (file_key_.empty()) {
+    // A handler whose /StmF and /StrF are /Identity has no file key: its
+    // user password, not checked, guards only what /EFF names, so data under
+    // its other crypt filters (an embedded file) is not read.
+    return {};
+  }
   std::string key = file_key_;
   if (method != Method::aes256) {
     // Algorithm 1: the per-object key.
