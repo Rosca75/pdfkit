@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | done on change/01-c-text-fixes (2026-11-08, on Linux), awaiting the owner's landing merge |
+| Status | done on change/01-c-text-fixes (2026-11-08, on Linux), merged into `main` at 7dd86ef; phases 5 and 6 close on the owner's laptop gates (`docs/change-03.md` §15) |
 | Owner approval | with the parent |
 | Depends on | `change-01b.md` |
 | Supersedes | nothing |

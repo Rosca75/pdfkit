@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | in progress |
+| Status | done on Linux; the release waits on the owner's laptop checks and tag (§15) |
 | Owner approval | 2026-11-07, `OPEN-QUESTIONS.md` §1.3 (damaged pages reported), §1.4 (word cuts judged by the panel), §1.5 (CJK stays a known gap) |
 | Depends on | `docs/change-02.md` (ABI 3); `docs/change-01.md` (the reference panel order, run alongside) |
 | Supersedes | nothing |
@@ -50,12 +50,12 @@ decision, and a session that resumes reads it before anything else.
 | Item | Repository | Branch | Status | Commits | Numbers | Next step |
 |---|---|---|---|---|---|---|
 | Toolkit check | both | none | done 2026-11-07 | none | pdfkit unit 721/721 (Linux gcc Debug); `check.py --fast` 11/11 with the scratch venv; doc-anonymiser 7,612 unit (0 failed, 122 skipped) and 107 integration (95 passed, 12 skipped) against `pdfkit.so` 0.2.1 | see Toolkit below |
-| W1 damaged pages | pdfkit | `w1-damaged-pages` | merged into `main` at fbb0b00 after three reviews (CHANGES REQUESTED twice, APPROVE the third, its small findings applied) | 94e4caa..3182029, merges a98df23, 4f96a1c, 831fe6b | ABI 4, 0.4.0-preview; unit 754/754 on Linux; run `w1-fix2` (961 files, two runs): `expect_damage` passes on 912 judged rows, 24 files damaged, every other column as on main; inspect, text and find agree on 912/912; ABI tier from .NET and Python passes | done; the consumer lands next |
+| W1 damaged pages | pdfkit | `w1-damaged-pages` | merged into `main` at fbb0b00 after three reviews (CHANGES REQUESTED twice, APPROVE the third, its small findings applied) | 94e4caa..3182029, merges a98df23, 4f96a1c, 831fe6b | ABI 4, 0.4.0-preview; unit 754/754 on Linux; run `w1-fix2` (961 files, two runs): `expect_damage` passes on 912 judged rows, 24 files damaged, every other column as on main; inspect, text and find agree on 912/912; ABI tier from .NET and Python passes | done; the laptop steps of §15 |
 | W1 consumer | doc-anonymiser | change order 19 | landed on doc-anonymiser's `main` at 85455e7 after review (APPROVE, six minor fixes applied) | 9333fe4..2b054d2 | unit 7,642 (7,520 passed, 122 skipped, 0 failed), integration 107 (95 passed, 12 skipped), page suite 2,046; end to end against pdfkit 5eb9fad: opf-0019 names 23 of 54 pages, Drop leaves none, Keep records 23, the copy names the pages a redaction passed over; decisions in its FEEDBACK-19 to confirm | the pin move after the owner's tag (its change-19 §14) |
 | P0 Linux tiers | pdfkit | `p0-linux-tiers` | merged into `main` at 9a97e6f after review (APPROVE; follow-ups applied: preset host conditions, two delta words, a bounded read, the `test_channels` failure main already had) | 7af4f56, f15bb87, 821a7ac | dataset 961/968 present (7 `office` rows laptop-only), 0 hash mismatches; unit 721/721 linux-debug and linux-release; run `linux-base-09b8d78` (2 runs, 961 files, 752 s): 0 crashes, 0 non-deterministic, 1 hang (`dccc-0129`, 73 s alone under load; passes at `--timeout-scale 3`), 1 real miss (`mutate-0048` self-check refusal, as on the laptop); PDFium on Linux: F1 median 1.0, 55/898 below 0.90 (laptop 56), bitonal 495/498, Info 3,048/3,048; ABI tier .NET and Python pass (31 files, 717 calls); PDFium Linux SHA-256 `bdc60126…` computed, not read | done; departures in `docs/change-01.md` Appendix C, versions in `build/toolchain.md` §7 |
-| Batch A (readers) | pdfkit | change/01-a-readers | merged into `main` at 7d62575 (`Change-Batch: 01a done`) after review (CHANGES REQUESTED, nine fixes applied) | 4293e8a, 2c9c88d, ef6a121, b3b0f00, 97917e3 | AC1: every member answers, refuses or holds a `repeated_failure` for every applicable file (961 text, pages and structure; 70 pixel files), warm runs start 0 processes; AC1a `fetch.py --verify` agrees; AC1b pixel facts in `tests/panel/members.tsv`; panel tests 50; unit 722/722; `check.py --fast` 10/10 | owner question for batch B's sweep: Poppler abstains on stencil masks (narrows D7) |
-| Batch B (judge) | pdfkit | change/01-b-judge | merged into `main` at 9518fa0 (`Change-Batch: 01b done`) after review (CHANGES REQUESTED: the form-field rule let pdfkit drop words; fixed by members reading a QPDF copy without annotations) | 404c5b0, 1bb77be, da15079, c78e2d5, d806afc, 53ffb8b | reading gate 50/893 against pdfkit (5.60 %, fails 5 %; literal 93/893), median 1.0, 19 undecided; bitonal 489/489; R1 CR5 ordered (pdfjs-0047 and opf-0014), R2 owner question, R3 Letter; OPEN-QUESTIONS §3.1-§3.4 | batch C: CR5, the layout group, the §1.4 cuts |
-| Batch C (+W2) | pdfkit | branch change/01-c-text-fixes (worktree `/home/user/wt/c`) | built; under review | b0b45ac, 3f8b442, c6ef55c, e33f9b8 | reading gate 44/890 against pdfkit (4.94 %, passes; literal 88/890), median 1.0; AC5a 0; old PDFium script 46/899 below 0.90 (55 before); unit 762/762; leaks: images 0, metadata 0, text 2 (opf-0019 "Large", mutate-0046 "Most", the damaged pages main has too); digit pairs of dccc-0124 left apart (OPEN-QUESTIONS §3.5) | merge after review |
+| Batch A (readers) | pdfkit | change/01-a-readers | merged into `main` at 7d62575 (`Change-Batch: 01a done`) after review (CHANGES REQUESTED, nine fixes applied) | 4293e8a, 2c9c88d, ef6a121, b3b0f00, 97917e3 | AC1: every member answers, refuses or holds a `repeated_failure` for every applicable file (961 text, pages and structure; 70 pixel files), warm runs start 0 processes; AC1a `fetch.py --verify` agrees; AC1b pixel facts in `tests/panel/members.tsv`; panel tests 50; unit 722/722; `check.py --fast` 10/10 | done; Poppler's stencil abstention asked as `OPEN-QUESTIONS.md` §3.1; the Windows pins in §15 |
+| Batch B (judge) | pdfkit | change/01-b-judge | merged into `main` at 9518fa0 (`Change-Batch: 01b done`) after review (CHANGES REQUESTED: the form-field rule let pdfkit drop words; fixed by members reading a QPDF copy without annotations) | 404c5b0, 1bb77be, da15079, c78e2d5, d806afc, 53ffb8b | reading gate 50/893 against pdfkit (5.60 %, fails 5 %; literal 93/893), median 1.0, 19 undecided; bitonal 489/489; R1 CR5 ordered (pdfjs-0047 and opf-0014), R2 owner question, R3 Letter; OPEN-QUESTIONS §3.1-§3.4 | done; built on by batch C |
+| Batch C (+W2) | pdfkit | change/01-c-text-fixes | merged into `main` at 7dd86ef (`Change-Batch: 01c done`) after review | b0b45ac, 3f8b442, c6ef55c, e33f9b8 | reading gate 44/890 against pdfkit (4.94 %, passes; literal 88/890), median 1.0; AC5a 0; old PDFium script 46/899 below 0.90 (55 before); unit 762/762; leaks: images 0, metadata 0, text 2 (opf-0019 "Large", mutate-0046 "Most", the damaged pages main has too); digit pairs of dccc-0124 left apart (OPEN-QUESTIONS §3.5); unit 765/765 on the merged `main` | done; `Build-Phase: 5 done` and `6 done` after the laptop gates (§15) |
 | W3 gate counts | pdfkit | `w3-gate-counts` | merged into `main` at 523c10d after review (APPROVE, three minor fixes applied) | 82410b5, 752fddd, e6f813e, e4c588d | 8,075 − 7,681 = 394 pages, all `dccc-0129` (hung, no outcome); re-open 360/361 the same file; the numbers stand, the reports now name those pages with their cause; the selection rows keep a hung or failed selection in their population; unit tier 722/722, harness tests 94, `check.py --fast` 10/10 on Linux | done; `dccc-0129` (44.6 s alone of a 60 s limit) is a timing risk for the next laptop gate |
 
 Decisions taken, with their reasons:
@@ -218,6 +218,259 @@ from byte 38,206) and `unlexable_content` (a string from byte 45,328 to the
 end, 3,060 bytes). A search for `budget` writes an output the self-check
 passes whose source page 30 keeps `4budget` inside a `TJ` array (§C.9); the
 write report names page 30 with `text_redaction` and `copied_as_is` true.
+
+## 15. Handover
+
+The programme of this order and of `docs/change-01.md` ran on the Linux host
+of `build/toolchain.md` §7 and is merged into `main`; nothing is pushed by a
+session and nothing is tagged. This section is the record the owner reads
+before the laptop steps, and the list of those steps.
+
+### 15.1 What landed
+
+| Item | What it is | Merge on `main` | Trailer |
+|---|---|---|---|
+| W3 | the writer and image gates name the pages they count but never compare (`dccc-0129`'s 394 pages), and a hung selection stays in its population | 523c10d | none (a change order) |
+| P0 | the test tiers on a Linux host: `linux-debug` and `linux-release`, the Linux PDFium asset with its own answers cache, the Linux paths of the dataset, PDFium and ABI tiers | 9a97e6f | none |
+| Batch A | the reference panel's readers (PDFium, Poppler, MuPDF, QPDF, pdf_oxide, pdf-extract, lopdf) pinned and answering every file they apply to, from a cache | 7d62575 | `Change-Batch: 01a done` |
+| Batch B | the judge, `tests/dataset/gates/phase5_panel.py` and `phase6_panel.py`, the three re-decisions | 9518fa0 | `Change-Batch: 01b done` |
+| W1 | every output names the pages whose text could not be read in full (`damaged_pages`); ABI 4, version 0.4.0-preview | fbb0b00 | none |
+| W1 consumer | doc-anonymiser's change order 19: the damaged pages on the import row with Drop and Keep, and in its reports | 85455e7 on doc-anonymiser's `main` | none |
+| Batch C with W2 | the text misses the panel confirms (Type 3 `Cdd` names, crossing baselines, vertical gaps, the mirrored duplicate, the owner's word cuts of `OPEN-QUESTIONS.md` §1.4); placeholder fitting reads the layout's words | 7dd86ef | `Change-Batch: 01c done` |
+
+Phases 5 and 6 are not yet marked done: both panel gates pass on Linux, and
+a phase closes only when the laptop's merge gate passes (§15.5).
+
+### 15.2 The numbers, measured on Linux
+
+| Measure | Value | Where it is recorded |
+|---|---|---|
+| unit tier on `main` at 7dd86ef | 765 of 765 under `linux-debug` (GCC 13) and `linux-release` (clang 18) | measured for this handover |
+| harness suites on `main` at 7dd86ef | dataset harness 108, PDFium harness 29, panel 80, dataset tools 75, all passing | measured for this handover |
+| ABI tier | .NET and Python, 31 files, 717 calls each, passing | `docs/change-01c.md` Appendix C entry 12 |
+| reading gate under the panel (run `panel-c-full2`) | 912 judged, 890 decided, 22 undecided; median 1.0; **44 of 890 against pdfkit (4.94 %), passes** (5 % limit); the literal rule 88 of 890 (9.89 %); batch B 50 of 893 (5.60 %); no file that agreed at batch B counts against pdfkit | `build-5.md` §9 item 22 |
+| bitonal gate under the panel | 518 bitonal images, 489 decided, **489 of 489 agree**, 29 undecided | `build-6.md` §9 items 18 and 19 |
+| old PDFium reading script, same run | 899 scored, median 1.0, 46 below 0.90 (5.12 %; 12 `pdfkit`, 27 `pdfium`, 7 `legitimate`), from 55 | `build-5.md` §9 item 22 |
+| dataset tier | 961 of 968 files present (the 7 `office` rows are made on the laptop); two runs identical; no crash; no hang under `--timeout-scale 3`; the one real expectation miss is `mutate-0048`'s self-check refusal, as on 0.2.1-preview | `docs/change-01c.md` Appendix C entry 12 |
+| other release rows (AC6 of `docs/change-01c.md`) | equal to `main` before batch C: re-serialisation 12,121 of 12,121 streams; images 6,133 of 6,139 decoded; continuous-tone 3,688 of 3,724; Info 3,052 of 3,052; self-check 909 of 917 (the 7 `office` rows and `mutate-0048`); pages stable outside the rectangles 8,010 of 8,051 (99.49 %) | the same entry |
+| `expect_damage` (run `w1-fix2`) | 912 judged rows pass, 49 refused files skipped; **22 files damaged**, 20 with their pages listed and `mutate-0038` and `mutate-0041` as `some`; inspect, text and find agree on 912 of 912 | the run's outcomes and `dataset/manifest.tsv`; the ledger's "24 files" of §0.4 is a miscount |
+| leak check | images 0, metadata 0; text only the two words of `OPEN-QUESTIONS.md` §1.3 that PDFium reads on damaged pages (`opf-0019` "Large", `mutate-0046` "Most"), which `main` has too and which `damaged_pages` now names | `docs/change-01c.md` Appendix C entry 12 |
+| doc-anonymiser, change order 19 | unit 7,642 (7,520 passed, 122 skipped, 0 failed), integration 107 (95 passed, 12 skipped), page suite 2,046; end to end over 0.4.0-preview `opf-0019` names 23 of 54 pages, Drop leaves none, Keep records 23 | its FEEDBACK-19 §1 |
+
+### 15.3 What was not measured or not built on Linux
+
+- `python build/check.py --full` and the routine check: they build
+  `mingw-release` and read a PE import table; `--fast` ran instead, with
+  clang-tidy over the changed sources only.
+- The `mingw-*`, `arm64-*`, `mingw-sanitize` and `clang-sanitize` presets:
+  so neither sanitizer tier ran, nor the `clang-sanitize` dataset pass
+  under AddressSanitizer.
+- `python build/package.py --verify` and `python build/check_artefact.py`:
+  no DLL was packaged, sized against `build/budgets.tsv` or read for its
+  imports.
+- The 7 `office` rows of the manifest, whose files only the laptop's Office
+  applications make (their `expect_damage` is `none`, unmeasured).
+- PDFium's Linux asset digest was computed from the download, not read on
+  the release page, which answers 403 through the host's proxy.
+- The panel's Windows pins: the poppler-windows and QPDF versions and
+  digests, `pdfium.dll`'s digest, the Rust adapters' Windows digests and
+  the pixel members' Windows facts read "to record on the laptop" in
+  `tests/panel/members.tsv`; the Windows path of `tests/panel/fetch.py` has
+  not run.
+- doc-anonymiser: its Windows build and publish, its fixture drift against
+  the shipped DLL (it ran against `pdfkit.so` 0.2.1), and the window
+  harness; the .NET SDK on the host is 10.0.114 where its `global.json`
+  pins 10.0.204, so it built in a scratch clone with the pin relaxed.
+
+### 15.4 Differences seen between Linux and the laptop
+
+- PDFium's old reading script: 55 of 898 below 0.90 at the Linux baseline
+  (`main` at 09b8d78) against 56 in the laptop's last full table (the 0.2.0
+  build); the file between them is `pdfpig-0003`, 0.9008 on Linux. The layout changes `main` carries since
+  the laptop's last table are the likelier cause than the platform; no
+  per-file laptop table of `main` exists to tell them apart
+  (`docs/change-01.md` Appendix C entries 12 and 23). The manifest keeps its
+  `known_gap:pdfkit` (`docs/change-01c.md` Appendix C entry 9).
+- `dccc-0129` (394 pages, a 60 s limit) hung on the loaded four-processor
+  host at 73 s alone and passes at `--timeout-scale 3`; on the laptop it
+  hung once in a full gate run and passed alone in 44.6 s of its 60 s, so it
+  is a timing risk for the laptop's gate (W3).
+- One image and one file apart elsewhere: images decoded 6,133 of 6,139 on
+  Linux, 6,132 of 6,138 on the laptop; continuous-tone 3,688 of 3,724 and
+  3,687 of 3,723; Info fields 3,048 of 3,048 at the Linux baseline and
+  3,056 of 3,056 on the laptop's 0.2.0 table; re-serialisation 11,722
+  streams at the Linux baseline, where `dccc-0129` hung, against the
+  laptop's 12,122 walks; the ABI tier makes 717 calls on Linux and made 552
+  at the laptop's table.
+- The panel's readers on Linux are Ubuntu 24.04's packages (`poppler-utils`
+  24.02.0, `mupdf-tools` 1.23.10, `qpdf` 11.9.0), older than the Windows
+  archives the order pins (MuPDF 1.28.5 among them), and Rust is the host's
+  1.97.0 where the Windows pin is 1.99.1; an answer that differs between
+  versions is recorded with the Linux version.
+- MuPDF's Linux package has no ICC support, so its CMYK vote is its own
+  formula (a median of about 21 per channel from PDFium's); the CMYK
+  re-decision waits on the laptop's MuPDF (`OPEN-QUESTIONS.md` §3.2).
+- ccache 4.9.1 keeps its objects in `~/.cache/ccache` and ignores the
+  `cache_dir` its command line names, so the main checkout's
+  `build/cache/ccache/` stays absent on Linux.
+- GCC 13 at `-O2` stops on a `-Wmaybe-uninitialized` in
+  `src/syntax/object_streams.cpp` that the pinned GCC 16 does not raise, so
+  `linux-release` is clang; the GCC Debug build is unaffected.
+- The `liberation` archive of `dataset/sources.tsv` answers 403, so the
+  synthesiser's fonts were copied from `third_party/liberation-fonts/`;
+  every synthesised and mutated row reproduces byte for byte.
+- The unit tier takes about 10 s under `linux-debug` and the dataset tier
+  752 s over 961 files with two workers; the laptop's timings in
+  `CLAUDE.md` §8.2 are its own.
+
+### 15.5 The laptop commands before the tag
+
+On `main` at 7dd86ef or later, in the main checkout, in this order. The run
+ids mirror `docs/change-02.md` Appendix C entry 16: `base-0.3.0` is the
+released 0.3.0-preview build and `cand-0.4.0` is `main`, both over the 968
+manifest files with the same harness.
+
+1. The full check, which builds `mingw-debug` and `mingw-release`.
+
+   ```bash
+   python build/check.py --full
+   ```
+
+2. The unit tier.
+
+   ```bash
+   ctest --preset unit
+   ```
+
+3. The GCC sanitizer tier.
+
+   ```bash
+   cmake --preset mingw-sanitize && cmake --build --preset mingw-sanitize
+   ctest --preset sanitize
+   ```
+
+4. The llvm-mingw sanitizer tier.
+
+   ```bash
+   cmake --preset clang-sanitize && cmake --build --preset clang-sanitize
+   ctest --preset clang-sanitize
+   ```
+
+5. The ABI tier from .NET and Python.
+
+   ```bash
+   python tests/abi/run.py
+   ```
+
+6. The base run, with 0.3.0-preview built from its tag in a worktree of its
+   own and judged by `main`'s harness; `inspect` is left out because
+   0.3.0-preview writes no `damaged_pages`, and a miss on a row batch C
+   moved is expected there.
+
+   ```bash
+   git worktree add ../pdfkit-v0.3.0 v0.3.0-preview
+   (cd ../pdfkit-v0.3.0 && cmake --preset mingw-release && cmake --build --preset mingw-release)
+   python tests/dataset/run.py --pdfkit ../pdfkit-v0.3.0/out/mingw-release/pdfkit.exe --checks open,text,images,redact,metadata,write,select,redact_text,set_metadata,redact_images,find --runs 2 --run-id base-0.3.0
+   python tests/pdfium/text_agreement.py --run base-0.3.0 --hidden --pdfkit ../pdfkit-v0.3.0/out/mingw-release/pdfkit.exe
+   ```
+
+7. The candidate run on `main`, every column judged, then each file's F1
+   compared with the base: every file that agrees less than at
+   `base-0.3.0` is examined by the rule of `OPEN-QUESTIONS.md` §1.4 (a drop
+   is never accepted as small). A hang of `dccc-0129` is the timing of
+   §15.4. An `office` row that fails `expect_damage` names a damaged page
+   the manifest does not hold: record it with
+   `python tests/dataset/run.py --id <ids> --write-damage --runs 1` and
+   commit the manifest.
+
+   ```bash
+   python tests/dataset/run.py --runs 2 --run-id cand-0.4.0
+   python tests/pdfium/text_agreement.py --run cand-0.4.0 --hidden
+   ```
+
+   The comparison reads `dataset/reports/base-0.3.0/agreement.tsv` beside
+   `dataset/reports/cand-0.4.0/agreement.tsv`, file by file.
+
+8. The sanitizer pass over the dataset (`CLAUDE.md` §8.1), with the
+   `clang-sanitize` build of step 4; any AddressSanitizer or
+   UndefinedBehaviorSanitizer report fails it.
+
+   ```bash
+   python tests/dataset/run.py --sanitizer --runs 1 --timeout-scale 5 --run-id cand-0.4.0-asan
+   ```
+
+9. The PDFium tier over the candidate run (`CLAUDE.md` §8.1), then the
+   release gate's scripts over it (`build-10.md` §9 item 22).
+   `image_agreement.py` takes `--out` rather than `--run`: `phase10.py`
+   reads the census from the run's `image-census` folder and the listing
+   from its `image-listing` folder.
+
+   ```bash
+   python tests/pdfium/image_agreement.py --out dataset/reports/cand-0.4.0/image-census
+   python tests/pdfium/image_agreement.py --out dataset/reports/cand-0.4.0/image-listing --listing
+   python tests/pdfium/metadata.py --run cand-0.4.0
+   python tests/pdfium/compare.py --run cand-0.4.0 --check write,select,text,redact
+   python tests/pdfium/images.py --run cand-0.4.0
+   python tests/pdfium/leak.py --run cand-0.4.0 --metadata --images
+   python tests/dataset/gates/phase7.py --run cand-0.4.0
+   python tests/dataset/gates/phase8.py --run cand-0.4.0
+   python tests/dataset/gates/phase9.py --run cand-0.4.0
+   python tests/dataset/gates/phase10.py --run cand-0.4.0
+   ```
+
+10. The panel tier. `--record` runs once, to write the Windows pins that
+    read "to record on the laptop" into `tests/panel/members.tsv` (a commit
+    of its own); `--verify` then re-hashes every member. The collection and
+    `phase6_panel.py` read the census from the run's `images` folder, so
+    the census runs once more into it (PDFium's answers come from the
+    cache); the CMYK
+    re-decision is the re-measure `OPEN-QUESTIONS.md` §3.2 recommends,
+    with MuPDF converting through ICC.
+
+    ```bash
+    python tests/panel/fetch.py --record
+    python tests/panel/fetch.py --verify
+    python tests/pdfium/image_agreement.py --out dataset/reports/cand-0.4.0/images
+    python tests/panel/collect.py --census cand-0.4.0 --run-id cand-0.4.0
+    python tests/dataset/gates/phase5_panel.py --run cand-0.4.0
+    python tests/dataset/gates/phase6_panel.py --run cand-0.4.0
+    python tests/panel/redecide.py cmyk --run cand-0.4.0
+    ```
+
+11. The package, built twice around a clean rebuild, then its import table;
+    the ARM64 package is built and checked by the release workflow on its
+    hosted runner.
+
+    ```bash
+    python build/package.py --verify
+    python build/check_artefact.py
+    ```
+
+**Landing.** When every step passes, one commit on `main` closes phases 5
+and 6 (`docs/change-01.md` D8, `docs/change-01c.md` Appendix C entry 10): it
+moves `build-5.md` and `build-6.md` to `docs/archive/build/` with `git mv`,
+moves `CLAUDE.md` §1's build-plan row and §2's Build file cells of rows 2,
+3.1 and 3.2, re-points every citation `build/check_paths.py` then names,
+records the laptop's numbers in both plans' §9, and carries the trailers
+`Build-Phase: 5 done` and `Build-Phase: 6 done`. A step that fails keeps
+the phases open, with its numbers in the plan and a question in
+`OPEN-QUESTIONS.md`. Then the tag v0.4.0-preview is the owner's to choose
+and push; `.github/workflows/release.yml` builds and attaches both
+architectures' zips (`CLAUDE.md` §10).
+
+**doc-anonymiser after the tag** (`doc-anonymiser-for-.NET:docs/change-19.md` §14, M1 to M7,
+holds each step's expectation): move the pin to 0.4.0-preview
+(`doc-anonymiser-for-.NET:build/pdfkit.lock`, `PdfKitVersion`, the Linux build script's tag,
+`PdfExportSession.SkipReason`, its `CLAUDE.md` §7 row and §8 sizes, the
+notices) and fetch, rewriting the sentences that promise the next library
+release and revisiting the below-ABI-3 refusal of a PDF copy outside
+pseudonymisation; re-record every recipe and see `FixtureDriftTests` green
+on the Windows DLL and the Linux build; add a damaged builder specimen with
+its recipes and move `DamagedPagesTests` onto it; import `opf-0019.pdf` on
+Windows and walk the warning, Drop, Keep, the run and the copy; run the
+window harness over the Import step at 1280 by 800; then its unit,
+integration and deep tiers and the publish job, re-recording the size
+budgets if the DLL moved. Its decisions to confirm are in its FEEDBACK-19.
 
 ## 16. Rollback
 

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | batches A and B merged into `main`; batch C done on its branch, awaiting the owner's landing merge (Appendix C entry 26) |
+| Status | done on Linux: batches A, B and C merged into `main` (§18); phases 5 and 6 close on the owner's laptop gates |
 | Owner approval | decided by the owner on 2026-10-28 (`OPEN-QUESTIONS.md` §2.2 and §2.3 on branch chore/owner-answers, and the brief of that date); the author's choices flagged in §7 are for the owner to confirm or flip before launch |
 | Depends on | nothing |
 | Supersedes | nothing |
@@ -693,6 +693,26 @@ This parent is not launched by itself. Each batch file carries its own prompt:
 > the launcher names and follow its own opening prompt in its §17.
 
 Before batch A starts, the owner has done the five items of §16.
+
+---
+
+## 18. Handover
+
+The three batches ran on Linux (Appendix C) and are merged into `main`:
+batch A at 7d62575 (`Change-Batch: 01a done`), batch B at 9518fa0
+(`Change-Batch: 01b done`) and batch C, with the owner's word cuts, at
+7dd86ef (`Change-Batch: 01c done`). On run `panel-c-full2` the reading gate
+under the panel passes at 44 of 890 decided files against pdfkit (4.94 %,
+median 1.0; the literal rule 88 of 890; batch B 50 of 893), and the bitonal
+gate at 489 of 489 decided images; the old PDFium script counts 46 of 899
+below 0.90, from 55. The unit tier holds 765 cases on the merged `main`,
+under `linux-debug` and `linux-release`.
+
+No merge carries `Build-Phase: 5 done` or `Build-Phase: 6 done` yet: the
+merge gate (§0.4) needs the Windows builds, so the phases close on the
+laptop. The laptop commands, the landing commit that carries both trailers
+and what was not measured on Linux are in `docs/change-03.md` §15, the
+programme's handover.
 
 ---
 
