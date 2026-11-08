@@ -484,7 +484,7 @@ question (`OPEN-QUESTIONS.md` §3.2); `tests/panel/text_causes.tsv` and
 known gaps by `OPEN-QUESTIONS.md` §1.5.
 
 Batch C's result (on Linux, `docs/change-01c.md` Appendix C; run
-`panel-c-full`): the reading gate under the panel passes at 44 of 890 decided
+`panel-c-full2`): the reading gate under the panel passes at 44 of 890 decided
 files against pdfkit (4.94 %, median 1.0; the literal rule 88 of 890), from
 50 of 893; no file that agreed at batch B counts against pdfkit; the bitonal
 gate passes at 489 of 489. Fixed or no longer counted against pdfkit:

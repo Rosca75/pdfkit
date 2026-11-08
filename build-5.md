@@ -400,12 +400,12 @@ the `text` column of the manifest is reverted with the merge.
     (`docs/change-01.md` Appendix C entry 22).
 
 22. **The reading gate under the panel after batch C** (`docs/change-01c.md`,
-    measured on Linux, run `panel-c-full`: batch C's tip merged with
-    `main` at c7601ae, `linux-release`, 961 files, two runs identical, no
-    crash, no hang under `--timeout-scale 3`, 685 s). Commands: `python
-    tests/dataset/run.py --runs 2 --timeout-scale 3 --run-id panel-c-full`,
+    measured on Linux, run `panel-c-full2`: batch C's tip merged with
+    `main` at 2305b1b, `linux-release`, 961 files, two runs identical, no
+    crash, no hang under `--timeout-scale 3`, 681 s). Commands: `python
+    tests/dataset/run.py --runs 2 --timeout-scale 3 --run-id panel-c-full2`,
     `python tests/pdfium/text_agreement.py --run panel-c-full --hidden`,
-    `python tests/dataset/gates/phase5_panel.py --run panel-c-full`.
+    `python tests/dataset/gates/phase5_panel.py --run panel-c-full2`.
     Numbers: 912 files judged, 890 decided, 22 undecided (2.41 %); median
     1.0; **44 of 890 against pdfkit (4.94 %): the gate passes under the
     panel**, from item 21's 50 of 893 (5.60 %); the literal rule 88 of 890

@@ -136,8 +136,8 @@ TEST_CASE("two runs of large glyphs on baselines a fifth of their size apart are
 TEST_CASE("subscripts drawn across their line's letters stay in the line") {
   // dccc-0128's "m1 x m2": the subscripts "1" and "2" at 7 pt, one run 2 pt
   // below the 10 pt "m x m", each over a letter of it and it over them.
-  const PageText page = read(
-      "BT /F1 10 Tf 100 700 Td (m\327m) Tj ET BT /F1 7 Tf 109 698 Td [(1) -444 (2)] TJ ET");
+  const PageText page =
+      read("BT /F1 10 Tf 100 700 Td (m\327m) Tj ET BT /F1 7 Tf 109 698 Td [(1) -444 (2)] TJ ET");
   REQUIRE(page.blocks.size() == 1U);
   CHECK(page.blocks.front().lines.size() == 1U);
 }

@@ -402,7 +402,8 @@ whether the landing merge closes phase 5 or 6.
     `Build-Phase: 6 done`; their §9 holds the numbers.
 11. **No ABI or JSON shape moves** (`docs/ABI.md` unchanged): the rung of a
     restated code is `glyph_name`, a value the JSON already carries.
-12. **AC6 on Linux**, run `panel-c-full` (two runs) against the Linux
+12. **AC6 on Linux**, run `panel-c-full2` (two runs, `main` at 2305b1b
+    merged) against the Linux
     baseline `linux-base-09b8d78` (parent Appendix C entry 12) and, for the
     rows that baseline did not measure, against `main` at c7601ae run once
     with the same scripts (`c-main-base`, deleted after the comparison).
@@ -417,12 +418,15 @@ whether the landing merge closes phase 5 or 6.
     `office` rows and `mutate-0048`), image treatments and metadata rewrites
     equal `main`'s row for row; leaks: images 0, metadata 0, and in text
     the two words of `OPEN-QUESTIONS.md` §1.3 that PDFium reads on
-    damaged pages of opf-0019 and mutate-0046, on `main` too. Moved, all
-    from the text the redaction jobs pick their words from: codes no rung
-    reads 87,677 of 16,562,502 (0.53 %) from 88,787 (0.54 %); placeholders
-    found in PDFium's text 9,452 of 9,499 (99.51 %) from 9,385 of 9,434
-    (99.48 %); pages stable outside the rectangles 8,014 of 8,055 from
-    8,010 of 8,051 (99.49 % both); located outputs one occurrence fewer in
-    PDFium's text 413 of 413 from 411 of 411; occurrence-form matches 213
-    of 213 from 214 of 214. The ABI tier passes from .NET and Python
+    damaged pages of opf-0019 and mutate-0046, on `main` too. Pages
+    stable outside the rectangles 8,010 of 8,051 (99.49 %), as on `main`.
+    Moved, from the text the redaction jobs pick their words from and the
+    placeholder fitting's word breaks: codes no rung reads 87,734 of
+    16,562,502 (0.53 %) from 88,787 (0.54 %); placeholders found in
+    PDFium's text 10,293 of 10,340 (99.55 %) from 9,385 of 9,434
+    (99.48 %); located outputs one occurrence fewer in PDFium's text 413 of
+    413 from 411 of 411; occurrence-form matches 213 of 213 from 214 of
+    214. After review the gate ran again as `panel-c-full2` (the first,
+    `panel-c-full`, deleted): the reading and bitonal numbers equal the
+    first run's. The ABI tier passes from .NET and Python
     (31 files, 717 calls each).
