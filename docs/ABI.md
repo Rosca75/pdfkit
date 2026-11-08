@@ -194,7 +194,7 @@ On success `*out_doc` receives the handle and `out` the open report:
 |---|---|
 | `version` | the header's version, raised by a later catalog `/Version`; empty when no header was found |
 | `page_count` | the pages in tree order |
-| `encryption` | `null` for an unencrypted file; otherwise the standard handler's version (`/V`), revision (`/R`), method (`RC4`, `AESV2`, `AESV3` or `Identity`), key length in bits and whether the metadata is encrypted |
+| `encryption` | `null` for an unencrypted file; otherwise the standard handler's version (`/V`), revision (`/R`), method (`RC4`, `AESV2`, `AESV3` or `Identity`), key length in bits (the key held; for an `Identity` handler whose `/U` refuses the empty password, the `/Length` written, 0 when absent) and whether the metadata is encrypted |
 | `repairs` | every recovery the file needed, each named once, in the order met; at most 100, the last line then counting the rest; empty for a file read as written |
 | `warnings` | the warnings of `docs/DESIGN.md` chapter 19 met while opening, each with `code`, `message` and `page` (`null` when it concerns no page); when `repairs` is not empty the first is `repaired`, which also carries the `reasons` |
 
@@ -263,7 +263,7 @@ means for the caller's work is the caller's.
 | `class` | one of the classes below |
 | `fault` | the decoder's, the content lexer's or the interpreter's message for the first fault of that class |
 | `count` | the faults of that class in that stream (the unknown operators of one piece are one entry) |
-| `decoded_bytes` | the bytes the stream decoded to (0 for a stream that is missing or external; for `missing_object`, the bytes of the stream that drew it) |
+| `decoded_bytes` | the bytes the stream decoded to (0 for a stream that is missing, external or encrypted under a key pdfkit does not hold; for `missing_object`, the bytes of the stream that drew it) |
 | `unread_bytes` | for a filter's class, the bytes of the faulting filter's input it did not read; for a lexer's class, the content bytes the losses of that class took from the drawing, summed; `null` when not known |
 
 | `class` | What met it | What is lost |
@@ -279,7 +279,7 @@ means for the caller's work is the caller's.
 | `predictor` | predictor parameters no predictor defines, or a PNG row of an unknown type | the bytes are read as they came, unpredicted |
 | `unsupported_filter` | a filter the content cannot be read through: an image codec or a filter no reader defines | the whole stream, lexed still encoded |
 | `external_stream` | the stream's data is an external file (`/F`), which pdfkit never reads | the whole stream |
-| `encrypted_stream` | the stream is encrypted under a crypt filter its own `/Crypt` filter names, whose key needs a user password: the handler's `/StmF` and `/StrF` are `/Identity` and its `/U` refuses the empty password, so pdfkit holds no file key (with the empty password accepted, the stream is decrypted and read) | the whole stream |
+| `encrypted_stream` | the stream is encrypted under a crypt filter its own `/Crypt` filter names, whose key needs a user password (the handler's `/StmF` and `/StrF` are `/Identity` and its `/U` or `/Perms` refuses the empty password, so pdfkit holds no file key; with the empty password accepted, the stream is decrypted and read), or under a name `/CF` does not define | the whole stream |
 | `missing_stream` | a `/Contents` entry that resolves to no stream | whatever it drew |
 | `missing_object` | a `Do` whose XObject resolves to no stream (a name the resources do not hold, or an object the file lacks), which also gives `resource_missing` | whatever the object drew, a form's text included |
 | `unknown_operator` | a keyword the content operators do not hold, outside `BX` and `EX`, with an operand that could have carried or decided text (a string, an array, a name, a dictionary): a corrupted `Tj`, `Tf` or `Do` | the operator and its operands draw nothing |
@@ -756,9 +756,10 @@ the folding as in §4.11 (nothing folded unless asked). Finding a string is the 
 it) or `stream` (the decoded bytes of a stream or of a content stream's string
 operands, `object` naming it); `page` is null for a surface outside the pages.
 `not_searched` lists each stream no search could read, because it is
-encrypted under a crypt filter whose key needs a user password (the
-`encrypted_stream` of §4.4.1): its `object` and the `page` whose content it
-is (`null` otherwise), so a count of 0 never stands for a stream that was not
+encrypted under a crypt filter whose key needs a user password, or under a
+crypt filter `/CF` does not define (the `encrypted_stream` of §4.4.1): its
+`object` and the `page` whose content it is (`null` otherwise), the XMP
+packet first, then the other streams in object-number order, so a count of 0 never stands for a stream that was not
 read. `damaged_pages` (§4.4.1) names every page of the bytes whose text could not be
 read in full, whatever strings were given (none included), because a string
 may survive there where no reader of pdfkit's sees it; a limit met on a page

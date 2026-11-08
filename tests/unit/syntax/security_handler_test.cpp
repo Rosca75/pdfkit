@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -277,10 +278,17 @@ TEST_CASE(
     "a stream's own crypt filter under an /Identity handler decrypts with the empty password") {
   // /StmF and /StrF /Identity, and a stream whose own /Crypt filter names
   // /StdCF: the empty user password gives the file key when /U accepts it.
-  for (const int revision : {4, 6}) {
+  // AESV2 and RC4 (/V2) under revision 4, AESV3 under revisions 5 and 6.
+  const std::vector<std::tuple<int, PdfEncryptor::Method, int>> cases{
+      {4, PdfEncryptor::Method::aes, 128},
+      {4, PdfEncryptor::Method::rc4, 128},
+      {5, PdfEncryptor::Method::aes, 256},
+      {6, PdfEncryptor::Method::aes, 256}};
+  for (const auto& [revision, method, bits] : cases) {
     CAPTURE(revision);
     PdfEncryptor::Spec spec;
     spec.revision = revision;
+    spec.method = method;
     spec.stream_filter = "Identity";
     spec.string_filter = "Identity";
     Fixture made = fixture();
@@ -291,7 +299,36 @@ TEST_CASE(
     CHECK(file.find("BT (Confidential) Tj ET") == std::string::npos);
     auto document = open_document(file);
     CHECK(decoded(*document, own) == "BT (Confidential) Tj ET");
-    CHECK(require_value(document->security()).description().method == "Identity");
+    const auto description = require_value(document->security()).description();
+    CHECK(description.method == "Identity");
+    // The key held is the one reported.
+    CHECK(description.key_bits == bits);
+  }
+}
+
+TEST_CASE("a stream an /Identity handler cannot decrypt is locked, never refused") {
+  // A /Perms that fails its check under the empty password, and a /Crypt
+  // filter whose name /CF does not define: either way the data is not read
+  // as clear.
+  for (const bool corrupt_perms : {true, false}) {
+    CAPTURE(corrupt_perms);
+    PdfEncryptor::Spec spec;
+    spec.revision = 6;
+    spec.corrupt_perms = corrupt_perms;
+    spec.stream_filter = "Identity";
+    spec.string_filter = "Identity";
+    Fixture made = fixture();
+    const std::uint32_t own = made.builder.add_stream(
+        corrupt_perms ? "/Filter /Crypt /DecodeParms << /Name /StdCF >>"
+                      : "/Filter /Crypt /DecodeParms << /Name /Undefined >>",
+        "BT (Confidential) Tj ET");
+    made.builder.encrypt(spec);
+    auto document = open_document(made.builder.build());
+    const pdfkit::syntax::Object value = document->object({own, 0});
+    REQUIRE(value.stream() != nullptr);
+    const auto result = document->decode(*value.stream());
+    CHECK(result.locked);
+    CHECK(result.bytes.empty());
   }
 }
 

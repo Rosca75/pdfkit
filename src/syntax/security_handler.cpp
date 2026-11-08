@@ -5,9 +5,10 @@
 // algorithm numbers are those of ISO 32000-1 section 7.6.3 and ISO 32000-2
 // section 7.6.4 (read in the design record's sources); the behaviour follows
 // pdf.js's crypto.js (read) where the specification leaves a choice: a bad
-// AES pad keeps the bytes, AES data shorter than one block decrypts to
-// nothing, and a crypt filter /Length is read as bits when above 32 and as
-// bytes otherwise.
+// AES pad keeps the bytes, and AES data shorter than one block decrypts to
+// nothing. The key length of revisions 2 to 4 is the /Encrypt dictionary's
+// /Length in bits (40 when absent, and always for revision 2), read as a
+// multiple of 8 from 40 to 128; a crypt filter's own /Length is not read.
 
 #include "syntax/security_handler.hpp"
 
@@ -324,7 +325,10 @@ SecurityHandler SecurityHandler::open(const Dictionary& encrypt, const std::stri
     } catch (const platform::Error&) {
       handler.file_key_.clear();
     }
-    description.key_bits = static_cast<int>(encrypt.get("Length").integer().value_or(0));
+    // The bits of the key held, or the /Length written when none is.
+    description.key_bits = handler.file_key_.empty()
+                               ? static_cast<int>(encrypt.get("Length").integer().value_or(0))
+                               : static_cast<int>(handler.file_key_.size() * 8);
     handler.perms_mismatch_ = false;
     return handler;
   }
@@ -337,7 +341,7 @@ std::vector<std::byte> SecurityHandler::apply(Method method, Object::Reference o
   if (method == Method::identity) {
     return {data.begin(), data.end()};
   }
-  if (file_key_.empty()) {
+  if (method == Method::undefined || file_key_.empty()) {
     // A handler whose /StmF and /StrF are /Identity and whose /U refuses the
     // empty password has no file key, so data under its other crypt filters
     // is locked and not read (locked() names it).
@@ -402,13 +406,17 @@ std::optional<SecurityHandler::Method> SecurityHandler::stream_method(
         return method;
       }
     }
+    // A name /CF does not define: the data is encrypted under a filter
+    // nothing here describes, so it is locked rather than read as clear.
+    return Method::undefined;
   }
   return stream_method_;
 }
 
 bool SecurityHandler::locked(const Dictionary& dictionary) const {
   const std::optional<Method> method = stream_method(dictionary);
-  return method && *method != Method::identity && file_key_.empty();
+  return method &&
+         (*method == Method::undefined || (*method != Method::identity && file_key_.empty()));
 }
 
 std::vector<std::byte> SecurityHandler::decrypt_stream(Object::Reference owner,

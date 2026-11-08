@@ -328,3 +328,8 @@ Revert the merge on `main`. Nothing is released by this order.
     49 refused files skipped): no file of the dataset holds a stream under a
     locked crypt filter or an `R` that takes another operator's operands.
     Its one failure is `mutate-0048`'s self-check refusal of entry 22.
+24. A stream whose own `/Crypt` filter names a filter `/CF` does not define is
+    locked under any handler (never read as clear), the key length reported
+    for an `/Identity` handler is the key held when one is derived, and the
+    tests cover an RC4 (`/V2`) crypt filter, revision 5, and a `/Perms` that
+    fails under the empty password (locked, never refused).

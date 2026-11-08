@@ -29,7 +29,9 @@ namespace pdfkit::syntax {
 
 class SecurityHandler {
  public:
-  enum class Method : std::uint8_t { identity, rc4, aes128, aes256 };
+  // undefined: a stream's own /Crypt filter names a filter /CF does not
+  // define, whose data is never read as clear.
+  enum class Method : std::uint8_t { identity, rc4, aes128, aes256, undefined };
 
   // What the open report and inspect say about the encryption.
   struct Description {

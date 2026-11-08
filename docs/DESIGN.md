@@ -186,7 +186,11 @@ against editing and not against reading, and trying passwords is out of scope.
   is decrypted. When `/U` refuses it there is no file key, and such a stream
   is locked: it decodes to nothing, marked so, its page is named
   `encrypted_stream` (§19.1) and `pdfkit_check` lists it in `not_searched`,
-  never refusing the file and never reading the stream as empty.
+  never refusing the file and never reading the stream as empty. A stream
+  whose own `/Crypt` filter names a filter `/CF` does not define is locked
+  likewise, under any handler, rather than read as clear. A write copies a
+  locked stream as empty data with its `/Crypt` filter dropped, since the
+  output is unencrypted, so its page's `copied_as_is` reads no.
 - **Refusals**: a non-empty user password, or a revision 5 or 6 `/Perms` that
   does not decrypt, is `password_required`; a handler other than `/Standard` (a
   public-key or vendor handler), or a revision, version, crypt filter or method
