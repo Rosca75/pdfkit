@@ -369,8 +369,10 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
     if kind not in ("pages", "image_pixels"):
         return readers.unsupported(NAME, kind)
     with readers.scratch() as folder:
-        result = POOLS.get("panel").ask({"path": str(path), "kind": kind, "request": request,
-                                         "out": str(folder)}, timeout)
+        ask = {"path": str(path), "kind": kind, "request": request, "out": str(folder)}
+        result = POOLS.get("panel").ask(ask, timeout)
+        if result.get("error") in ("timeout", "crash"):
+            result = readers.repeated(result, POOLS.get("panel").ask(ask, 2 * timeout))
         for entry in (result.get("images") or {}).values():
             if "samples_file" in entry:
                 entry["samples"] = Path(entry.pop("samples_file")).read_bytes()

@@ -14,9 +14,11 @@
 # transient failure, and the scratch folder each answer works in.
 #
 # Failure causes: `timeout` (no answer within the limit) and `crash` (killed by
-# a signal) say nothing about the file and are never cached; `refused` (the
-# member's own non-zero exit with its message) is the member's answer about the
-# file and is cached like a success (answers.py).
+# a signal) are asked once more at twice the limit; a failure that does not
+# repeat says nothing about the file and is never cached. `refused` (the
+# member's own non-zero exit with its message, or the same timeout or crash
+# twice, marked `repeated`) is the member's answer about the file and is cached
+# like a success (answers.py).
 
 from __future__ import annotations
 
@@ -220,8 +222,28 @@ def scratch():
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def run(command: list[str], timeout: float, cwd: Path | None = None) -> dict:
-    """Runs one member command: {"exit", "stdout", "stderr"} or a transient failure."""
+def run(command: list[str], timeout: float, cwd: Path | None = None, retry: bool = True) -> dict:
+    """Runs one member command: {"exit", "stdout", "stderr"}, a transient failure, or, when the
+    command times out or crashes again on its one retry (at twice the limit), the member's
+    refusal of the file with the repeated failure named."""
+    first = _run_once(command, timeout, cwd)
+    if not retry or not failed(first):
+        return first
+    second = _run_once(command, 2 * timeout, cwd)
+    return repeated(first, second)
+
+
+def repeated(first: dict, second: dict) -> dict:
+    """The outcome of a retry after a transient failure: the retry's own result when it finished
+    or failed differently; a refusal when it failed the same way, because a member that crashes
+    or hangs on a file twice cannot read it, and asking it at every collection would never end."""
+    if not failed(second) or second.get("error") != first.get("error"):
+        return second
+    detail = f"{first['error']} twice: {first.get('detail')}; then {second.get('detail')}"
+    return {"ok": False, "error": "refused", "detail": detail, "repeated": first["error"]}
+
+
+def _run_once(command: list[str], timeout: float, cwd: Path | None) -> dict:
     STARTED.add()
     try:
         proc = subprocess.run(command, capture_output=True, timeout=timeout, cwd=cwd,
@@ -229,7 +251,7 @@ def run(command: list[str], timeout: float, cwd: Path | None = None) -> dict:
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "timeout", "detail": f"no answer within {timeout:g} s"}
     except OSError as err:
-        return {"ok": False, "error": "crash", "detail": f"could not start {command[0]}: {err}"}
+        return {"ok": False, "error": "worker", "detail": f"could not start {command[0]}: {err}"}
     if proc.returncode < 0:
         return {"ok": False, "error": "crash", "detail": f"killed by signal {-proc.returncode}",
                 "stderr": tail(proc.stderr)}

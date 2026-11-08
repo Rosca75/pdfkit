@@ -297,4 +297,82 @@ owner must be told:** the five pre-launch items of the parent's §16.
 
 ## Appendix C — Deviations recorded by this batch
 
-1. *(none yet)*
+Batch A ran on the Linux host (`docs/change-01.md` Appendix C holds the
+departures every Linux batch shares, entries 13 to 20 this batch's). Its own:
+
+1. **The tests were written beside the first adapters**, not before them
+   (§9.6 step 2), and seen red afterwards by a seeded fault: with
+   `answers.keepable` answering true for everything, `test_answers.py` fails.
+2. **A timeout or a crash is asked once more, at twice the limit**, and kept
+   as the member's refusal, marked `repeated`, when it fails the same way
+   again (`readers.run`, `readers.repeated`); a failure that does not repeat
+   stays transient and is never cached. §9.2 keeps every timeout and crash
+   out of the cache, which leaves a member that always crashes on a file
+   asked at every collection, and AC1's warm run could never start no
+   process. Seen on the full run: pdf-extract overflows its stack on
+   pdfpig-0015 and `qpdf --check` crashes on qpdf-0060, twice each (kept as
+   refusals); pdf_oxide on opf-0012 (464 pages, 69 s alone) and PDFium's
+   pixels of nicar25-0001, -0004 and -0006 answer on the retry.
+3. **A pixel answer's limit adds 2 s per image asked** to the 30 s per
+   started block of 200 pages, because one answer decodes every wanted image
+   of a file (up to 156).
+4. **Images are named by object number, and PDFium is aligned through two
+   more kinds**: QPDF's `raw_streams` (each object's stored bytes, hashed)
+   and Poppler's `image_list` (each page's images in draw order). Two objects
+   can hold the same bytes under different dictionaries on one page
+   (synth-0263, synth-0265, qpdf-0026), and PDFium names no object number, so
+   its k-th image object of a page is the k-th the order names when the
+   counts agree; otherwise an object is matched by its bytes alone or marked
+   `ambiguous`. On the full run PDFium answers 636 of the 669 images, 8
+   `ambiguous` and 24 `not_found`; Poppler 643 (25 `not_found`, 1
+   `not_written`); MuPDF 669.
+5. **PDFium's pixels are `FPDFImageObj_GetRenderedBitmap` at the image's own
+   size**: the image object's matrix is set to `[w 0 0 h 0 0]` first, so the
+   bitmap is native; it is composited over white. Every member's RGB image
+   whose pixels are all neutral is kept as gray, so a bilevel image is one
+   sample per pixel whichever member wrote it.
+6. **Poppler keeps `image_pixels` though it fails one pixel fact**: it
+   leaves `/Decode` unapplied on stencil masks (synth-0263 object 3 is
+   written as stored) while it applies it on images (synth-0265 object 4).
+   §9.5 removes the capability from a member that fails a fact; batch A
+   narrows that to the class that fails, so the judge makes Poppler abstain
+   on a stencil mask and lets it vote on the rest. Polarities differ too:
+   PDFium paints a stencil black on white, Poppler and MuPDF write a mask's
+   sample 1 black (`tests/panel/members.tsv`).
+7. **PDFium's `pages` kind comes from its own worker**, count and sizes in one
+   answer, instead of the count from the cached probe; its `text` is the
+   probe's, read from `build/cache/pdfium-results/` and never copied.
+8. **MuPDF's text keeps the pages it wrote when it exits non-zero** (a page
+   it stops on, "too many syntax errors"); it is a refusal only when no page
+   was written.
+9. **The child processes counted are the members'.** The pin check's
+   `dpkg-query` runs at every collection and is not counted.
+10. **`CLAUDE.md` §9 names `tests/panel/fetch.py`** among the network check's
+    exemptions, beside the §3.5 line §9.6 step 8 asks for, because the
+    charter's list of exemptions is otherwise wrong.
+11. **The smoke set** (`tests/panel/smoke.tsv`, 60 files) is the 21 `pdfkit`
+    rows of `tests/pdfium/text_causes.tsv`, its first 10 `pdfium` and 4
+    `legitimate` rows, qpdf-0026, synth-0263 and synth-0265, 10 files with
+    DeviceCMYK images and 12 clean files, one per text-layout tag
+    (`pages_multi` excepted). It holds 24 bitonal and 110 CMYK-class images,
+    on which the pixel facts are measured.
+12. **The results.** Per member and kind, answered plus refused equals the
+    files the kind applies to (961, or the 70 files with wanted images), with
+    no transient answer left; the second full collection read every answer
+    from the cache in 3.2 s and started no child process (run
+    `panel-a-full-warm`). `python tests/panel/fetch.py --verify` agrees with
+    `tests/panel/members.tsv` and `build/toolchain.md` §7 for every Linux
+    member. The panel's 34 tests pass, as do the unit tier and
+    `python3 build/check.py --fast`; `--full` is the laptop's step.
+
+What batch B reads: `answers.cached_answer(readers.load(<member>), path,
+kind, **request)` for `text` (`{"ok", "pages": [{"text"}]}`), `pages`
+(`{"ok", "count", "pages": [{"size", "rotate", "media", "crop"}]}`, the keys
+each member gives) and `structure`; for `image_pixels`, the request each file
+was asked with is in `dataset/reports/panel-a-full/panel/collect.json`
+(`pixel_requests[<id>]["request"]` for Poppler and MuPDF, `["pdfium"]` for
+PDFium, or rebuilt by `collect.wanted_images` and `collect.pixel_request`),
+and each image's answer is `{"width", "height", "layout", "blob"}` or
+`{"error"}`, its samples read by `answers.read_blob(answers.member_folder(name,
+version, digest), "image_pixels", blob)`. Any answer that is not `ok` is an
+abstention.

@@ -145,11 +145,27 @@ class RunTest(unittest.TestCase):
         refused = readers.run([PYTHON, "-c", "import sys; sys.stderr.write('Syntax Error'); sys.exit(1)"], 10)
         self.assertEqual(poppler.finished_or_refused(refused),
                          {"ok": False, "error": "refused", "detail": "Syntax Error", "exit": 1})
-        slow = readers.run([PYTHON, "-c", "import time; time.sleep(10)"], 0.3)
+        slow = readers.run([PYTHON, "-c", "import time; time.sleep(10)"], 0.3, retry=False)
         self.assertEqual(slow["error"], "timeout")
-        killed = readers.run([PYTHON, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"], 10)
+        kill = [PYTHON, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"]
+        killed = readers.run(kill, 10, retry=False)
         self.assertEqual(killed["error"], "crash")
         self.assertEqual(poppler.finished_or_refused(killed)["error"], "crash")
+
+    def test_a_timeout_or_crash_that_repeats_is_a_refusal(self):
+        before = readers.started()
+        slow = readers.run([PYTHON, "-c", "import time; time.sleep(10)"], 0.3)
+        self.assertEqual((slow["error"], slow["repeated"]), ("refused", "timeout"))
+        self.assertIn("0.6 s", slow["detail"])
+        killed = readers.run([PYTHON, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"], 10)
+        self.assertEqual((killed["error"], killed["repeated"]), ("refused", "crash"))
+        self.assertEqual(readers.started(), before + 4)
+
+    def test_a_failure_that_does_not_repeat_stays_transient(self):
+        crash = {"ok": False, "error": "crash", "detail": "killed by signal 11"}
+        self.assertEqual(readers.repeated(crash, {"exit": 0, "stdout": b"", "stderr": b""})["exit"], 0)
+        timeout = {"ok": False, "error": "timeout", "detail": "no answer within 60 s"}
+        self.assertEqual(readers.repeated(crash, timeout), timeout)
         self.assertIn("timeout", readers.TRANSIENT)
         self.assertIn("crash", readers.TRANSIENT)
         self.assertNotIn("refused", readers.TRANSIENT)

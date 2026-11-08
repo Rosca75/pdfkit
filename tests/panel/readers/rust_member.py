@@ -7,7 +7,7 @@
 # (the crates print diagnostics of their own on standard output). Exit status 0
 # is an answer, 2 the crate's refusal of the file with its message in the JSON;
 # a binary killed by a signal (a stack overflow aborts the process) is a crash,
-# which the cache never keeps.
+# asked once more and kept as a refusal only when it repeats (readers.run).
 
 from __future__ import annotations
 

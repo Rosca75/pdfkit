@@ -184,7 +184,9 @@ def one_file(row: dict, members: list, kinds: tuple, wanted: list[dict], tally: 
             if kind == "image_pixels":
                 request = ordered if member.NAME == "pdfium" else pixel
             started = time.monotonic()
-            answer = answers.cached_answer(member, path, kind, timeout=timeout,
+            # A pixel answer decodes every image asked: 30 s per block of pages and 2 s per image.
+            limit = timeout + 2.0 * len(wanted) if kind == "image_pixels" else timeout
+            answer = answers.cached_answer(member, path, kind, timeout=limit,
                                            stats=tally.stats[(member.NAME, kind)], **request)
             tally.add(member.NAME, kind, row["id"], answer, time.monotonic() - started)
 

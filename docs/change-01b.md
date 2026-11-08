@@ -29,6 +29,15 @@ Inherited from the parent. Facts the batch needs beside it:
   parent's D7, and `tests/panel/smoke.tsv` is the smoke set. Read batch A's
   §C first: a member it could not fetch is absent, and every rule below counts
   the voters that are present.
+- **What batch A left on Linux** (`docs/change-01a.md` Appendix C entries 4
+  to 6 and its closing paragraph): the shapes of each kind's answer and how
+  to read an image's samples; the image requests of each file in
+  `dataset/reports/panel-a-full/panel/collect.json`; Poppler abstains on
+  stencil masks, whose `/Decode` it leaves unapplied; PDFium paints a stencil
+  black on white where Poppler and MuPDF write a mask's sample 1 black, so
+  `pixel_verdict` compares a stencil by what it paints; MuPDF's Linux CMYK
+  vote carries no ICC (`docs/change-01.md` Appendix C entry 17); a refusal
+  marked `repeated` is a member that timed out or crashed twice on the file.
 - **pdfkit's side of each comparison** comes from a dataset run, exactly as
   the old gates read it: the text is `text.text` of each outcome
   (`tests/pdfium/text_agreement.py` `score_run`, `:64-97`, says which blocks
