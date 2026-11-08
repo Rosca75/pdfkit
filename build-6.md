@@ -423,6 +423,21 @@ to their phase-1 stubs. Nothing persisted changes shape.
     conversion holds a majority and none is named closer than PDFium's,
     the one pdfkit sits on.
 
+19. **The bitonal gate under the panel after batch C** (`docs/change-01c.md`,
+    measured on Linux, run `panel-c-full2`, batch C's tip merged with `main`
+    at 2305b1b): batch C changes no image code, and the census equals
+    `panel-b-full`'s and `linux-base-09b8d78`'s row for row (6,133 of 6,139
+    occurrences decoded, bitonal 495 of 498 against PDFium's bitmap,
+    continuous-tone 3,688 of 3,724). Commands: `python
+    tests/pdfium/image_agreement.py --out dataset/reports/panel-c-full2/images`,
+    `python tests/dataset/gates/phase6_panel.py --run panel-c-full2`.
+    **489 of 489 decided images agree with the majority; the gate passes
+    under the panel**, 29 undecided as in item 18. Phase 6 is ready to
+    close once the laptop's merge gate passes (the sanitizer tiers,
+    `python build/check.py --full`): the owner's landing merge of the order
+    carries `Build-Phase: 6 done`, and this plan then moves to
+    `docs/archive/build/` (D8).
+
 ### Deviations of earlier phases that affect this one
 
 From `build-5.md` §9 (the listing step reads these):

@@ -14,6 +14,7 @@
 
 #include "platform/utf8_sequence.hpp"
 #include "text/hidden_class.hpp"
+#include "text/text_layout.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -219,9 +220,6 @@ constexpr double word_gap = 0.15;
 // lowered or raised letter), so a glyph drawn elsewhere starts a word.
 constexpr double back_step = 0.6;
 constexpr double baseline_step = 0.5;
-// The lines of a row have baselines within this share of the size, the
-// layout's own rule for one line.
-constexpr double row_baseline = 0.2;
 
 [[nodiscard]] double rounded(double value) {
   return std::round(value * 100.0) / 100.0;
@@ -377,7 +375,7 @@ void MatchFinder::build_orders() {
   for (const LineAt& line : lines) {
     if (rows.empty() || rows.back().second.front()->angle != line.angle ||
         line.baseline - rows.back().second.front()->baseline >
-            row_baseline * rows.back().second.front()->size) {
+            text::TextLayout::baseline_tolerance * rows.back().second.front()->size) {
       rows.emplace_back(line.line->first, std::vector<const LineAt*>{});
     }
     rows.back().first = std::min(rows.back().first, line.line->first);

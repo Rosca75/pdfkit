@@ -145,3 +145,24 @@ TEST_CASE("a copy drawn over the original is duplicate and read once") {
   CHECK(page.text() == "Shown\n\nSecret");
   CHECK(page.hidden_counts[6] == 6U);
 }
+
+TEST_CASE("a glyph half a turn from another at its origin is not its duplicate") {
+  // pdfdiff-0017: a string at -20 pt runs backwards from where the same
+  // string at +20 pt ended, so an "o" of the one starts where an "o" of the
+  // other does, turned half a turn; both are shown.
+  const PageText page = read(
+      "BT /F1 20 Tf 100 600 Td (Shown) Tj ET BT /F1 20 Tf 100 700 Td (go) Tj ET "
+      "BT /F1 -20 Tf 100 700 Td (go) Tj ET");
+  CHECK(page.hidden_counts[6] == 0U);
+  CHECK(page.hidden_blocks.empty());
+  CHECK(page.text().find("Shown") != std::string::npos);
+  std::size_t words = 0;
+  for (const auto& block : page.blocks) {
+    for (const auto& line : block.lines) {
+      for (const auto& word : line.words) {
+        words += word.text == "go" ? 1U : 0U;
+      }
+    }
+  }
+  CHECK(words == 2U);
+}

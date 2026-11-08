@@ -429,6 +429,23 @@ TEST_CASE("a placeholder narrower than its hole ends in a space that reaches the
   CHECK(page_text(result.pdf) == "Signed by * today.");
 }
 
+TEST_CASE("a placeholder before a word set apart in a string of its own stays a word") {
+  // A line drawing its spaces, "anfuhr und" set in a string of its own 0.2 of
+  // the size after "Jahre": the layout reads a word break there, so a
+  // placeholder narrowed into the hole of "Jahre" is bridged to "anfuhr".
+  pdfkit::test::TextDocument fixture;
+  fixture.page("BT /F1 10 Tf 100 700 Td (viele Jahre) Tj 1 0 0 1 150.35 700 Tm (anfuhr und) Tj ET");
+  const std::string file = fixture.bytes();
+  REQUIRE(page_text(file) == "viele Jahre anfuhr und");
+  for (const std::string placeholder : {"*", "Huismann", "[PERSON_1]"}) {
+    INFO(placeholder);
+    const pdfkit::test::Redaction result = redact(file, search("Jahre", placeholder));
+    REQUIRE(result.write_status == PDFKIT_OK);
+    INFO(result.matches);
+    CHECK(page_text(result.pdf) == "viele " + placeholder + " anfuhr und");
+  }
+}
+
 TEST_CASE("a box match removes the glyphs and paints a box inside the rectangles") {
   pdfkit::test::TextDocument fixture;
   fixture.page("BT /F1 10 Tf 72 700 Td (Report on Zebulon today) Tj ET");

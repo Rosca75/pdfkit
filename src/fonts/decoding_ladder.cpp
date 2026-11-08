@@ -113,6 +113,20 @@ std::optional<std::string> unicode_code(Type0Font::UnicodeCodes codes, std::uint
   return text;
 }
 
+// The text of a code whose glyph name restates the code itself ("C41" for
+// code 65, GlyphList::restates_code), in a font with no program to look the
+// name up in: the character of that code, as every reader of the reference
+// panel reads pdfjs-0047's Type 3 font; a control character stays
+// unreadable.
+std::optional<std::string> restated(std::string_view name, std::uint8_t code) {
+  if (!GlyphList::restates_code(name, code) || !GlyphList::usable(code)) {
+    return std::nullopt;
+  }
+  std::string text;
+  platform::append_utf8(text, static_cast<char32_t>(code));
+  return text;
+}
+
 }  // namespace
 
 bool DecodingLadder::usable_text(std::string_view text) noexcept {
@@ -169,6 +183,11 @@ PdfFont::Answer DecodingLadder::simple(const SimpleFont& font, std::uint32_t cod
       return answer(std::move(*text), source == SimpleFont::NameSource::program
                                           ? DecodingRung::font_program
                                           : DecodingRung::glyph_name);
+    }
+  }
+  if (type3 || font.font_program() == nullptr) {
+    if (std::optional<std::string> text = restated(name, byte)) {
+      return answer(std::move(*text), DecodingRung::glyph_name);
     }
   }
   if (type3) {

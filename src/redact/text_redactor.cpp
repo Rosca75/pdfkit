@@ -35,6 +35,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -319,7 +320,16 @@ void boxes_of(const PageText& page, const Layout& layout, Geometry& out) {
   if (removed.empty()) {
     return out;
   }
-  out.fit = PlaceholderFitting::fit(removed, kept, occurrence.placeholder);
+  // The layout's word of each glyph of the line, which tells whether a word
+  // break stood after the removed text.
+  std::map<std::size_t, std::size_t> words;
+  for (std::size_t w = 0; w < first->words.size(); ++w) {
+    for (std::size_t p = first->words[w].first; p < first->words[w].last && p < page.order.size();
+         ++p) {
+      words.emplace(glyphs[page.order[p]].draw, w);
+    }
+  }
+  out.fit = PlaceholderFitting::fit(removed, kept, words, occurrence.placeholder);
   out.drawn = out.fit.anchor != nullptr;
   out.invisible = std::ranges::all_of(removed, [](const GlyphRecord* record) {
     return record->render_mode == 3 || record->render_mode == 7;

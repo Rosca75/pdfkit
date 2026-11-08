@@ -8,6 +8,7 @@
 
 #include "text/text_layout.hpp"
 
+#include "fonts/pdf_font.hpp"
 #include "platform/utf8_sequence.hpp"
 #include "text/docstrum.hpp"
 #include "text/xy_cut.hpp"
@@ -30,7 +31,6 @@ namespace {
 // many font sizes.
 constexpr double ideographic_gap = 1.0;
 constexpr double line_gap = 2.0;
-constexpr double baseline_tolerance = 0.2;
 // A glyph drawn this many font sizes before the one drawn just ahead of it on
 // its baseline starts a new run of the content.
 constexpr double run_backstep = 0.5;
@@ -38,8 +38,24 @@ constexpr double run_backstep = 0.5;
 // one drawn over the other: a placeholder is drawn on the baseline of the
 // text it replaces, a subscript or a superscript off it.
 constexpr double overprint_baseline = 0.05;
+// On a line whose words are marked by space glyphs, a gap between two
+// text-showing operators drawn one after the other ends a word from this
+// many font sizes:
+// the narrowest gap the dataset measured between positioned words.
+constexpr double repositioned_word_gap = 0.15;
+// Two runs cross only when the smaller's size is at least this share of the
+// larger's: a subscript or a superscript is set at 0.7 of its line or less,
+// pdfdiff-0018's two lines at 500 and 660 pt (0.76).
+constexpr double crossing_size_share = 0.75;
+// The work one baseline cluster may spend looking for runs drawn across each
+// other, counted in pairs of baselines and of runs visited and in glyphs
+// compared, so a cluster of many baselines costs a bounded time.
+constexpr std::size_t crossing_budget = 1'000'000;
 // Runs of at most this many glyphs take their place by position.
 constexpr std::size_t short_run = 2;
+// A Type 3 glyph whose box spans more than this many times its font size
+// across the line takes the box's span as its size.
+constexpr double type3_scale = 4.0;
 // A painted shape this thin (in points) is a ruling.
 constexpr double max_rule_thickness = 2.0;
 
@@ -276,8 +292,59 @@ class Builder {
                                frame.along(box.right, box.top)};
       item.width_end =
           key(start <= end ? *std::ranges::max_element(along) : *std::ranges::min_element(along));
+      // A Type 3 font's em is whatever its /FontMatrix makes of its glyph
+      // space, so its font size says little of how large it draws: a matrix
+      // of 1 shown at 0.24 draws glyphs 72 units, 17 pt, tall (pdfjs-0047),
+      // and every gap between its letters would be a line's end. Such a glyph
+      // is as large as its box (the /FontBBox) spans.
+      const double span = item.across_high - item.across_low;
+      if (glyph.font != nullptr && glyph.font->kind() == fonts::PdfFont::Kind::type3 &&
+          span > type3_scale * item.size) {
+        item.size = span;
+      }
+    }
+    if (glyph.is_space()) {
+      take_back(item);
     }
     return item;
+  }
+
+  // A space that opens a run of the content and that the glyph drawn next
+  // was moved back over, so far that the space lies wholly in its advance on
+  // its baseline (pdfjs-0018: a Hebrew line drawn from its left end opens
+  // with a space, and a TJ number sets the word's last letter 0.12 pt before
+  // it), stands where that glyph starts: drawn first, it reads before the
+  // glyph rather than inside its word. A space drawn straight after a glyph
+  // keeps its place after that glyph.
+  void take_back(Item& space) const {
+    const std::size_t next = space.draw + 1;
+    // The glyph drawn next was moved back by a TJ number.
+    if (next >= glyphs_.size() || glyphs_[next].is_space() || glyphs_[next].adjustment <= 0.0) {
+      return;
+    }
+    const Frame frame(space.bucket);
+    // Where a glyph's advance starts and ends along the space's line, and
+    // whether it stands on the space's baseline.
+    const auto on_line = [&](const GlyphRecord& glyph) {
+      const Matrix::Point baseline = (glyph.text_matrix * glyph.ctm).apply(0.0, 0.0);
+      return bucket_of(glyph.angle) == space.bucket &&
+             std::abs(key(frame.across(baseline.x, baseline.y)) - space.across) <=
+                 overprint_baseline * space.size;
+    };
+    if (space.draw > 0) {
+      const GlyphRecord& before = glyphs_[space.draw - 1];
+      if (on_line(before) && std::abs(key(frame.along(before.advance_end.x, before.advance_end.y)) -
+                                      space.low) <= TextLayout::overprint_gap * space.size) {
+        return;
+      }
+    }
+    const GlyphRecord& glyph = glyphs_[next];
+    const double start = key(frame.along(glyph.origin.x, glyph.origin.y));
+    const double end = key(frame.along(glyph.advance_end.x, glyph.advance_end.y));
+    if (!on_line(glyph) || start >= end || space.low < start || space.high > end) {
+      return;
+    }
+    space.origin = space.low = space.high = space.width_end = start;
   }
 
   void build_lines() {
@@ -295,7 +362,7 @@ class Builder {
       double anchor_size = 0.0;
       for (const std::size_t i : members) {
         const Item& item = items_[i];
-        const double limit = baseline_tolerance * std::max(anchor_size, item.size);
+        const double limit = TextLayout::baseline_tolerance * std::max(anchor_size, item.size);
         if (clusters.empty() || std::abs(item.across - anchor) > limit) {
           clusters.emplace_back();
           anchor = item.across;
@@ -303,7 +370,13 @@ class Builder {
         }
         clusters.back().push_back(i);
       }
+      std::vector<std::vector<std::size_t>> lines;
       for (std::vector<std::size_t>& cluster : clusters) {
+        for (std::vector<std::size_t>& part : split_crossing(std::move(cluster))) {
+          lines.push_back(std::move(part));
+        }
+      }
+      for (std::vector<std::size_t>& cluster : lines) {
         const std::vector<std::size_t> sequence = visual_sequence(std::move(cluster));
         RawLine* line = nullptr;
         double reach = 0.0;
@@ -325,6 +398,131 @@ class Builder {
         }
       }
     }
+  }
+
+  // A baseline cluster cut where two of its baselines carry runs drawn
+  // across each other: lines of very large glyphs whose baselines lie within
+  // the tolerance of their size (pdfdiff-0018: "B 8" at 500 pt and "8B" at
+  // 660 pt on baselines 80 pt apart, drawn over one another), or a string
+  // drawn twice a little below itself. A run is a stretch of glyphs drawn
+  // one after another on one baseline; two runs of at least two glyphs other
+  // than spaces cross when their baselines lie more than overprint_baseline
+  // of the size apart and at least half of each run's glyphs have their
+  // middles in the advance of a glyph of the other. The baselines are walked
+  // in order, and one starts a new line when a run of it crosses a run of a
+  // baseline already in the line. Glyphs drawn over others on their own
+  // baseline (a name struck out, a bold of two draws) stay in one line, and
+  // so do a raised letter of a logo, which crosses a glyph or two of its line
+  // rather than a run, and a run of subscripts or superscripts, smaller than
+  // crossing_size_share of the run it crosses (dccc-0128's "m1 x m2"). The
+  // search stops when it has spent crossing_budget: the lines it cut before
+  // stay cut, and every later baseline joins the line under way.
+  [[nodiscard]] std::vector<std::vector<std::size_t>> split_crossing(
+      std::vector<std::size_t> cluster) const {
+    // The baselines, each with its glyphs and its runs (glyphs other than
+    // spaces, in position order).
+    struct Run {
+      // The run's largest glyph size.
+      double size = 0.0;
+      std::vector<std::size_t> items;
+    };
+    struct Baseline {
+      double across = 0.0;
+      double size = 0.0;
+      std::vector<std::size_t> items;
+      std::vector<Run> runs;
+    };
+    std::vector<Baseline> baselines;
+    std::ranges::stable_sort(cluster, [&](std::size_t a, std::size_t b) {
+      return std::pair(items_[a].across, items_[a].draw) <
+             std::pair(items_[b].across, items_[b].draw);
+    });
+    for (const std::size_t i : cluster) {
+      const Item& item = items_[i];
+      if (baselines.empty() || baselines.back().across != item.across) {
+        baselines.push_back({item.across, 0.0, {}, {}});
+      }
+      Baseline& baseline = baselines.back();
+      const bool follows =
+          !baseline.items.empty() && items_[baseline.items.back()].draw + 1 == item.draw;
+      baseline.items.push_back(i);
+      baseline.size = std::max(baseline.size, item.size);
+      if (!follows || baseline.runs.empty()) {
+        baseline.runs.emplace_back();
+      }
+      if (!glyphs_[item.draw].is_space()) {
+        baseline.runs.back().items.push_back(i);
+        baseline.runs.back().size = std::max(baseline.runs.back().size, item.size);
+      }
+    }
+    std::vector<std::vector<std::size_t>> out;
+    if (baselines.size() < 2) {
+      out.push_back(std::move(cluster));
+      return out;
+    }
+    for (Baseline& baseline : baselines) {
+      std::erase_if(baseline.runs, [](const Run& run) { return run.items.size() < 2; });
+      for (Run& run : baseline.runs) {
+        std::ranges::stable_sort(run.items,
+                                 [&](std::size_t a, std::size_t b) { return ahead(a, b); });
+      }
+    }
+    // The work spent so far, against crossing_budget.
+    std::size_t spent = 0;
+    // Whether at least half of from's glyphs have their middles in an
+    // advance of a glyph of onto.
+    const auto mostly_over = [&](const std::vector<std::size_t>& from,
+                                 const std::vector<std::size_t>& onto) {
+      std::size_t count = 0;
+      spent += from.size();
+      if (spent > crossing_budget) {
+        return false;
+      }
+      for (const std::size_t i : from) {
+        const double middle = (items_[i].low + items_[i].high) / 2.0;
+        auto at = std::ranges::upper_bound(onto, middle, {},
+                                           [&](std::size_t j) { return items_[j].low; });
+        // The glyphs of onto starting before the middle, nearest first; a
+        // few reach every advance that can cover it.
+        for (int look = 0; look < 4 && at != onto.begin(); ++look) {
+          --at;
+          if (items_[*at].low < middle && middle < items_[*at].high) {
+            ++count;
+            break;
+          }
+        }
+      }
+      return 2 * count >= from.size();
+    };
+    const auto crosses = [&](const Baseline& a, const Baseline& b) {
+      ++spent;
+      if (spent > crossing_budget ||
+          std::abs(a.across - b.across) <= overprint_baseline * std::max(a.size, b.size)) {
+        return false;
+      }
+      return std::ranges::any_of(a.runs, [&](const Run& run) {
+        return std::ranges::any_of(b.runs, [&](const Run& other) {
+          ++spent;
+          const double small = std::min(run.size, other.size);
+          const double large = std::max(run.size, other.size);
+          return spent <= crossing_budget && small >= crossing_size_share * large &&
+                 mostly_over(run.items, other.items) && mostly_over(other.items, run.items);
+        });
+      });
+    };
+    std::vector<std::size_t> in_line;
+    out.emplace_back();
+    for (std::size_t b = 0; b < baselines.size(); ++b) {
+      if (spent <= crossing_budget && std::ranges::any_of(in_line, [&](std::size_t other) {
+            return crosses(baselines[b], baselines[other]);
+          })) {
+        out.emplace_back();
+        in_line.clear();
+      }
+      in_line.push_back(b);
+      out.back().insert(out.back().end(), baselines[b].items.begin(), baselines[b].items.end());
+    }
+    return out;
   }
 
   // Whether item, in another font than before and on its baseline, starts
@@ -466,7 +664,12 @@ class Builder {
   // right (letters and digits), or neutral.
   [[nodiscard]] int strength(std::size_t item) const {
     const std::string& text = glyphs_[items_[item].draw].text;
-    std::size_t at = 0;
+    // A glyph whose text holds a space and more after it stands for a
+    // cluster a producer mapped onto it whole (pypdf-0019: the first glyph
+    // of "habibi" maps to an Arabic word, a space and "h"); it is read with
+    // the glyphs after it by what follows the space.
+    std::size_t at = text.rfind(' ');
+    at = at == std::string::npos || at + 1 == text.size() ? 0 : at + 1;
     while (at < text.size()) {
       const platform::Utf8Sequence unit = platform::next_utf8_sequence(text, at);
       if (unit.valid) {
@@ -546,7 +749,9 @@ class Builder {
   // every space from one face). Spaces drawn apart from a line's words (a
   // string of hyphens placed later into the gaps of a hymn's syllables)
   // leave the words as they were, and so does a placeholder's space, drawn
-  // just after a glyph of the placeholder.
+  // just after a glyph of the placeholder. On such a line a word a producer
+  // sets apart as an operator of its own takes the narrower repositioned gap
+  // (repositioned()), and glyphs of vertical writing take the spaced gap.
   void split_words(RawLine& line) const {
     std::vector<std::size_t> draws;
     draws.reserve(line.items.size());
@@ -603,11 +808,18 @@ class Builder {
         // overlaps it.
         const bool over = line.right_to_left ? drawn_over(before, item) && drawn_over(item, before)
                                              : drawn_over(before, item);
-        const double gap_limit = draws_spaces(before) && draws_spaces(item)
-                                     ? TextLayout::spaced_word_gap
-                                     : TextLayout::word_gap;
-        if (over ||
-            gap > (unspaced ? ideographic_gap : gap_limit) * std::max(before.size, item.size)) {
+        // Glyphs of vertical writing stand in cells a full em tall, so a gap
+        // between two of them is letter spacing up to the spaced threshold
+        // (pdfium-0049: TJ numbers leave 0.2 em inside a vertical "Hello");
+        // the narrower one was measured on proportional horizontal letters,
+        // about half an em wide.
+        const bool vertical = glyphs_[before.draw].vertical && glyphs_[item.draw].vertical;
+        const bool spaced = vertical || (draws_spaces(before) && draws_spaces(item));
+        const double gap_limit = !spaced                      ? TextLayout::word_gap
+                                 : repositioned(before, item) ? repositioned_word_gap
+                                                              : TextLayout::spaced_word_gap;
+        const double limit = unspaced ? ideographic_gap : gap_limit;
+        if (over || gap > limit * std::max(before.size, item.size)) {
           line.words.emplace_back(start, k);
           open = false;
         }
@@ -621,6 +833,29 @@ class Builder {
     if (open) {
       line.words.emplace_back(start, line.items.size());
     }
+  }
+
+  // Whether item opens a text-showing operator drawn straight after the one
+  // that before closes, before advancing and each operator showing other
+  // glyphs: a producer that draws its spaces sets a word anew after a word
+  // break it draws no space for, as an operator of its own after a new text
+  // position (dccc-0124: "Jahre" ends one TJ and "anführ-" opens the next 0.2
+  // of the size further on, a justified column). The gap between the two is
+  // read with repositioned_word_gap. The strings of one TJ array keep the
+  // spaced gap, because a TJ number between them is letter spacing as often
+  // as a word break ("Sp" "aced", "TRAV" "EL", "3." "14"); so does letter
+  // spacing a producer sets glyph by glyph, one operator each, and a glyph
+  // of no advance, which gives no place its operator's text ends.
+  [[nodiscard]] bool repositioned(const Item& before, const Item& item) const {
+    if (before.high <= before.low || item.draw != before.draw + 1 || before.draw == 0 ||
+        item.draw + 1 >= glyphs_.size()) {
+      return false;
+    }
+    const auto same_operator = [&](std::size_t a, std::size_t b) {
+      return glyphs_[a].stream == glyphs_[b].stream && glyphs_[a].operation == glyphs_[b].operation;
+    };
+    return !same_operator(before.draw, item.draw) && same_operator(before.draw - 1, before.draw) &&
+           same_operator(item.draw, item.draw + 1);
   }
 
   [[nodiscard]] std::vector<std::size_t> order_blocks(

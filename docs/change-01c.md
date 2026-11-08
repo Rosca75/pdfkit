@@ -2,17 +2,17 @@
 
 | Field | Value |
 |---|---|
-| Status | awaiting owner launch |
+| Status | done on change/01-c-text-fixes (2026-11-08, on Linux), awaiting the owner's landing merge |
 | Owner approval | with the parent |
 | Depends on | `change-01b.md` |
 | Supersedes | nothing |
 | Superseded by | nothing yet |
 | Batches | batch C of `docs/change-01.md` |
 | `SessionVersion` | not applicable; the C ABI version stays 1 and no JSON shape moves |
-| Behaviour change | yes: `pdfkit_text` (and every function that reads text: redaction's search, the self-check) reads CJK fonts with a predefined CMap or an Adobe ordering and no `/ToUnicode`, advances Latin codes of a non-embedded CJK font at half width, and lays out the confirmed cases differently; checked against the 960-file dataset, the panel and every release gate row |
-| New dependency | shipped: the Adobe CMap resources (BSD-3), as packed tables (parent D10) |
+| Behaviour change | yes: `pdfkit_text` (and every function that reads text: redaction's search, the self-check) reads Type 3 code names and lays out the confirmed cases differently (the CJK items were dropped, §9.1 and §9.2); checked against the 960-file dataset, the panel and every release gate row |
+| New dependency | none (the Adobe CMap resources were dropped with §9.1) |
 | Minimum model | `opus` |
-| Duration and price | 5.5 to 6 hours, $95 to $120 at list prices (parent §11.1); the split point is after the CMaps (§9.6) |
+| Duration and price | 5.5 to 6 hours, $95 to $120 at list prices (parent §11.1); the owner lifted the time limits and split point for the run (Appendix C entry 1) |
 
 Read `docs/change-01.md` §0 to §8 first. This file is §9 onwards for batch C
 alone.
@@ -79,37 +79,18 @@ seen red (`CLAUDE.md` §8.2). Every external fact below is **recalled** unless
 marked read; read it at the source or test it on the named dataset files, and
 record its status in `docs/SOURCES.md`.
 
-### 9.1 CJK CMap data (CR3; group `cjk_cmap`: pdfdiff-0036, pdfjs-0053, pdfminer-0039, pdfminer-0044, pdfpig-0003, pdfplumber-0023 at batch A's base)
+### 9.1 CJK CMap data (CR3; group `cjk_cmap`) — dropped
 
-| File | Change |
-|---|---|
-| `third_party/adobe-cmaps/` | the upstream files the predefined names need, from https://github.com/adobe-type-tools/cmap-resources at a pinned commit (`docs/SOURCES.md` row 87, read): the predefined CMaps for the Adobe-Japan1, -GB1, -CNS1 and -Korea1 orderings that ISO 32000-1 lists for CID fonts (recalled: its table of predefined CMaps), and each ordering's `Adobe-<ordering>-UCS2` CID-to-Unicode CMap; the upstream licence file |
-| `third_party/inventory.tsv`, `THIRD-PARTY-NOTICES.md` | the component's row (commit, upstream URL, BSD-3, SHA-256) and its notice; `python build/check_third_party.py` green |
-| `build/fonts/cmaps.py`, `build/fonts/cmaps.lock` | the generator: parses the CMap files (`begincodespacerange`, `begincidrange`, `begincidchar`, `usecmap` among the predefined files) and writes packed range tables (code range to first CID, CID range to first code point) as `constexpr` arrays through `cpp_table.py`; registered in `build/check_generated.py` |
-| `src/fonts/generated/` | the generated tables, never edited by hand |
-| `src/fonts/predefined_cmaps.hpp`, `.cpp` | `pdfkit::fonts::PredefinedCmaps`: `lookup(name)` returns the `Cmap` of a predefined name (its codespace from the data, which replaces `predefined_codespace`'s implied one for the names the data has), `to_unicode(ordering, cid)` the character of a CID; both bounded table lookups with no allocation from file input |
-| `src/fonts/type0_font.cpp` | a predefined name with data decodes through it; a CID font with no `/ToUnicode` whose `/CIDSystemInfo` names one of the four Adobe orderings maps CID to Unicode through that ordering (pdfdiff-0036 and pdfminer-0039 are `Identity-V` with Adobe-Japan1) |
+Withdrawn by the owner on 2026-11-07 (`OPEN-QUESTIONS.md` §1.5): no Adobe
+CMap resource is vendored, no generator is written and the DLL's budget does
+not move. The files of the group stay known gaps with their rows in
+`tests/panel/text_causes.tsv`, and the panel still judges them.
 
-**The rung** of a code answered through an ordering's CID-to-Unicode table is
-`to_unicode`, because the table is the ToUnicode map the ordering defines and
-a new rung would add a value to the JSON callers read (`docs/ABI.md`, the
-`rungs` of `pdfkit_text`). Mine, flagged: a separate rung is a later order's
-choice.
+### 9.2 Half-width Latin in a non-embedded CJK font (CR4; group `cjk_width`) — dropped
 
-**Size**: after the build, `python build/package.py`. If the DLL passes its
-budget, raise `build/budgets.tsv`'s DLL, and the zip's if it passes too, by the
-measured growth plus 25 % of it, with the reason in the row's note (parent
-D10), and say the new numbers in the final message.
-
-### 9.2 Half-width Latin in a non-embedded CJK font (CR4; group `cjk_width`: dccc-0012, synth-0151)
-
-In `src/fonts/type0_font.cpp`, for a CID font with no embedded program and no
-`/W`, a code whose character is printable ASCII (U+0020 to U+007E) advances 500
-thousandths instead of `/DW`. Recalled: viewers advance such glyphs at half
-width because the substituted CJK font's Latin glyphs are half width; test it
-on the two files (their words must no longer split at the media box) and keep
-the narrowest rule that fixes them. `docs/DESIGN.md` §5.3 says the rule and
-its status.
+Withdrawn with §9.1 for the same reason; `/DW` stays as the specification
+writes it, and the group's files (dccc-0012, synth-0151, and the "INS TALL"
+cut of dccc-0139 that the same default causes) stay known gaps.
 
 ### 9.3 Type 3 names restating their code (CR5; only if ordered, §0)
 
@@ -210,15 +191,10 @@ and at 5 h 30 of wall-clock stop, commit what passes and record what is left.
 ### 10.1 Files this batch touches
 
 ```
-src/fonts/predefined_cmaps.hpp, .cpp            (new)
-src/fonts/generated/                            (new generated tables)
-src/fonts/type0_font.cpp                        (§9.1, §9.2)
 src/fonts/decoding_ladder.cpp, glyph_list.cpp   (§9.3, only if ordered)
 src/fonts/CMakeLists.txt                        (the new sources)
 src/text/                                       (§9.4, the layout passes the faults name)
 tests/unit/fonts/, tests/unit/text/             (new cases)
-third_party/adobe-cmaps/, third_party/inventory.tsv, THIRD-PARTY-NOTICES.md
-build/fonts/cmaps.py, cmaps.lock, build/check_generated.py, build/budgets.tsv
 tests/panel/text_causes.tsv, tests/pdfium/text_causes.tsv, dataset/manifest.tsv   (rows of fixed files)
 CLAUDE.md, docs/DESIGN.md, docs/SOURCES.md, dataset/README.md, OPEN-QUESTIONS.md, build-5.md, build/paths_pending.tsv   (sweep)
 ```
@@ -242,16 +218,11 @@ CLAUDE.md, docs/DESIGN.md, docs/SOURCES.md, dataset/README.md, OPEN-QUESTIONS.md
 
 | Test | Tier | Asserts |
 |---|---|---|
-| a predefined CMap case per ordering | unit (`tests/unit/fonts/`) | a code of each of the four orderings' named CMaps decodes to its CID and character; a code outside the codespace is unreadable and counted |
-| an `Identity-V` Adobe-Japan1 font with no `/ToUnicode` | unit | its CIDs read through the ordering, rung `to_unicode` |
-| half-width Latin | unit | a non-embedded CID font with no `/W`: ASCII codes advance 500, an ideograph `/DW` |
 | `Cdd` names (only if ordered) | unit | a Type 3 font with `/Differences [65 /C65]` reads as batch B's reading names; `/C66` on code 65 stays unreadable |
 | DFT1, DFT2, DFT3 | unit (`tests/unit/text/`) | the geometry of each file, read as its words |
-| the generator | checks | `python build/check_generated.py` re-cuts the tables byte for byte |
 
-**Updated, deleted:** a unit case asserting "predefined CMap codes are
-unreadable" for a name the data now covers changes its expectation; say so in
-the commit, because that behaviour moved by design.
+**Updated, deleted:** none; the CMap and half-width cases were dropped with
+§9.1 and §9.2.
 
 ---
 
@@ -278,8 +249,7 @@ As the parent's §14: pdfjs-0053 and pdfplumber-0023 in a viewer beside
 
 | Item | Decided by | Proven by | Held by |
 |---|---|---|---|
-| CR3, F6, F7 | D10 | AC5, AC7 | the CMap unit cases; `check_generated.py`; `package.py` |
-| CR4 | D2 | AC5 | the half-width unit case |
+| CR3, CR4, F6, F7 | `OPEN-QUESTIONS.md` §1.5 | dropped | the rows of `tests/panel/text_causes.tsv` |
 | CR5 | D3 | AC5 | the `Cdd` unit case, only if ordered |
 | DFT1, DFT2, DFT3 | D2 | AC5, AC5a | the layout unit cases |
 | D8 | D8 | AC6 | the release gate's rows |
@@ -337,4 +307,128 @@ whether the landing merge closes phase 5 or 6.
 
 ## Appendix C — Deviations recorded by this batch
 
-1. *(none yet)*
+1. **The batch ran on Linux**, as `docs/change-01.md` Appendix C says:
+   `linux-debug` and `linux-release` for `mingw-release`,
+   `ctest --preset unit-linux` and `unit-linux-release` for
+   `ctest --preset unit`, `python build/check.py --fast` for the routine
+   and full checks; the sanitizer presets, `build/check.py --full`,
+   `build/package.py --verify` and `build/check_artefact.py` are the
+   owner's laptop steps. The comparison base is batch B's run
+   `panel-b-full`, and AC6 compares with the Linux baseline
+   `linux-base-09b8d78` (parent Appendix C entry 12). The owner lifted the
+   session's time limits, stop rule and split point for this batch.
+2. **§9.1 and §9.2 were dropped** by the owner's answer of
+   `OPEN-QUESTIONS.md` §1.5: no CMap data, no generator, no budget raise;
+   their rows of `build/paths_pending.tsv` went with the text that cited
+   them, and the 12 CJK files the panel counts against pdfkit keep their
+   rows as known gaps. pdfpig-0002 (§9.4) is Chinese and was not
+   investigated further.
+3. **CR5 needed a layout rule to read words.** pdfjs-0047's Type 3 font
+   (`/FontMatrix [1 0 0 1 0 0]` at 0.24) draws glyphs 72 times its size, so
+   with its codes read every gap ended a line ("P", "ro p e", "rty"). A
+   Type 3 glyph whose box spans more than four times its size across the
+   line is sized by its box. pdfkit then reads "Property Insurance" as
+   PDFium and Poppler do, and four of the six files still count against
+   pdfkit because MuPDF, pdf_oxide and pdf-extract cut the words, each in
+   its own places (`OPEN-QUESTIONS.md` §3.6). The rule also joins
+   pdfjs-0004's "Questions about your bill?" and moves nothing else.
+   opf-0014 (`/C10`, decimal) and mutate-0036 read their codes too
+   (`expect_fonts` of the manifest). A first form also took dvips's
+   lower-case `cNN` names and read pdfpig-0009's bitmap fonts as letters
+   shifted by three ("QXOOIlOOWHLQQHJDWLYHU"), text no member reads; the
+   rule takes an upper-case `C` alone, the shape the panel confirmed, and
+   pdfpig-0009 keeps its 76 unreadable codes and their warning.
+4. **The layout fixes go beyond DFT1 to DFT3**: the brief added W2, the
+   owner's word cuts of `OPEN-QUESTIONS.md` §1.4, and the layout group's
+   other files. Added rules: a space that opens a run and that a `TJ`
+   number moves the next glyph back over stands where that glyph starts
+   (pdfjs-0018); a glyph whose text holds a space counts by what follows
+   it for the direction pass (pypdf-0019 to -0021); on a line whose fonts
+   draw spaces, a word set as an operator of its own after the one before
+   ends at 0.15 of the size (dccc-0124's three cuts, dccc-0073's
+   "新たに POS", and the other files of run `panel-c-full2` whose glued
+   words, leaders and punctuation it separates). Each was measured on the
+   whole dataset's text before it was kept. A first form at 0.1 of the size
+   cut "Montelius" and "Whitlock" (dccc-0005, rotated text with gaps of
+   0.096) and "file" (a zero-width "i", pdfplumber-0005). A second form also
+   took two strings of one `TJ` array, which separated pdfjs-0016's
+   "Ideas:" "The" and 16 other files' glued words but cut synthetic words a
+   `TJ` letter-spaces ("Sp" "aced", "TRAV" "EL", "3." "14"); after review the
+   rule takes operators alone, those 17 files read as before it, and unit
+   cases pin the shapes. Two operators 0.16 of the size apart still read as
+   two words ("Bo" "ld"), the price of dccc-0124's "in" "Hermeskeil" at
+   0.158 (`OPEN-QUESTIONS.md` §3.7).
+5. **DFT1's direction was not taken as written.** No baseline tolerance
+   can separate pdfdiff-0018's baselines (80 pt apart under glyphs of 500
+   and 660 pt, a fifth of either size being 100 pt or more). The fix
+   separates two baselines whose runs of two glyphs or more cross each
+   other, at least half of each run's glyphs over the other's, the smaller
+   run at least 0.75 of the larger's size (pdfdiff-0018's are 0.76), within
+   a budget of a million visits of baseline and run pairs and glyph
+   comparisons per cluster, past which the lines already cut stay cut and
+   later baselines join the line under way (a unit case reaches it). A first form that
+   compared every glyph of a baseline split subscripts and LaTeX's raised
+   "A" and was narrowed to runs; a second split dccc-0128's subscripts of
+   "m1 x m2" and was narrowed by the size share after review. dccc-0128
+   still reads a display formula's "∏" and its limits "k=1" on two lines,
+   as it read them on one in another order before the batch.
+6. **DFT2's threshold**: pdfkit measured the vertical gap along the
+   advance already; the 0.2 em gap inside pdfium-0049's "Hello" passes the
+   narrow word gap, so glyphs of vertical writing take the spaced one
+   (0.3). The redaction's placeholder fitting
+   (`src/redact/placeholder_fitting.cpp`) kept its own copy of the word
+   gaps and glued a narrowed placeholder to a word the layout sets apart
+   ("viele Huismannanfuhr und"); after review it reads the word break from
+   the layout's words of the line instead (`src/redact/text_redactor.cpp`
+   passes them), so the two cannot disagree. This edits `src/redact/`,
+   which §0 assigned to other branches; no other branch held those files.
+7. **Files left in the layout group**, each with its row and reason in
+   `tests/panel/text_causes.tsv`: pdfdiff-0017 (DFT3 fixed; zero-size text
+   read three ways by the members), pypdf-0019 to -0021 ("habibi" whole;
+   the cluster's empty `/ToUnicode` entries read through the program by
+   `docs/DESIGN.md` §5.4), pdfminer-0042 (letter spacing by `Tc` read as
+   words, as PDFium does) and pdfplumber-0014 (music noteheads). They move
+   to the `legitimate` group, with the four Type 3 files.
+8. **dccc-0124's digit pairs stay apart** (`OPEN-QUESTIONS.md` §3.5,
+   `docs/change-01.md` Appendix C entry 27): the rule that joined them
+   also joined pdfplumber-0015's minus sign to its number and was
+   withdrawn with its test.
+9. **`tests/pdfium/text_causes.tsv` keeps pdfpig-0003**, at 0.9008 with
+   PDFium on Linux as at batch B (parent Appendix C entry 23), and the
+   manifest keeps its `expect_text`, `known_gap:pdfkit`, which
+   `text_agreement.py --write-manifest` turned to `agree` on Linux alone;
+   every other moved row of the manifest is a file this batch fixed.
+10. **`build-5.md` and `build-6.md` stay at the root** although both panel
+    gates pass on this tip: a phase closes only through the owner's
+    landing merge (D8), which then carries `Build-Phase: 5 done` and
+    `Build-Phase: 6 done`; their §9 holds the numbers.
+11. **No ABI or JSON shape moves** (`docs/ABI.md` unchanged): the rung of a
+    restated code is `glyph_name`, a value the JSON already carries.
+12. **AC6 on Linux**, run `panel-c-full2` (two runs, `main` at 2305b1b
+    merged) against the Linux
+    baseline `linux-base-09b8d78` (parent Appendix C entry 12) and, for the
+    rows that baseline did not measure, against `main` at c7601ae run once
+    with the same scripts (`c-main-base`, deleted after the comparison).
+    Unchanged: 961 files, both runs identical, no crash, no hang under
+    `--timeout-scale 3`; the one real expectation miss is `mutate-0048`'s
+    self-check refusal, as in the baseline; re-serialisation 12,121 of
+    12,121 streams (the baseline's 11,722 and dccc-0129's 399); images
+    6,133 of 6,139 occurrences decoded, continuous-tone 3,688 of 3,724, the
+    census equal row for row; Info fields 3,052 of 3,052 (3,048 in the
+    baseline; `main` at c7601ae reads the same 3,052); identity writes,
+    page selections, the self-check (909 of 917 with the 7 laptop-only
+    `office` rows and `mutate-0048`), image treatments and metadata rewrites
+    equal `main`'s row for row; leaks: images 0, metadata 0, and in text
+    the two words of `OPEN-QUESTIONS.md` §1.3 that PDFium reads on
+    damaged pages of opf-0019 and mutate-0046, on `main` too. Pages
+    stable outside the rectangles 8,010 of 8,051 (99.49 %), as on `main`.
+    Moved, from the text the redaction jobs pick their words from and the
+    placeholder fitting's word breaks: codes no rung reads 87,734 of
+    16,562,502 (0.53 %) from 88,787 (0.54 %); placeholders found in
+    PDFium's text 10,293 of 10,340 (99.55 %) from 9,385 of 9,434
+    (99.48 %); located outputs one occurrence fewer in PDFium's text 413 of
+    413 from 411 of 411; occurrence-form matches 213 of 213 from 214 of
+    214. After review the gate ran again as `panel-c-full2` (the first,
+    `panel-c-full`, deleted): the reading and bitonal numbers equal the
+    first run's. The ABI tier passes from .NET and Python
+    (31 files, 717 calls each).

@@ -1,5 +1,1 @@
 path	phase	note
-third_party/adobe-cmaps/	change-01c	the Adobe CMap resources
-build/fonts/cmaps.py	change-01c	the CMap table generator
-build/fonts/cmaps.lock	change-01c	the CMap generator's lock
-src/fonts/predefined_cmaps.hpp	change-01c	the predefined CMaps' lookup

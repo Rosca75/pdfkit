@@ -12,8 +12,12 @@
 //   line there, because it is a block boundary (two columns sharing a
 //   baseline);
 // - words: consecutive glyphs of a line are one word while the gap between
-//   the first's advance end and the second's origin is under 0.3 times the
-//   font size; a space glyph ends a word and belongs to none;
+//   the first's advance end and the second's origin is under 0.1 times the
+//   font size, under 0.3 when both glyphs' fonts draw space glyphs on the
+//   line or both are of vertical writing, under 0.15 on such a line between
+//   two text-showing operators the producer set one after the other, and
+//   under 1.0 between two ideographic glyphs; a space glyph ends a word and
+//   belongs to none;
 // - direction: a line whose strong characters are mostly right-to-left
 //   (Hebrew, Arabic) reads right to left, in the order the content drew it
 //   when the producer drew it in logical order, else reversed from visual
@@ -52,11 +56,12 @@ class TextLayout {
   // A gap between two glyphs of a line ends a word from this many font
   // sizes (words set apart by position alone), and from spaced_word_gap
   // when both glyphs' fonts draw space glyphs on the line, whose other gaps
-  // are letter spacing and kerning (docs/DESIGN.md section 7). The
-  // redaction reads them to tell whether a word break stood after the text
-  // it removes.
+  // are letter spacing and kerning (docs/DESIGN.md section 7).
   static constexpr double word_gap = 0.1;
   static constexpr double spaced_word_gap = 0.3;
+  // Glyphs whose baselines agree within this many font sizes are one line
+  // (docs/DESIGN.md section 7); the match finder groups its rows by it.
+  static constexpr double baseline_tolerance = 0.2;
   // A glyph in another font than the glyph ahead of it that starts more than
   // this many font sizes before that glyph's advance ends was drawn over it,
   // not after it: it starts a word (and, in draw order, a run). Kerning

@@ -8,8 +8,12 @@
 // both ways, a duplicate folded, an overprinted string kept whole, a string
 // drawn later into a gap of another read where it stands, a string in
 // another font run over the next word read as a word of its own while an
-// accent in another font stays in its word, and order_is_stable: the
-// glyphs given in ten shuffled orders lay out the same.
+// accent in another font stays in its word, a word set apart as a string of
+// its own on a line drawing spaces, two lines of large glyphs drawn across
+// each other, a vertical word with gaps inside it, a space taken back under
+// the next letter, a glyph mapped to a right-to-left word and a letter, a
+// Type 3 font far larger than its size, and order_is_stable: the glyphs
+// given in ten shuffled orders lay out the same.
 
 #include "text/text_layout.hpp"
 
@@ -80,6 +84,34 @@ TEST_CASE("a line drawing space glyphs keeps its letter spacing inside words") {
   CHECK(words_of(page.blocks) == std::vector<std::string>{"spaced", "out"});
 }
 
+TEST_CASE(
+    "a word a producer sets apart in an operator of its own is a word on a line drawing spaces") {
+  // dccc-0124: a justified column draws its spaces, but sets "anfuhr" in a
+  // TJ of its own 0.2 of the size after "Jahre", which ends the TJ before.
+  const PageText page =
+      read("BT /F1 10 Tf 100 700 Td (viele Jahre) Tj 1 0 0 1 150.35 700 Tm (anfuhr) Tj ET");
+  CHECK(words_of(page.blocks) == std::vector<std::string>{"viele", "Jahre", "anfuhr"});
+  // Two strings of one TJ array keep the spaced gap, so letter spacing, a
+  // letter-spaced heading and a number a TJ number spaces stay whole
+  // (pdfjs-0016's "Ideas:" "The", 0.2 apart in one TJ, stays glued with
+  // them).
+  for (const auto& [line, words] : std::vector<std::pair<std::string, std::vector<std::string>>>{
+           {"[(Sp) -200 (aced out)]", {"Spaced", "out"}},
+           {"[(T) -200 (R) -200 (AV) -180 (EL) ( now)]", {"TRAVEL", "now"}},
+           {"[(3.) -200 (14 is pi)]", {"3.14", "is", "pi"}},
+           {"[(New Ideas:) -200 (The end)]", {"New", "Ideas:The", "end"}},
+           {"[(a) -200 (b) -200 (c) ( d)]", {"abc", "d"}}}) {
+    INFO(line);
+    CHECK(words_of(read("BT /F1 10 Tf 100 700 Td " + line + " TJ ET").blocks) == words);
+  }
+  // Two operators 0.16 of the size apart are two words, whatever the
+  // producer meant: "a Bo" and "ld word" read "Bo" "ld", the cost of reading
+  // dccc-0124's "in" "Hermeskeil", 0.158 apart, as two words.
+  const PageText bold =
+      read("BT /F1 10 Tf 100 700 Td (a Bo) Tj 1 0 0 1 122.17 700 Tm (ld word) Tj ET");
+  CHECK(words_of(bold.blocks) == std::vector<std::string>{"a", "Bo", "ld", "word"});
+}
+
 TEST_CASE("glyphs within a fifth of the size of one baseline form one line") {
   const PageText page = read(
       "BT /F1 10 Tf 72 700 Td (one) Tj ET BT /F1 10 Tf 100 701 Td (line) Tj ET "
@@ -87,6 +119,62 @@ TEST_CASE("glyphs within a fifth of the size of one baseline form one line") {
   REQUIRE(page.blocks.size() == 1U);
   REQUIRE(page.blocks.front().lines.size() == 2U);
   CHECK(page.text() == "one line\nnext");
+}
+
+TEST_CASE("two runs of large glyphs on baselines a fifth of their size apart are two lines") {
+  // pdfdiff-0018: "B 8" in Times-Bold at 500 pt on the baseline 90 and "8B"
+  // in Helvetica at 660 pt on the baseline 10, drawn over each other.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>";
+  TextDocument document;
+  document.page("BT /F4 500 Tf 1 0 0 1 10 90 Tm (B 8) Tj /F1 660 Tf 1 0 0 1 10 10 Tm (8B) Tj ET",
+                "", "", times);
+  // The two lines are read top edge first, as every block's lines are.
+  CHECK(document.read().text() == "8B\nB 8");
+}
+
+TEST_CASE("a cluster of many baselines stops looking for crossing runs at the budget") {
+  // 1,500 single glyphs at 1,000 pt on baselines 0.05 pt apart, one cluster:
+  // walking them costs more than the budget of a million pair visits, so the
+  // two runs drawn across each other above them (pdfdiff-0018's shape) are
+  // not looked at and stay one line; the result is the same on every read.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>";
+  std::string content = "BT /F1 1000 Tf ";
+  for (int k = 0; k < 1500; ++k) {
+    content += "1 0 0 1 " + std::to_string(1000 + (150 * k)) + " " + std::to_string(k * 0.05) +
+               " Tm (.) Tj ";
+  }
+  content += "/F4 500 Tf 1 0 0 1 10 180 Tm (B 8) Tj /F1 660 Tf 1 0 0 1 10 100 Tm (8B) Tj ET";
+  std::size_t lines = 0;
+  for (int read_count = 0; read_count < 2; ++read_count) {
+    TextDocument document;
+    document.page(content, "", "/MediaBox [0 -100 300000 1000]", times);
+    const PageText page = document.read();
+    REQUIRE(page.hidden_blocks.empty());
+    std::size_t holding = 0;
+    for (const auto& block : page.blocks) {
+      for (const auto& line : block.lines) {
+        std::string text;
+        for (const auto& word : line.words) {
+          text += word.text;
+        }
+        holding += (text.find("8B") != std::string::npos || text.find('B') != std::string::npos);
+      }
+    }
+    CHECK(holding == 1U);
+    lines = read_count == 0 ? holding : lines;
+    CHECK(holding == lines);
+  }
+}
+
+TEST_CASE("subscripts drawn across their line's letters stay in the line") {
+  // dccc-0128's "m1 x m2": the subscripts "1" and "2" at 7 pt, one run 2 pt
+  // below the 10 pt "m x m", each over a letter of it and it over them.
+  const PageText page =
+      read("BT /F1 10 Tf 100 700 Td (m\327m) Tj ET BT /F1 7 Tf 109 698 Td [(1) -444 (2)] TJ ET");
+  REQUIRE(page.blocks.size() == 1U);
+  CHECK(page.blocks.front().lines.size() == 1U);
 }
 
 TEST_CASE("two and three columns read column by column") {
@@ -126,6 +214,14 @@ TEST_CASE("an Identity-V column reads top to bottom") {
   CHECK(page.text() == "\xE4\xB8\xAD\xE6\x96\x87\xE4\xB8\xAD");
 }
 
+TEST_CASE("a vertical word keeps the gaps its TJ numbers leave inside it") {
+  // pdfium-0049: "Hello" set vertically at 12 pt in full-em cells, its TJ
+  // numbers leaving gaps of 0.1 and 0.2 em inside the word.
+  const PageText page =
+      read("BT /F3 12 Tf 110 190 Td [<0048> 100 <0065> -100 <006c006c> 200 <006f>] TJ ET");
+  CHECK(words_of(page.blocks) == std::vector<std::string>{"Hello"});
+}
+
 TEST_CASE("a right-to-left line reads in logical order however it was drawn") {
   // Hebrew alef, bet, gimel: drawn in visual order (gimel at the left) and
   // in logical order (alef first, at the right).
@@ -136,6 +232,46 @@ TEST_CASE("a right-to-left line reads in logical order however it was drawn") {
   CHECK(visual.text() == word);
   CHECK(logical.text() == word);
   CHECK(visual.blocks.front().lines.front().direction == "rtl");
+}
+
+TEST_CASE("a space a TJ number takes back under the next letter does not split its word") {
+  // pdfjs-0018: a Hebrew line drawn in visual order from its left end opens
+  // with a space, and a TJ number moves the word's last letter back over
+  // it and 0.12 pt past it: the word reads whole, its space after it in
+  // logical order.
+  const PageText page =
+      read("BT /F2 10 Tf 100 700 Td [<0020> 262 <05D405E005D905D305DE05D4> -500 <05DC05E9>] TJ ET");
+  CHECK(words_of(page.blocks) ==
+        std::vector<std::string>{"\xD7\xA9\xD7\x9C",
+                                 "\xD7\x94\xD7\x9E\xD7\x93\xD7\x99\xD7\xA0\xD7\x94"});
+}
+
+TEST_CASE(
+    "a glyph mapped to a right-to-left word, a space and a letter joins the letters after it") {
+  // pypdf-0019: the /ToUnicode of the "h" of "habibi" holds the Arabic word
+  // before it, a space and the "h"; the line also holds a right-to-left
+  // word of six letters, so it reads right to left.
+  TextDocument document;
+  const auto map = document.add_stream(
+      "",
+      "/CIDInit /ProcSet findresource begin 12 dict begin begincmap 1 begincodespacerange "
+      "<0000> <FFFF> endcodespacerange 10 beginbfchar <0068> <05D005D100200068> <0061> "
+      "<0061> <0062> <0062> <0069> <0069> <0020> <0020> <05D4> <05D4> <05E0> <05E0> <05D9> "
+      "<05D9> <05D3> <05D3> <05DE> <05DE> endbfchar endcmap CMapName currentdict /CMap "
+      "defineresource pop end end");
+  const std::string cluster =
+      "/F8 << /Type /Font /Subtype /Type0 /BaseFont /TestCID /Encoding /Identity-H /ToUnicode " +
+      std::to_string(map) +
+      " 0 R /DescendantFonts [<< /Type /Font /Subtype /CIDFontType2 /BaseFont /TestCID "
+      "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /DW 500 >>] >>";
+  document.page(
+      "BT /F8 10 Tf 100 700 Td <006800610062006900620069002005D405E005D905D305DE05D4> Tj ET", "",
+      "", cluster);
+  const std::vector<std::string> words = words_of(document.read().blocks);
+  CHECK(std::ranges::any_of(words,
+                            [](const std::string& word) { return word.ends_with(" habibi"); }));
+  CHECK(std::ranges::find(words, "\xD7\x94\xD7\x9E\xD7\x93\xD7\x99\xD7\xA0\xD7\x94") !=
+        words.end());
 }
 
 TEST_CASE("a ruled table's cells are blocks read column by column") {
@@ -347,6 +483,28 @@ TEST_CASE("a glyph drawn twice in two faces at one place is not a word of its ow
   document.page("BT /F1 12 Tf 302.66 20.38 Td (4) Tj ET BT /F4 12 Tf 302.48 20.2 Td (4) Tj ET", "",
                 "", times);
   CHECK(words_of(document.read().blocks).size() == 1U);
+}
+
+TEST_CASE("a Type 3 font whose matrix makes its glyphs far larger than its size reads its words") {
+  // pdfjs-0047: a Type 3 font with /FontMatrix [1 0 0 1 0 0] shown at 0.24,
+  // its glyphs 72 units tall (17 pt) with gaps under 1 pt inside words and
+  // 4.6 pt between them; each piece placed by its own text matrix.
+  const std::string type3 =
+      "/F7 << /Type /Font /Subtype /Type3 /FontBBox [0 -14 72 58] /FontMatrix [1 0 0 1 0 0] "
+      "/CharProcs << >> /Resources << >> /FirstChar 73 /LastChar 121 /Widths [16 0 0 0 0 0 0 37 0 "
+      "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 31 0 31 0 31 0 0 0 0 0 0 0 0 34 34 34 0 22 31 19 34 0 0 0 31] "
+      "/Encoding << /Type /Encoding /Differences [73 /I 80 /P 97 /a 99 /c 101 /e 110 /n 111 /o 112 "
+      "/p 114 /r 115 /s 116 /t 117 /u 121 /y] >> >>";
+  std::string content = "BT /F7 0.24 Tf ";
+  const std::vector<std::pair<double, std::string>> pieces = {
+      {192.24, "P"}, {201.84, "ro"}, {215.52, "p"},   {223.92, "e"},   {232.32, "r"},
+      {237.6, "t"},  {241.92, "y"},  {253.92, "Ins"}, {273.84, "ura"}, {295.68, "nce"}};
+  for (const auto& [x, piece] : pieces) {
+    content += "1 0 0 1 " + std::to_string(x) + " 738.48 Tm [(" + piece + ")] TJ ";
+  }
+  TextDocument document;
+  document.page(content + "ET", "", "", type3);
+  CHECK(document.read().text() == "Property Insurance");
 }
 
 TEST_CASE("order_is_stable") {

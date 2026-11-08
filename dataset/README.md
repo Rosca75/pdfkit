@@ -30,7 +30,7 @@ checkout, which is the parent of `git rev-parse --git-common-dir`. Under it:
 | `cache/<generator>-staging/` (synth, mutate, office) | the generators' outputs before registration |
 | `reports/<run-id>/` | the reports of each run; a run id is `YYYYMMDD-HHMMSS-<git short hash>` |
 
-PDFium, the independent reader, lands in `build/cache/pdfium/<tag>/` of the same
+PDFium, a member of the reference panel, lands in `build/cache/pdfium/<tag>/` of the same
 main checkout, and what it says of each input file (its text, Info fields, page
 count, the SHA-256 of each rendered page, its image objects and their encoded
 bytes, the image comparisons) is kept in `build/cache/pdfium-results/<release>/`,
