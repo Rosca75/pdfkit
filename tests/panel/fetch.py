@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The pdfkit authors
 #
-# Fetches, builds and verifies the reference panel's members (docs/change-01a.md
-# section 9.1), each pinned in tests/panel/members.tsv, one row per member and
-# platform. Nothing here is linked, vendored or shipped: every member runs as a
+# Fetches, builds and verifies the reference panel's members, each pinned in
+# tests/panel/members.tsv, one row per member and platform. Nothing here is linked, vendored or shipped: every member runs as a
 # separate process started by tests/ (CLAUDE.md section 6), from
 # build/cache/panel/ of the main checkout or, on a Linux host, from the
 # distribution's packages.
@@ -29,8 +28,10 @@
 #   unpacked into build/cache/panel/rust/<version>/ first (each component's
 #   manifest.in names its files) and links with the pinned WinLibs GCC.
 #
-# --verify re-hashes every archive present and every binary and compares them
-# with the rows, downloading and building nothing. --record writes the digests
+# --verify re-hashes every binary and every archive present (the members'
+# Windows archives, PDFium's archive and the Windows Rust toolchain's, each
+# skipped by name when absent) and compares them with their pins, downloading
+# and building nothing. --record writes the digests
 # found on disk into this platform's rows (the first fetch of a pin), after
 # which the rows are reviewed and committed. This is the one file of
 # tests/panel/ that downloads, a named exemption of build/check_network.py.
@@ -252,6 +253,27 @@ def verify(row: dict) -> dict:
     return state
 
 
+def verify_archive(name: str, path: Path, pinned: str) -> dict:
+    """An archive re-hashed against its pin; one that is absent is skipped, named."""
+    state = {"archive": name, "path": str(path)}
+    if not path.exists():
+        return dict(state, ok=True, skipped=f"absent: {path} is not on this host")
+    digest = common.sha256_file(path)
+    if digest != pinned:
+        return dict(state, ok=False, problem=f"{name}: {path} has SHA-256 {digest}, pinned {pinned}")
+    return dict(state, ok=True, digest=digest)
+
+
+def archives() -> list[dict]:
+    """PDFium's archive and the Windows Rust toolchain's, re-hashed where present."""
+    spec = importlib.util.spec_from_file_location("pdfium_fetch", REPO / "tests" / "pdfium" / "fetch.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rust = readers.cache_dir() / "rust" / Path(RUST_WINDOWS["url"]).name
+    return [verify_archive("pdfium archive", module.tag_dir() / module.ASSET, module.SHA256),
+            verify_archive("rust toolchain archive", rust, RUST_WINDOWS["sha256"])]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch, build and verify the reference panel's members.")
     parser.add_argument("--member", action="append", help="only this member (repeatable); default every one")
@@ -283,6 +305,8 @@ def main() -> int:
         common.write_tsv(readers.MEMBERS_TSV, readers.MEMBER_COLUMNS, rows, key=None)
         readers.pin.cache_clear()
     states = [verify(row) for row in chosen]
+    if not args.member:
+        states += archives()
     for state in states:
         print(json.dumps(state, ensure_ascii=False))
     refused = [s for s in states if not s["ok"]]
