@@ -330,6 +330,74 @@ the `text` column of the manifest is reverted with the merge.
     all 937 files) found a pointer kept into a temporary (a colour space's
     resolved name, 115 files); fixed, the rerun found no error (25 files pass
     30 s in that debug build only).
+21. **The reading gate judged by the reference panel** (`docs/change-01.md`
+    D2 and D6, measured on Linux, run `panel-b-full`: `main`'s text and
+    images code, `linux-release`, 961 files, one run, no hang): a file
+    counts against pdfkit only when its word F1 is below 0.90 against a
+    strict majority of at least three of the five text members (PDFium,
+    Poppler, MuPDF, pdf_oxide, pdf-extract); a file with fewer voters or a
+    tie is undecided and counted neither way; an empty text of pdfkit's
+    scores 0; item 1's thresholds stand (median at least 0.97, at most 5 %
+    of the decided files against pdfkit). Three rules keep pdfkit and a
+    member on one surface (`tests/panel/judge.py`,
+    `tests/dataset/gates/phase5_panel.py`; `OPEN-QUESTIONS.md` §3.3 for the
+    owner to confirm): for MuPDF, pdf_oxide and pdf-extract, which write
+    right-to-left text in visual order, a right-to-left word reads the
+    same in either direction (PDFium and Poppler are compared word for
+    word); pdfkit's visible text and its text with every duplicate copy
+    count as other readings when they agree better, read by the gate from
+    `pdfkit text`, which must give the run's own text of each such file
+    (226) or the gate refuses, its SHA-256 in the report; and on the 91
+    files where QPDF finds an annotation that draws text (a widget, a
+    FreeText, or another whose appearance or a form it draws shows a
+    string; never a link), Poppler, MuPDF and pdf_oxide, which print such
+    annotations, are judged on their text of a copy QPDF writes without
+    the annotations and the form, cached like any answer (QPDF refuses 10
+    files, which keep the members' own text). Commands: `python
+    tests/dataset/run.py --checks open,text,images --runs 1
+    --timeout-scale 3 --run-id panel-b-full`, then `python
+    tests/dataset/gates/phase5_panel.py --run panel-b-full --collect`
+    once, and without `--collect` after. Numbers: 912 files judged, 893
+    decided, 19 undecided (2.08 %, under the 10 % kill criterion); median
+    1.0; **50 of 893 against pdfkit (5.60 %), so the gate still fails**
+    under the panel. The literal rule (pdfkit's full text against each
+    member's own text, `words.py` alone) gives 93 of 893 (10.41 %), median
+    1.0. The 50 by group of `tests/panel/text_causes.tsv`: `legitimate` 17
+    (the ten synthesised specimens synth-0195 to synth-0204 and synth-0209,
+    whose stated text pdfkit reads and every member misreads; the Type 3
+    shape glyphs of safedocs-0007, -0008, -0010; pdfdiff-0034's unknown
+    filter; pdfminer-0007's duplicate fold; pdfminer-0019, Czech that pdfkit
+    and pdf_oxide read), `layout` 9, `type3_code_names` 6,
+    `subset_unreadable` 5 (pdfjs-0002 among them: a CFF font with
+    glyph-index names, not Type 3), `cjk` 5, `cjk_cmap` 4, `cjk_width` 2,
+    `other` 2. Undecided: mutate-0034, -0035, -0036, pdfdiff-0031,
+    pdfium-0006, pdfium-0029, pdfplumber-0005 to -0008 and -0010,
+    pypdf-0023, qpdf-0034, qpdf-0037 (most members refuse the file), and
+    pdfminer-0013, pdfminer-0044, pdfplumber-0011, synth-0152, synth-0188
+    (two of four voters below, pdf-extract refusing). Of the 56 rows of
+    `tests/pdfium/text_causes.tsv`, the 21 `pdfkit` rows give 20 against
+    and 1 undecided, the 27 `pdfium` rows 21 against, 5 agreeing and 1
+    undecided, the 8 `legitimate` rows 4, 3 and 1. **Type 3 names that
+    restate their code (re-decision R1): CR5 ordered**, on a measure of
+    characters that turns §9.3's outcome: on the plan's measure (at least
+    10 words agreeing with another member's at F1 0.90) pdfjs-0047's files,
+    two words each, read `unread` and would have become `legitimate`. On
+    characters, a majority of the members reads the codes pdfkit counts
+    unreadable on 7 of the 8 decided files tagged `differences_cdd` and
+    `type3` (`python tests/panel/redecide.py type3 --run panel-b-full`),
+    but 6 of those 7 are pdfjs-0047 and its five mutations, so the evidence
+    is two independent files, pdfjs-0047 and opf-0014. The check that each
+    member's characters beyond pdfkit's are the unreadable codes: on
+    pdfjs-0047 and its mutations every member's are exactly the 17 codes,
+    by count and by value; on opf-0014 no member's match exactly (704 to 904
+    characters against the 799 the codes give; character F1 0.93 to
+    0.995). The reading the majority uses is the code itself, which the
+    names restate in hexadecimal on pdfjs-0047's files (`65 /C41`) and in
+    decimal on opf-0014 (`/C10` for 10). pdfpig-0009 reads `unread`,
+    mutate-0036 is undecided. The reading gate's other items were not re-run
+    here; the old script on the same run gives 55 of 899 below 0.90,
+    `build-10.md` §9 item 22's 56 of 898 on the laptop
+    (`docs/change-01.md` Appendix C entry 22).
 
 ### Deviations of earlier phases that affect this one
 

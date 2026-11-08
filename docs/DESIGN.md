@@ -273,7 +273,8 @@ count and the ceiling.
   pdf.js reads it. Pages are numbered from 1 in that order.
 - **Inherited attributes**: `/Resources`, `/MediaBox`, `/CropBox` and `/Rotate`
   are carried down and recorded on each page; a missing `/MediaBox` is US Letter
-  (0 0 612 792), as viewers default it; `/CropBox` is clipped to `/MediaBox`;
+  (0 0 612 792), as PDFium, Poppler and MuPDF lay such a page out (a specimen
+  with no box anywhere; pdf_oxide gives it no size); `/CropBox` is clipped to `/MediaBox`;
   `/Rotate` is normalised to 0, 90, 180 or 270.
 - **Resources**: a name is looked up in the current content's `/Resources`;
   a form XObject with no `/Resources` falls back to its parent's (the page's or

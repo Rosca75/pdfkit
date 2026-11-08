@@ -20,7 +20,7 @@ RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bphase\s*\d", re.IGNORECASE), "names a build phase"),
     (re.compile(r"\bbuild-\d+(?:\.md)?\b", re.IGNORECASE), "cites a build file"),
     (re.compile(r"\b(?:ticket|issue)\s*#?\d+", re.IGNORECASE), "cites a ticket"),
-    (re.compile(r"\bchange[- ]order\b|\bchange-\d+\b", re.IGNORECASE), "cites a change order"),
+    (re.compile(r"\bchange[- ]order\b|\bchange-\d+[a-z]?\b", re.IGNORECASE), "cites a change order"),
     (re.compile(r"(?<!\bis )(?<!\bare )(?<!\bbe )(?<!\bbeing )\bused to\b", re.IGNORECASE),
      "uses the delta words 'used to'"),
     (re.compile(r"\bno longer\b", re.IGNORECASE), "uses the delta words 'no longer'"),

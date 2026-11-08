@@ -35,8 +35,15 @@ main checkout, and what it says of each input file (its text, Info fields, page
 count, the SHA-256 of each rendered page, its image objects and their encoded
 bytes, the image comparisons) is kept in `build/cache/pdfium-results/<release>/`,
 keyed by the file's SHA-256, so a gate run asks PDFium only about the outputs it
-wrote; deleting that folder costs one slower run. All of these folders are
-ignored by git.
+wrote; deleting that folder costs one slower run. The reference panel's members
+(`tests/panel/`) are fetched or built into `build/cache/panel/` of the same main
+checkout, and what each says of each input file (its text per page, its page
+sizes, its structure, the pixels of the bitonal and CMYK images the census
+names) is kept in `build/cache/panel-results/<member>-<version>-<digest>/`,
+keyed by the file's SHA-256, the member's version and binaries' digest, the
+request and a schema number, so a judgement reads every member from the cache;
+PDFium's text is read from its own cache above, never copied. All of these
+folders are ignored by git.
 
 ## 3. The manifest
 

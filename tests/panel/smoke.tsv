@@ -1,0 +1,61 @@
+id	reason
+dccc-0012	reading gate below 0.90, cause pdfkit
+mutate-0008	reading gate below 0.90, cause pdfkit
+mutate-0011	reading gate below 0.90, cause pdfkit
+mutate-0018	reading gate below 0.90, cause pdfkit
+mutate-0023	reading gate below 0.90, cause pdfkit
+mutate-0028	reading gate below 0.90, cause pdfkit
+pdfdiff-0017	reading gate below 0.90, cause pdfkit
+pdfdiff-0018	reading gate below 0.90, cause pdfkit
+pdfdiff-0025	reading gate below 0.90, cause pdfkit
+pdfdiff-0026	reading gate below 0.90, cause pdfkit
+pdfdiff-0036	reading gate below 0.90, cause pdfkit
+pdfium-0049	reading gate below 0.90, cause pdfkit
+pdfjs-0042	reading gate below 0.90, cause pdfkit
+pdfjs-0047	reading gate below 0.90, cause pdfkit
+pdfjs-0053	reading gate below 0.90, cause pdfkit
+pdfminer-0039	reading gate below 0.90, cause pdfkit
+pdfminer-0044	reading gate below 0.90, cause pdfkit
+pdfpig-0002	reading gate below 0.90, cause pdfkit
+pdfpig-0003	reading gate below 0.90, cause pdfkit
+pdfplumber-0023	reading gate below 0.90, cause pdfkit
+synth-0151	reading gate below 0.90, cause pdfkit
+dccc-0066	reading gate below 0.90, cause pdfium
+mutate-0044	reading gate below 0.90, cause pdfium
+pdfdiff-0024	reading gate below 0.90, cause pdfium
+pdfjs-0002	reading gate below 0.90, cause pdfium
+pdfjs-0041	reading gate below 0.90, cause pdfium
+pdfminer-0019	reading gate below 0.90, cause pdfium
+pdfminer-0022	reading gate below 0.90, cause pdfium
+pdfminer-0023	reading gate below 0.90, cause pdfium
+pdfplumber-0011	reading gate below 0.90, cause pdfium
+pikepdf-0022	reading gate below 0.90, cause pdfium
+dccc-0073	reading gate below 0.90, cause legitimate
+dccc-0147	reading gate below 0.90, cause legitimate
+mutate-0038	reading gate below 0.90, cause legitimate
+pdfdiff-0034	reading gate below 0.90, cause legitimate
+qpdf-0026	a bitonal image disputed with PDFium
+synth-0263	a bitonal image disputed with PDFium
+synth-0265	a bitonal image disputed with PDFium
+dccc-0003	a DeviceCMYK image
+dccc-0034	a DeviceCMYK image
+dccc-0085	a DeviceCMYK image
+dccc-0124	a DeviceCMYK image
+dccc-0136	a DeviceCMYK image
+dccc-0150	a DeviceCMYK image
+nicar25-0007	a DeviceCMYK image
+opf-0016	a DeviceCMYK image
+opf-0023	a DeviceCMYK image
+pdfpig-0009	a DeviceCMYK image
+synth-0128	clean, text layout tag no_space_glyphs
+synth-0129	clean, text layout tag kerning_split
+synth-0210	clean, text layout tag ligatures
+synth-0105	clean, text layout tag hyphenation_line
+synth-0108	clean, text layout tag hyphenation_page
+synth-0134	clean, text layout tag multi_column
+synth-0158	clean, text layout tag rotated
+synth-0188	clean, text layout tag vertical
+dccc-0070	clean, text layout tag right_to_left
+synth-0171	clean, text layout tag table
+synth-0102	clean, text layout tag header_footer
+dccc-0004	clean, text layout tag actual_text
