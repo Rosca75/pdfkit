@@ -44,7 +44,7 @@
       "parallelWith": [],
       "minimumModel": "opus",
       "slug": "text-fixes",
-      "owns": ["src/fonts/", "src/text/", "tests/unit/fonts/", "tests/unit/text/", "third_party/adobe-cmaps/", "third_party/inventory.tsv", "THIRD-PARTY-NOTICES.md", "build/fonts/", "build/check_generated.py", "build/budgets.tsv", "dataset/manifest.tsv", "tests/panel/text_causes.tsv", "tests/pdfium/text_causes.tsv", "docs/DESIGN.md", "docs/SOURCES.md", "CLAUDE.md", "dataset/README.md", "build-5.md", "build-6.md", "docs/archive/build/", "OPEN-QUESTIONS.md", "build/paths_pending.tsv"]
+      "owns": ["src/fonts/", "src/text/", "tests/unit/fonts/", "tests/unit/text/", "third_party/inventory.tsv", "THIRD-PARTY-NOTICES.md", "build/fonts/", "build/check_generated.py", "build/budgets.tsv", "dataset/manifest.tsv", "tests/panel/text_causes.tsv", "tests/pdfium/text_causes.tsv", "docs/DESIGN.md", "docs/SOURCES.md", "CLAUDE.md", "dataset/README.md", "build-5.md", "build-6.md", "docs/archive/build/", "OPEN-QUESTIONS.md", "build/paths_pending.tsv"]
     }
   ],
   "shared": [
@@ -326,8 +326,8 @@ positions of one word are not.
 |---|---|---|---|---|
 | CR1 | A panel of reference readers answering for every dataset file, cached per file and member version | `tests/` holds one reader (F3) | `tests/panel/`, `build/cache/` | yes, batch A |
 | CR2 | Gates and reading choices judged by the panel's majority | no judge exists beside PDFium | `tests/panel/judge.py`, `tests/dataset/gates/` | yes, batch B |
-| CR3 | Read CJK fonts with a predefined CMap or an Adobe ordering and no `/ToUnicode` | no CMap data ships (`docs/DESIGN.md` §5.3) | `third_party/adobe-cmaps/`, `src/fonts/` | yes, batch C |
-| CR4 | Latin codes of a non-embedded CJK font with no `/W` advance at half width | the specification's `/DW` default of 1000 is applied as written | `src/fonts/type0_font.cpp` | yes, batch C |
+| CR3 | Read CJK fonts with a predefined CMap or an Adobe ordering and no `/ToUnicode` | no CMap data ships (`docs/DESIGN.md` §5.3) | the Adobe CMap resources, `src/fonts/` | no: dropped by the owner (`OPEN-QUESTIONS.md` §1.5) |
+| CR4 | Latin codes of a non-embedded CJK font with no `/W` advance at half width | the specification's `/DW` default of 1000 is applied as written | `src/fonts/type0_font.cpp` | no: dropped by the owner (`OPEN-QUESTIONS.md` §1.5) |
 | CR5 | Type 3 glyph names that restate their code, read as the panel majority reads them | `docs/DESIGN.md` §5.2 reads them only through a program | `src/fonts/decoding_ladder.cpp`, `src/fonts/glyph_list.cpp` | yes, batch C, only if batch B's measure says so (D3) |
 
 ---
@@ -372,7 +372,7 @@ member of the reference panel". The identifier side does not move:
 | D7 | The pixel panel: PDFium through `FPDFImageObj_GetRenderedBitmap`, Poppler `pdfimages`, MuPDF `mutool extract`. A member votes on an image only when its answer has the image's own width and height with `/Decode` applied; otherwise it abstains for that image. The page renderers (PDFium, `pdftoppm`, `mutool draw`) are recorded as capabilities in `tests/panel/members.tsv` and not used by this order, whose gates judge decoded images, not pages. pdf_oxide and pdf-extract vote on text only; hayro is not taken (Appendix B) | mine, flagged for review; local to `tests/panel/readers/` and `judge.py` | a pixel vote is cast only where the comparison is exact; costs one capability measurement in batch A |
 | D8 | The old gate scripts (`text_agreement.py`, `image_agreement.py`, `phase10.py`) stay and keep their meaning, because the release gate re-runs them; the panel gates are new scripts beside them, `tests/dataset/gates/phase5_panel.py` and `phase6_panel.py`. Batch B records the panel numbers in `build-5.md` §9 and `build-6.md` §9; when a panel gate passes on the landed order, the owner's landing merge carries `Build-Phase: 5 done` or `Build-Phase: 6 done` and batch C has prepared the plan's move to `docs/archive/build/` and the `CLAUDE.md` §1 row | mine, flagged for review | a phase can close on the owner's rule without rewriting the release gate; `phase10.py` gathering the panel tables is left to the release session (§8.2) |
 | D9 | Rust: the `x86_64-pc-windows-gnu` toolchain at a pinned stable release, linking with the pinned WinLibs GCC (no MSVC), unpacked by hash into the main checkout's `build/cache/panel/rust/`; `cargo` with `http.check-revoke = false` for the proxy (recalled: a Windows-only cargo setting); `CARGO_TARGET_DIR` in `build/cache/panel/cargo-target/`; `Cargo.lock` committed | mine, flagged for review; the owner may instead install rustup by hand (§16) | one compile shared by every worktree; costs about 15 minutes of compile the first time and 2 to 3 GB of disk |
-| D10 | The Adobe CMap resources ship as packed range tables cut by a generator under `build/fonts/` into `src/fonts/generated/`, the upstream text files kept under `third_party/adobe-cmaps/`, only the CMaps and orderings the predefined names need. If the DLL then passes its budget, batch C raises the budget by the measured growth with its reason in `build/budgets.tsv` | the data, owner (old §2.10 (a)); the packing and the budget rule mine, flagged | CJK files read; costs DLL bytes (§16) |
+| D10 | Withdrawn by the owner on 2026-11-07 (`OPEN-QUESTIONS.md` §1.5): CJK reading adds no complexity, so no CMap data ships. As written before: the Adobe CMap resources ship as packed range tables cut by a generator under `build/fonts/` into `src/fonts/generated/`, the upstream text files kept in the repository, only the CMaps and orderings the predefined names need. If the DLL then passes its budget, batch C raises the budget by the measured growth with its reason in `build/budgets.tsv` | the data, owner (old §2.10 (a)); the packing and the budget rule mine, flagged | CJK files read; costs DLL bytes (§16) |
 | D11 | The smoke set is `tests/panel/smoke.tsv`, about 60 files: the 21 pdfkit-caused files, 10 PDFium-caused, 4 legitimate, the 3 disputed bitonal images' files, 10 files with DeviceCMYK images and 12 clean files across the text-layout tags | mine, flagged | one mid-batch run of a few minutes instead of a full gate |
 | D12 | The `/MediaBox` specimens are generated at run time by `tests/panel/specimens.py` into `build/cache/panel/specimens/`, never committed | mine (required by `build/check_repo.py`) | no dataset row moves; the dataset's 960 files and its denominators stay |
 | D13 | The continuous-tone gate (`build-6.md` §4 item 3) stays judged by PDFium: it passes (99.03 %) | mine, flagged | no work where nothing fails |
@@ -432,8 +432,6 @@ build/check_network.py             (one exemption, batch A)
 build/toolchain.md                 (a section on the panel's pins, batch A)
 build/paths_pending.tsv            (rows added and removed, every batch)
 src/fonts/, src/text/              (batch C)
-third_party/adobe-cmaps/, third_party/inventory.tsv, THIRD-PARTY-NOTICES.md   (batch C)
-build/fonts/ (a CMap generator), build/check_generated.py (its registration), build/budgets.tsv (batch C)
 tests/unit/fonts/, tests/unit/text/ (batch C)
 dataset/manifest.tsv               (expect_text and expect_fonts of the files batch C fixes)
 tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
@@ -467,7 +465,7 @@ tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
 |---|---|---|---|---|---|---|
 | A | `change-01a.md` | `tests/panel/` (created), `build/check_network.py`, `build/toolchain.md`, the `CLAUDE.md` §3.5 line, `dataset/README.md` §2 | nothing | nothing | `opus` | every member fetched or built by hash, its answers cached for the 960 files, `tests/panel/members.tsv` and `tests/panel/smoke.tsv` committed |
 | B | `change-01b.md` | the judge, the two panel gate scripts, `tests/panel/text_causes.tsv`, the re-decisions, `build-5.md` and `build-6.md` §9, `OPEN-QUESTIONS.md` | A | nothing | `opus` | both panel gates run on the full dataset with their numbers in the build files; each re-decision settled or asked |
-| C | `change-01c.md` | `src/fonts/`, `src/text/`, `third_party/adobe-cmaps/`, the generator, the order-wide documentation sweep | B | nothing | `opus` | the files the panel confirms as pdfkit's fixed or named, both gates re-run, the documents describing what landed |
+| C | `change-01c.md` | `src/fonts/`, `src/text/`, the order-wide documentation sweep (the CMap data and its generator dropped by `OPEN-QUESTIONS.md` §1.5) | B | nothing | `opus` | the files the panel confirms as pdfkit's fixed or named, both gates re-run, the documents describing what landed |
 
 Batch A's note for batch B (on Linux, `docs/change-01a.md` Appendix C): every
 member is present and answers for the 961 files on disk from the cache;

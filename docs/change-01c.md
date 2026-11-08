@@ -9,8 +9,8 @@
 | Superseded by | nothing yet |
 | Batches | batch C of `docs/change-01.md` |
 | `SessionVersion` | not applicable; the C ABI version stays 1 and no JSON shape moves |
-| Behaviour change | yes: `pdfkit_text` (and every function that reads text: redaction's search, the self-check) reads CJK fonts with a predefined CMap or an Adobe ordering and no `/ToUnicode`, advances Latin codes of a non-embedded CJK font at half width, and lays out the confirmed cases differently; checked against the 960-file dataset, the panel and every release gate row |
-| New dependency | shipped: the Adobe CMap resources (BSD-3), as packed tables (parent D10) |
+| Behaviour change | yes: `pdfkit_text` (and every function that reads text: redaction's search, the self-check) reads Type 3 code names and lays out the confirmed cases differently (the CJK items were dropped, §9.1 and §9.2); checked against the 960-file dataset, the panel and every release gate row |
+| New dependency | none (the Adobe CMap resources were dropped with §9.1) |
 | Minimum model | `opus` |
 | Duration and price | 5.5 to 6 hours, $95 to $120 at list prices (parent §11.1); the split point is after the CMaps (§9.6) |
 
@@ -79,37 +79,18 @@ seen red (`CLAUDE.md` §8.2). Every external fact below is **recalled** unless
 marked read; read it at the source or test it on the named dataset files, and
 record its status in `docs/SOURCES.md`.
 
-### 9.1 CJK CMap data (CR3; group `cjk_cmap`: pdfdiff-0036, pdfjs-0053, pdfminer-0039, pdfminer-0044, pdfpig-0003, pdfplumber-0023 at batch A's base)
+### 9.1 CJK CMap data (CR3; group `cjk_cmap`) — dropped
 
-| File | Change |
-|---|---|
-| `third_party/adobe-cmaps/` | the upstream files the predefined names need, from https://github.com/adobe-type-tools/cmap-resources at a pinned commit (`docs/SOURCES.md` row 87, read): the predefined CMaps for the Adobe-Japan1, -GB1, -CNS1 and -Korea1 orderings that ISO 32000-1 lists for CID fonts (recalled: its table of predefined CMaps), and each ordering's `Adobe-<ordering>-UCS2` CID-to-Unicode CMap; the upstream licence file |
-| `third_party/inventory.tsv`, `THIRD-PARTY-NOTICES.md` | the component's row (commit, upstream URL, BSD-3, SHA-256) and its notice; `python build/check_third_party.py` green |
-| `build/fonts/cmaps.py`, `build/fonts/cmaps.lock` | the generator: parses the CMap files (`begincodespacerange`, `begincidrange`, `begincidchar`, `usecmap` among the predefined files) and writes packed range tables (code range to first CID, CID range to first code point) as `constexpr` arrays through `cpp_table.py`; registered in `build/check_generated.py` |
-| `src/fonts/generated/` | the generated tables, never edited by hand |
-| `src/fonts/predefined_cmaps.hpp`, `.cpp` | `pdfkit::fonts::PredefinedCmaps`: `lookup(name)` returns the `Cmap` of a predefined name (its codespace from the data, which replaces `predefined_codespace`'s implied one for the names the data has), `to_unicode(ordering, cid)` the character of a CID; both bounded table lookups with no allocation from file input |
-| `src/fonts/type0_font.cpp` | a predefined name with data decodes through it; a CID font with no `/ToUnicode` whose `/CIDSystemInfo` names one of the four Adobe orderings maps CID to Unicode through that ordering (pdfdiff-0036 and pdfminer-0039 are `Identity-V` with Adobe-Japan1) |
+Withdrawn by the owner on 2026-11-07 (`OPEN-QUESTIONS.md` §1.5): no Adobe
+CMap resource is vendored, no generator is written and the DLL's budget does
+not move. The files of the group stay known gaps with their rows in
+`tests/panel/text_causes.tsv`, and the panel still judges them.
 
-**The rung** of a code answered through an ordering's CID-to-Unicode table is
-`to_unicode`, because the table is the ToUnicode map the ordering defines and
-a new rung would add a value to the JSON callers read (`docs/ABI.md`, the
-`rungs` of `pdfkit_text`). Mine, flagged: a separate rung is a later order's
-choice.
+### 9.2 Half-width Latin in a non-embedded CJK font (CR4; group `cjk_width`) — dropped
 
-**Size**: after the build, `python build/package.py`. If the DLL passes its
-budget, raise `build/budgets.tsv`'s DLL, and the zip's if it passes too, by the
-measured growth plus 25 % of it, with the reason in the row's note (parent
-D10), and say the new numbers in the final message.
-
-### 9.2 Half-width Latin in a non-embedded CJK font (CR4; group `cjk_width`: dccc-0012, synth-0151)
-
-In `src/fonts/type0_font.cpp`, for a CID font with no embedded program and no
-`/W`, a code whose character is printable ASCII (U+0020 to U+007E) advances 500
-thousandths instead of `/DW`. Recalled: viewers advance such glyphs at half
-width because the substituted CJK font's Latin glyphs are half width; test it
-on the two files (their words must no longer split at the media box) and keep
-the narrowest rule that fixes them. `docs/DESIGN.md` §5.3 says the rule and
-its status.
+Withdrawn with §9.1 for the same reason; `/DW` stays as the specification
+writes it, and the group's files (dccc-0012, synth-0151, and the "INS TALL"
+cut of dccc-0139 that the same default causes) stay known gaps.
 
 ### 9.3 Type 3 names restating their code (CR5; only if ordered, §0)
 
@@ -210,15 +191,10 @@ and at 5 h 30 of wall-clock stop, commit what passes and record what is left.
 ### 10.1 Files this batch touches
 
 ```
-src/fonts/predefined_cmaps.hpp, .cpp            (new)
-src/fonts/generated/                            (new generated tables)
-src/fonts/type0_font.cpp                        (§9.1, §9.2)
 src/fonts/decoding_ladder.cpp, glyph_list.cpp   (§9.3, only if ordered)
 src/fonts/CMakeLists.txt                        (the new sources)
 src/text/                                       (§9.4, the layout passes the faults name)
 tests/unit/fonts/, tests/unit/text/             (new cases)
-third_party/adobe-cmaps/, third_party/inventory.tsv, THIRD-PARTY-NOTICES.md
-build/fonts/cmaps.py, cmaps.lock, build/check_generated.py, build/budgets.tsv
 tests/panel/text_causes.tsv, tests/pdfium/text_causes.tsv, dataset/manifest.tsv   (rows of fixed files)
 CLAUDE.md, docs/DESIGN.md, docs/SOURCES.md, dataset/README.md, OPEN-QUESTIONS.md, build-5.md, build/paths_pending.tsv   (sweep)
 ```
@@ -242,16 +218,11 @@ CLAUDE.md, docs/DESIGN.md, docs/SOURCES.md, dataset/README.md, OPEN-QUESTIONS.md
 
 | Test | Tier | Asserts |
 |---|---|---|
-| a predefined CMap case per ordering | unit (`tests/unit/fonts/`) | a code of each of the four orderings' named CMaps decodes to its CID and character; a code outside the codespace is unreadable and counted |
-| an `Identity-V` Adobe-Japan1 font with no `/ToUnicode` | unit | its CIDs read through the ordering, rung `to_unicode` |
-| half-width Latin | unit | a non-embedded CID font with no `/W`: ASCII codes advance 500, an ideograph `/DW` |
 | `Cdd` names (only if ordered) | unit | a Type 3 font with `/Differences [65 /C65]` reads as batch B's reading names; `/C66` on code 65 stays unreadable |
 | DFT1, DFT2, DFT3 | unit (`tests/unit/text/`) | the geometry of each file, read as its words |
-| the generator | checks | `python build/check_generated.py` re-cuts the tables byte for byte |
 
-**Updated, deleted:** a unit case asserting "predefined CMap codes are
-unreadable" for a name the data now covers changes its expectation; say so in
-the commit, because that behaviour moved by design.
+**Updated, deleted:** none; the CMap and half-width cases were dropped with
+§9.1 and §9.2.
 
 ---
 
@@ -278,8 +249,7 @@ As the parent's §14: pdfjs-0053 and pdfplumber-0023 in a viewer beside
 
 | Item | Decided by | Proven by | Held by |
 |---|---|---|---|
-| CR3, F6, F7 | D10 | AC5, AC7 | the CMap unit cases; `check_generated.py`; `package.py` |
-| CR4 | D2 | AC5 | the half-width unit case |
+| CR3, CR4, F6, F7 | `OPEN-QUESTIONS.md` §1.5 | dropped | the rows of `tests/panel/text_causes.tsv` |
 | CR5 | D3 | AC5 | the `Cdd` unit case, only if ordered |
 | DFT1, DFT2, DFT3 | D2 | AC5, AC5a | the layout unit cases |
 | D8 | D8 | AC6 | the release gate's rows |
