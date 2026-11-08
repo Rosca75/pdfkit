@@ -332,8 +332,12 @@ whether the landing merge closes phase 5 or 6.
    pdfkit because MuPDF, pdf_oxide and pdf-extract cut the words, each in
    its own places (`OPEN-QUESTIONS.md` §3.6). The rule also joins
    pdfjs-0004's "Questions about your bill?" and moves nothing else.
-   opf-0014, pdfpig-0009 and mutate-0036, whose names restate their codes
-   in decimal, read their codes too (`expect_fonts` of the manifest).
+   opf-0014 (`/C10`, decimal) and mutate-0036 read their codes too
+   (`expect_fonts` of the manifest). A first form also took dvips's
+   lower-case `cNN` names and read pdfpig-0009's bitmap fonts as letters
+   shifted by three ("QXOOIlOOWHLQQHJDWLYHU"), text no member reads; the
+   rule takes an upper-case `C` alone, the shape the panel confirmed, and
+   pdfpig-0009 keeps its 76 unreadable codes and their warning.
 4. **The layout fixes go beyond DFT1 to DFT3**: the brief added W2, the
    owner's word cuts of `OPEN-QUESTIONS.md` §1.4, and the layout group's
    other files. Added rules: a space that opens a run and that a `TJ`

@@ -114,9 +114,10 @@ std::optional<std::string> unicode_code(Type0Font::UnicodeCodes codes, std::uint
 }
 
 // The text of a code whose glyph name restates the code itself ("C41" for
-// code 65), in a font with no program to look the name up in: the character
-// of that code, as every reader of the reference panel reads pdfjs-0047's
-// Type 3 font; a control character stays unreadable.
+// code 65, GlyphList::restates_code), in a font with no program to look the
+// name up in: the character of that code, as every reader of the reference
+// panel reads pdfjs-0047's Type 3 font; a control character stays
+// unreadable.
 std::optional<std::string> restated(std::string_view name, std::uint8_t code) {
   if (!GlyphList::restates_code(name, code) || !GlyphList::usable(code)) {
     return std::nullopt;

@@ -280,30 +280,34 @@ TEST_CASE("a Type 3 font reads /ToUnicode and its glyph names, and nothing more"
         Rungs{DecodingRung::glyph_name, DecodingRung::unreadable, DecodingRung::unreadable});
 }
 
-TEST_CASE("a Cdd or Cxx name restating its own code reads as that code in a font with no program") {
+TEST_CASE(
+    "a Cdd or Cxx name restating its own code reads as that code in a font with no program, a cdd "
+    "name not") {
   // pdfjs-0047's Type 3 font names code 65 /C41 and code 32 /C20 (hexadecimal),
   // opf-0014's code 10 /C10 (decimal); the reference panel reads each such code
   // as the character of that code.
   FontDocument doc;
   const std::string differences =
       "/Encoding << /Type /Encoding /Differences [10 /C10 32 /C20 44 /C2c 48 /C48 65 /C41 /C66 "
-      "/C66 /C4] >>";
+      "/C66 /C4 /c69] >>";
   const auto type3 = doc.add(
       "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1000 1000] /FontMatrix [0.001 0 0 0.001 0 "
-      "0] /CharProcs << >> /FirstChar 10 /LastChar 68 " +
+      "0] /CharProcs << >> /FirstChar 10 /LastChar 69 " +
       differences + " >>");
   const auto bare =
       doc.add("<< /Type /Font /Subtype /Type1 /BaseFont /Unknown-Face " + differences + " >>");
   const auto loaded = doc.load(type3);
-  const auto decoded = FontDocument::decoded(*loaded, "\x0A ,0ABCD");
+  const auto decoded = FontDocument::decoded(*loaded, "\x0A ,0ABCDE");
   // Code 10 restates itself but is a control character; /C66 on code 67 and
-  // /C4 on code 68 name other codes.
+  // /C4 on code 68 name other codes; dvips's lower-case /c69 (pdfpig-0009's
+  // bitmap fonts, whose codes no reader of the panel reads) is not the shape
+  // the panel confirmed, and stays unreadable.
   CHECK(decoded.text == " ,0AB");
-  CHECK(decoded.rungs == Rungs{DecodingRung::unreadable, DecodingRung::glyph_name,
-                               DecodingRung::glyph_name, DecodingRung::glyph_name,
-                               DecodingRung::glyph_name, DecodingRung::glyph_name,
-                               DecodingRung::unreadable, DecodingRung::unreadable});
-  CHECK(loaded->unreadable_count() == 3U);
+  CHECK(decoded.rungs ==
+        Rungs{DecodingRung::unreadable, DecodingRung::glyph_name, DecodingRung::glyph_name,
+              DecodingRung::glyph_name, DecodingRung::glyph_name, DecodingRung::glyph_name,
+              DecodingRung::unreadable, DecodingRung::unreadable, DecodingRung::unreadable});
+  CHECK(loaded->unreadable_count() == 4U);
   // A simple font with no program reads the same names the same way.
   const auto plain = FontDocument::decoded(*doc.load(bare), "AC");
   CHECK(plain.text == "A");

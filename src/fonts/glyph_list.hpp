@@ -51,9 +51,12 @@ class GlyphList {
   // hexadecimal one.
   [[nodiscard]] static std::optional<Number> number(std::string_view name) noexcept;
 
-  // Whether a "Cdd" or "Cxx" name restates code: its digits, read as decimal
-  // or as hexadecimal, are that code (pdfjs-0047's Type 3 font names code 65
-  // /C41, opf-0014's code 10 /C10).
+  // Whether a "Cdd" or "Cxx" name, with an upper-case C, restates code: its
+  // digits, read as decimal or as hexadecimal, are that code (pdfjs-0047's
+  // Type 3 font names code 65 /C41, opf-0014's code 10 /C10, the shape the
+  // reference panel reads as the code). dvips's lower-case "cNN" names of
+  // bitmap fonts (pdfpig-0009) are not: no member reads them, and their
+  // numbers are not their characters.
   [[nodiscard]] static bool restates_code(std::string_view name, std::uint32_t code) noexcept;
 
   // Whether a code point may stand as decoded text: not a control character

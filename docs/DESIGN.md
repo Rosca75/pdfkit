@@ -359,11 +359,15 @@ the loader, because one bad font must not lose a page.
   not characters, so they decode only when the font program maps that glyph
   through its own `cmap` or charset; otherwise they are unreadable, but for
   one case: in a font with no program (a Type 3 font, a font not embedded), a
-  `Cdd` or `Cxx` name whose number, read as decimal or as hexadecimal, is its
-  own code reads as the character of that code, rung `glyph_name`, because
-  the reference panel's majority reads such a font so (pdfjs-0047's Type 3
-  font names code 65 `/C41`: every member reads its 17 codes as those
-  characters). A control character and any other number stay unreadable.
+  `Cdd` or `Cxx` name with an upper-case `C` whose number, read as decimal or
+  as hexadecimal, is its own code reads as the character of that code, rung
+  `glyph_name`, because the reference panel's majority reads such a font so
+  (pdfjs-0047's Type 3 font names code 65 `/C41`: every member reads its 17
+  codes as those characters; opf-0014 names code 10 `/C10`). That is the
+  only shape the panel confirmed, on two independent files: dvips's
+  lower-case `cNN` names of bitmap fonts (pdfpig-0009) read as their codes
+  would give letters shifted from the words, which no member reads, so they
+  stay unreadable, as do a control character and any other number.
 - **Symbolic TrueType** (flag 3 of `/Flags` set, or no usable encoding): the
   font program's `cmap` is tried in the order (3,0) with the code, then with the
   code plus `0xF000`, then (1,0) with the code, then (3,1) through the glyph name

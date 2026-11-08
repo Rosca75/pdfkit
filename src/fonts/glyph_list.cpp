@@ -208,7 +208,7 @@ std::optional<GlyphList::Number> GlyphList::number(std::string_view name) noexce
 }
 
 bool GlyphList::restates_code(std::string_view name, std::uint32_t code) noexcept {
-  if (name.size() < 2 || (name[0] != 'C' && name[0] != 'c')) {
+  if (name.size() < 2 || name[0] != 'C') {
     return false;
   }
   const std::string_view digits = name.substr(1);
