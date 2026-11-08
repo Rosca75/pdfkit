@@ -248,9 +248,9 @@ a phase closes only when the laptop's merge gate passes (§15.5).
 | unit tier on `main` at 7dd86ef | 765 of 765 under `linux-debug` (GCC 13) and `linux-release` (clang 18) | measured for this handover |
 | harness suites on `main` at 7dd86ef | dataset harness 108, PDFium harness 29, panel 80, dataset tools 75, all passing | measured for this handover |
 | ABI tier | .NET and Python, 31 files, 717 calls each, passing | `docs/change-01c.md` Appendix C entry 12 |
-| reading gate under the panel (run `panel-c-full2`) | 912 judged, 890 decided, 22 undecided; median 1.0; **44 of 890 against pdfkit (4.94 %), passes** (5 % limit); the literal rule 88 of 890 (9.89 %); batch B 50 of 893 (5.60 %); no file that agreed at batch B counts against pdfkit | `build-5.md` §9 item 22 |
-| bitonal gate under the panel | 518 bitonal images, 489 decided, **489 of 489 agree**, 29 undecided | `build-6.md` §9 items 18 and 19 |
-| old PDFium reading script, same run | 899 scored, median 1.0, 46 below 0.90 (5.12 %; 12 `pdfkit`, 27 `pdfium`, 7 `legitimate`), from 55 | `build-5.md` §9 item 22 |
+| reading gate under the panel (run `panel-c-full2`) | 912 judged, 890 decided, 22 undecided; median 1.0; **44 of 890 against pdfkit (4.94 %), passes** (5 % limit); the literal rule 88 of 890 (9.89 %); batch B 50 of 893 (5.60 %); no file that agreed at batch B counts against pdfkit | `docs/archive/build/build-5.md` §9 item 22 |
+| bitonal gate under the panel | 518 bitonal images, 489 decided, **489 of 489 agree**, 29 undecided | `docs/archive/build/build-6.md` §9 items 18 and 19 |
+| old PDFium reading script, same run | 899 scored, median 1.0, 46 below 0.90 (5.12 %; 12 `pdfkit`, 27 `pdfium`, 7 `legitimate`), from 55 | `docs/archive/build/build-5.md` §9 item 22 |
 | dataset tier | 961 of 968 files present (the 7 `office` rows are made on the laptop); two runs identical; no crash; no hang under `--timeout-scale 3`; the one real expectation miss is `mutate-0048`'s self-check refusal, as on 0.2.1-preview | `docs/change-01c.md` Appendix C entry 12 |
 | other release rows (AC6 of `docs/change-01c.md`) | equal to `main` before batch C: re-serialisation 12,121 of 12,121 streams; images 6,133 of 6,139 decoded; continuous-tone 3,688 of 3,724; Info 3,052 of 3,052; self-check 909 of 917 (the 7 `office` rows and `mutate-0048`); pages stable outside the rectangles 8,010 of 8,051 (99.49 %) | the same entry |
 | `expect_damage` (run `w1-fix2`) | 912 judged rows pass, 49 refused files skipped; **22 files damaged**, 20 with their pages listed and `mutate-0038` and `mutate-0041` as `some`; inspect, text and find agree on 912 of 912 | the run's outcomes and `dataset/manifest.tsv`; the ledger's "24 files" of §0.4 is a miscount |
@@ -432,7 +432,7 @@ manifest files with the same harness.
     python tests/panel/fetch.py --verify
     python tests/pdfium/image_agreement.py --out dataset/reports/cand-0.4.0/images
     python tests/panel/collect.py --census cand-0.4.0 --run-id cand-0.4.0
-    python tests/dataset/gates/phase5_panel.py --run cand-0.4.0
+    python tests/dataset/gates/phase5_panel.py --run cand-0.4.0 --collect
     python tests/dataset/gates/phase6_panel.py --run cand-0.4.0
     python tests/panel/redecide.py cmyk --run cand-0.4.0
     ```
@@ -448,7 +448,7 @@ manifest files with the same harness.
 
 **Landing.** When every step passes, one commit on `main` closes phases 5
 and 6 (`docs/change-01.md` D8, `docs/change-01c.md` Appendix C entry 10): it
-moves `build-5.md` and `build-6.md` to `docs/archive/build/` with `git mv`,
+moves the plans of phases 5 and 6 to `docs/archive/build/` with `git mv`,
 moves `CLAUDE.md` §1's build-plan row and §2's Build file cells of rows 2,
 3.1 and 3.2, re-points every citation `build/check_paths.py` then names,
 records the laptop's numbers in both plans' §9, and carries the trailers

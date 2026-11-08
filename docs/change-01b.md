@@ -78,8 +78,8 @@ abstaining, F1 thresholds at exactly 0.90.
 
 | File | What it does |
 |---|---|
-| `tests/dataset/gates/phase5_panel.py` | `--run <run-id>`: reads the run's outcomes and the panel's cached answers (`--collect` asks a member for what is missing, otherwise a missing answer is an abstention, reported). Per file `text_verdict`. The gate: the median over decided files of pdfkit's median F1 is at least 0.97, and at most 5 % of the decided files count against pdfkit (`build-5.md` §4 item 1, thresholds unchanged). Writes `phase5_panel.json` and phase5_panel.md into the run folder: the two numbers, every file counting against pdfkit with its cause (from `tests/pdfium/text_causes.tsv` when it has the file, else `unclassified`), every `undecided` file with why, the member-pair agreement table, per-tag medians, and how each of the 56 files of `tests/pdfium/text_causes.tsv` moved |
-| `tests/dataset/gates/phase6_panel.py` | `--run <run-id>`: over the bitonal images of the census (JBIG2, CCITT and other 1-bit images, as `image_agreement.py` counts them), `pixel_verdict` per image. The gate: 100 % of the images with a majority agree with it (`build-6.md` §4 item 2's threshold, unchanged). Writes `phase6_panel.json` and phase6_panel.md: agreed over decided, every disagreement and every `undecided` image with why, and the verdicts on qpdf-0026, synth-0263 and synth-0265 named |
+| `tests/dataset/gates/phase5_panel.py` | `--run <run-id>`: reads the run's outcomes and the panel's cached answers (`--collect` asks a member for what is missing, otherwise a missing answer is an abstention, reported). Per file `text_verdict`. The gate: the median over decided files of pdfkit's median F1 is at least 0.97, and at most 5 % of the decided files count against pdfkit (`docs/archive/build/build-5.md` §4 item 1, thresholds unchanged). Writes `phase5_panel.json` and phase5_panel.md into the run folder: the two numbers, every file counting against pdfkit with its cause (from `tests/pdfium/text_causes.tsv` when it has the file, else `unclassified`), every `undecided` file with why, the member-pair agreement table, per-tag medians, and how each of the 56 files of `tests/pdfium/text_causes.tsv` moved |
+| `tests/dataset/gates/phase6_panel.py` | `--run <run-id>`: over the bitonal images of the census (JBIG2, CCITT and other 1-bit images, as `image_agreement.py` counts them), `pixel_verdict` per image. The gate: 100 % of the images with a majority agree with it (`docs/archive/build/build-6.md` §4 item 2's threshold, unchanged). Writes `phase6_panel.json` and phase6_panel.md: agreed over decided, every disagreement and every `undecided` image with why, and the verdicts on qpdf-0026, synth-0263 and synth-0265 named |
 | `tests/dataset/test_panel_gates.py` | both scripts over a run folder and cached answers written in code |
 | `tests/panel/text_causes.tsv` | `id`, `group`, `evidence`: one row per file the reading panel gate counts against pdfkit, `group` one of `cjk_cmap`, `cjk_width`, `type3_code_names`, `subset_unreadable`, `layout`, `other`; the list batch C works from |
 
@@ -92,8 +92,8 @@ Each outcome's action is fixed here, so the session never waits (parent D3).
 
 | Choice | Measure | Majority confirms the current rule | Majority against it |
 |---|---|---|---|
-| **R1** Type 3 glyph names that restate their code (`docs/DESIGN.md` §5.2; the files tagged `differences_cdd`) | per file, the text members' words on the pages of those fonts: a member "reads the names" when its text there holds at least 10 words and agrees with another member's at F1 0.90 or more while pdfkit reads those codes unreadable | settled, kept: one sentence in `docs/DESIGN.md` §5.2 with the measured numbers; the 6 files become `legitimate` in `tests/panel/text_causes.tsv` | **settled for reading**: the files stay in `tests/panel/text_causes.tsv` under `type3_code_names`, and the reading gate's item in `build-5.md` §9 says "CR5 ordered" with the reading the majority uses (the number as decimal for `Cdd`, as hexadecimal for `Cxx`, or the code itself), measured on the files; batch C reads both |
-| **R2** CMYK through PDFium's Adobe table (`build-6.md` §9 item 5) | over the DeviceCMYK, Separation and DeviceN images with a CMYK alternate, `colour_distance` per image; the table holds when, on a majority of images, a majority of the voters lie within a mean of 2 per channel | settled, kept: one sentence in `docs/DESIGN.md` §9.4 and the old §2.7 closed | an owner question in `OPEN-QUESTIONS.md`: the measured numbers, the conversion the majority sits closest to, and its price (about 0.5 to 2 hours, $10 to $40: one function, its tests, the notice row and a gate run); the table stays until answered |
+| **R1** Type 3 glyph names that restate their code (`docs/DESIGN.md` §5.2; the files tagged `differences_cdd`) | per file, the text members' words on the pages of those fonts: a member "reads the names" when its text there holds at least 10 words and agrees with another member's at F1 0.90 or more while pdfkit reads those codes unreadable | settled, kept: one sentence in `docs/DESIGN.md` §5.2 with the measured numbers; the 6 files become `legitimate` in `tests/panel/text_causes.tsv` | **settled for reading**: the files stay in `tests/panel/text_causes.tsv` under `type3_code_names`, and the reading gate's item in `docs/archive/build/build-5.md` §9 says "CR5 ordered" with the reading the majority uses (the number as decimal for `Cdd`, as hexadecimal for `Cxx`, or the code itself), measured on the files; batch C reads both |
+| **R2** CMYK through PDFium's Adobe table (`docs/archive/build/build-6.md` §9 item 5) | over the DeviceCMYK, Separation and DeviceN images with a CMYK alternate, `colour_distance` per image; the table holds when, on a majority of images, a majority of the voters lie within a mean of 2 per channel | settled, kept: one sentence in `docs/DESIGN.md` §9.4 and the old §2.7 closed | an owner question in `OPEN-QUESTIONS.md`: the measured numbers, the conversion the majority sits closest to, and its price (about 0.5 to 2 hours, $10 to $40: one function, its tests, the notice row and a gate run); the table stays until answered |
 | **R3** a missing `/MediaBox` read as US Letter (`docs/DESIGN.md` §4; `src/syntax/page_tree.cpp:25`) | `tests/panel/specimens.py` writes, at run time into `build/cache/panel/specimens/`, three one-page files: no `/MediaBox` anywhere; `/MediaBox` only on the `/Pages` root (the control); no `/MediaBox` but a `/CropBox`. The `pages` members report each page's size. Also counted: dataset files where `panel-lopdf` finds a page with no reachable `/MediaBox` | settled, kept: `docs/DESIGN.md` §4's "as viewers default it" becomes the measured fact with its numbers, and `docs/SOURCES.md`'s row turns from recalled to measured | an owner question: what the majority does (another size, or a refusal), and its price (about 1 hour, $15 to $25: the constant, its unit test, the §4 line and a gate run); Letter stays until answered |
 
 A choice where no majority forms (too few voters, or a split) is settled as
@@ -115,8 +115,8 @@ is left.
    `python tests/dataset/run.py --checks open,text,images --runs 1 --run-id <id>`,
    `python tests/pdfium/text_agreement.py --run <id>`,
    `python tests/pdfium/image_agreement.py --out dataset/reports/<id>/ --keep`.
-   Read each script's `--help` first; the flags above follow `build-5.md` §9
-   item 15 and `build-6.md` §9 item 3. The old scripts' numbers must equal
+   Read each script's `--help` first; the flags above follow `docs/archive/build/build-5.md` §9
+   item 15 and `docs/archive/build/build-6.md` §9 item 3. The old scripts' numbers must equal
    `build-10.md` §9 item 22's (E3): a difference is a finding recorded in §C
    before going on.
 5. **Mid-batch smoke**: both gate scripts restricted to `tests/panel/smoke.tsv`
@@ -131,7 +131,7 @@ is left.
    price of each answer); batch C proceeds on the decided files.
 9. **Test sweep**: the panel's tests, `ctest --preset unit`,
    `python build/check.py`.
-10. **Documentation sweep**, from what landed: `build-5.md` §9 and `build-6.md`
+10. **Documentation sweep**, from what landed: `docs/archive/build/build-5.md` §9 and `docs/archive/build/build-6.md`
     §9, one item each: the rule (parent D2), the commands, the numbers, the
     files or images that count against pdfkit and the `undecided` ones, and
     whether the gate passes under the panel; `docs/DESIGN.md` §4, §5.2 or
@@ -161,8 +161,8 @@ OPEN-QUESTIONS.md, docs/SOURCES.md, build/paths_pending.tsv                     
 
 | File | Edit |
 |---|---|
-| `build-5.md` §9 | the reading gate under the panel |
-| `build-6.md` §9 | the bitonal gate under the panel |
+| `docs/archive/build/build-5.md` §9 | the reading gate under the panel |
+| `docs/archive/build/build-6.md` §9 | the bitonal gate under the panel |
 | `docs/DESIGN.md` §4, §5.2, §9.4 | as §9.3 settles them |
 | `OPEN-QUESTIONS.md` | the questions §9.3 and step 8 raise |
 | `docs/SOURCES.md` | the judge's rules; the `/MediaBox` row's status |
@@ -186,8 +186,8 @@ OPEN-QUESTIONS.md, docs/SOURCES.md, build/paths_pending.tsv                     
 
 | `ACx` | Criterion | Measure | Gate |
 |---|---|---|---|
-| AC2 | The reading gate under the panel | `phase5_panel.py` over the full run gives the median and the share counting against pdfkit over the decided files, lists every `undecided` file, and the numbers are in `build-5.md` §9 | pre-merge |
-| AC3 | The bitonal gate under the panel | `phase6_panel.py` gives agreed over decided images, names its verdict on qpdf-0026, synth-0263 and synth-0265, and the numbers are in `build-6.md` §9 | pre-merge |
+| AC2 | The reading gate under the panel | `phase5_panel.py` over the full run gives the median and the share counting against pdfkit over the decided files, lists every `undecided` file, and the numbers are in `docs/archive/build/build-5.md` §9 | pre-merge |
+| AC3 | The bitonal gate under the panel | `phase6_panel.py` gives agreed over decided images, names its verdict on qpdf-0026, synth-0263 and synth-0265, and the numbers are in `docs/archive/build/build-6.md` §9 | pre-merge |
 | AC4 | The three re-decisions | each of R1 to R3 has its measured majority and the action §9.3 assigns, with its evidence in a build file's §9 or `docs/DESIGN.md`, and a question in `OPEN-QUESTIONS.md` where it flips | pre-merge |
 | AC4a | The old gates unchanged | step 4's old-script numbers equal `build-10.md` §9 item 22's | pre-merge |
 | AC7 | Suites and checks | the panel's tests, `ctest --preset unit` and `python build/check.py --full` green on the tip | pre-merge |
@@ -215,8 +215,8 @@ at the end of the batch.
 
 ## 17. Opening prompt
 
-> Read `CLAUDE.md` (§7.5, §8 and §11 closely), `build-5.md` §4 and §9,
-> `build-6.md` §4 and §9, and `build-10.md` §9 item 22, then read
+> Read `CLAUDE.md` (§7.5, §8 and §11 closely), `docs/archive/build/build-5.md` §4 and §9,
+> `docs/archive/build/build-6.md` §4 and §9, and `build-10.md` §9 item 22, then read
 > `docs/change-01.md` §0 to §8 and all of `docs/change-01b.md`, and implement
 > it exactly as written. Batch A is finished: read its §C in
 > `docs/change-01a.md`, `tests/panel/members.tsv` and `tests/panel/answers.py`

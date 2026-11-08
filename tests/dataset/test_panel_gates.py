@@ -132,6 +132,18 @@ class ReadingGateTest(unittest.TestCase):
         self.assertEqual(summary["gate"], "failed")
         self.assertEqual(summary["exit"], 1)
 
+    def test_a_legitimate_file_is_listed_and_not_counted(self):
+        files = {f"f{i}": (row(f"f{i}"), outcome(TEXT)) for i in range(10)}
+        answers = {(m, f"f{i}", "text"): ok(OTHER if i == 0 else TEXT)
+                   for i in range(10) for m in ("pdfium", "poppler", "mupdf")}
+        summary = self.run_gate(files, answers, {"f0": ("legitimate", "the majority cuts every word")})
+        self.assertEqual((summary["outvoted"], summary["counts_against"], summary["share_against"]), (1, 0, 0.0))
+        self.assertEqual(summary["against"], [])
+        self.assertEqual([(a["id"], a["evidence"]) for a in summary["legitimate"]],
+                         [("f0", "the majority cuts every word")])
+        self.assertEqual(summary["against_by_group"], {})
+        self.assertEqual(summary["gate"], "passed")
+
     def annotated(self, draws_text: bool, pdfkit: str) -> dict:
         widget = TEXT + " lima mike november oscar papa quebec"
         answers = {(m, "a", "text"): ok(widget) for m in ("poppler", "mupdf", "oxide")}

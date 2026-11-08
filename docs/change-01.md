@@ -132,7 +132,7 @@ pdfkit's own are fixed.
   unless marked read; the batch that relies on it reads it at the source, or
   tests it on a specimen, and records the status in `docs/SOURCES.md`.
 - **This order changes authoritative rules**: the reading and bitonal gates'
-  counting rule (`build-5.md` §4, `build-6.md` §4, recorded as deviations in
+  counting rule (`docs/archive/build/build-5.md` §4, `docs/archive/build/build-6.md` §4, recorded as deviations in
   their §9), `CLAUDE.md` §4 (vocabulary), §6 (one vendored row), §7.5 and §8.1
   (the panel beside PDFium), and `docs/DESIGN.md` §5.2, §5.3 and §7 where batch
   C changes the reader. See §10.
@@ -178,7 +178,7 @@ finding and it outranks the plan.
 | A predefined CMap other than the identities and the Unicode CMaps ships no data; its codes are split by the implied codespace and counted unreadable | `docs/DESIGN.md` §5.3; `src/fonts/type0_font.cpp:46` `predefined_codespace` |
 | A CID font's `/DW` is read when present, else 1000 | `src/fonts/type0_font.cpp:175`, `:292` |
 | A missing `/MediaBox` is US Letter, "as viewers default it" | `src/syntax/page_tree.cpp:25`; `docs/DESIGN.md` §4 (line 247) |
-| CMYK becomes RGB through PDFium's Adobe table, ported | `src/images/adobe_cmyk.cpp`; `build-6.md` §9 item 5 |
+| CMYK becomes RGB through PDFium's Adobe table, ported | `src/images/adobe_cmyk.cpp`; `docs/archive/build/build-6.md` §9 item 5 |
 | Generated data follows one pattern: the upstream files under `third_party/<name>/`, a generator under `build/fonts/` with a lock file, the output under `src/fonts/generated/`, held equal by `build/check_generated.py` | `third_party/agl/`, `build/fonts/glyph_list.py`, `build/fonts/core14.lock`, `src/fonts/generated/` |
 | The size budgets: DLL 7,242,240 bytes against 5,793,792 at the first whole-catalogue package (1,448,448 bytes of headroom) | `build/budgets.tsv` |
 | A path an authoritative document cites in backticks must exist, be ignored by git, or be listed in `build/paths_pending.tsv` with the work that creates it; a pending row whose path exists fails | `build/check_paths.py`; `build/paths_pending.tsv` |
@@ -193,8 +193,8 @@ finding and it outranks the plan.
 
 | `Ex` | Material | Where it lives | What it lets a session prove | How to use it |
 |---|---|---|---|---|
-| E1 | The phase 5 plan: the reading gate, its kill criterion and its deviations | `build-5.md` §4, §5, §9 items 15, 16, 18 | what the reading gate measures and how it failed | the gate's thresholds are kept; only the counting rule moves |
-| E2 | The phase 6 plan: the bitonal gate and its deviations | `build-6.md` §4, §9 items 3, 4 | what the bitonal gate measures and how the census aligns images | the panel gate aligns images the same way |
+| E1 | The phase 5 plan: the reading gate, its kill criterion and its deviations | `docs/archive/build/build-5.md` §4, §5, §9 items 15, 16, 18 | what the reading gate measures and how it failed | the gate's thresholds are kept; only the counting rule moves |
+| E2 | The phase 6 plan: the bitonal gate and its deviations | `docs/archive/build/build-6.md` §4, §9 items 3, 4 | what the bitonal gate measures and how the census aligns images | the panel gate aligns images the same way |
 | E3 | The release gate table on the final dataset | `build-10.md` §9 item 22 | the baseline numbers of §1.2 | re-run with the same commands for the before numbers |
 | E4 | The 56 files below 0.90, each with its cause and evidence | `tests/pdfium/text_causes.tsv` | which files the panel must re-judge, and the 21 batch C may fix | batch B's verdict per file is compared row by row |
 | E5 | The owner's answers of 2026-10-28 | `OPEN-QUESTIONS.md` §2.2, §2.3, §2.6 on branch chore/owner-answers; the old §2.5, §2.7, §2.10 and §2.15 in `git show 7cd2968:OPEN-QUESTIONS.md` | D1 to D5 | read before planning |
@@ -231,7 +231,7 @@ the reason a single reader cannot be the truth. Follows: D1, D2, CR1, CR2.
 
 The three disagreements are PDFium's: qpdf-0026's first Group 4 coding line,
 which PDFium's bitmap and renderer show white where T.4's tables read black
-(`build-6.md` §9 item 4), and synth-0263 and synth-0265, whose `/Decode [1 0]`
+(`docs/archive/build/build-6.md` §9 item 4), and synth-0263 and synth-0265, whose `/Decode [1 0]`
 PDFium's renderer inverts as pdfkit does while `FPDFImageObj_GetBitmap` hands
 back the samples uninverted (E5, old §2.15). E9 says the bitmap call ignores
 mask and matrix by its own header. Follows: D2, D7, CR2.
@@ -364,18 +364,18 @@ member of the reference panel". The identifier side does not move:
 | `Dx` | Decision | Source | What it buys, and what it costs |
 |---|---|---|---|
 | D1 | The panel: for text PDFium, Poppler `pdftotext` (GPL, C++), MuPDF `mutool` (AGPL, C++), pdf_oxide (Rust, MIT OR Apache-2.0, crate 0.3.78 with `office_oxide` pinned `=0.1.9`) and pdf-extract (Rust, MIT); for structure QPDF and lopdf. All test-only, separate processes, fetched or built by hash into the main checkout's `build/cache/`, answers cached per file SHA-256 and reader version as `build/cache/pdfium-results/` does; never linked or shipped | owner, 2026-10-28 | judges that disagree with each other expose a judge's quirk; costs batch A and about 15 minutes of pdf_oxide compile per toolchain change |
-| D2 | A file counts against pdfkit only when pdfkit disagrees with the panel majority. Applies to the reading gate (`build-5.md` §4 item 1) and the bitonal gate (`build-6.md` §4 item 2) | owner, 2026-10-28 | the gates measure pdfkit; costs batch B |
+| D2 | A file counts against pdfkit only when pdfkit disagrees with the panel majority. Applies to the reading gate (`docs/archive/build/build-5.md` §4 item 1) and the bitonal gate (`docs/archive/build/build-6.md` §4 item 2) | owner, 2026-10-28 | the gates measure pdfkit; costs batch B |
 | D3 | Re-decided by the panel majority: Type 3 glyph names restating their code (old §2.5), the CMYK conversion (old §2.7), the US Letter default for a missing `/MediaBox`. Each outcome's action is written into batch B §9.3 so no session waits: a majority that confirms the current rule settles it; a majority for `Cdd` read as the code's character orders CR5 in batch C; a majority against the CMYK table or the Letter default is written as an owner question with its price, the rule unchanged until answered | owner, 2026-10-28; the per-outcome actions mine, flagged for review | the three choices rest on evidence; a flip of CMYK or `/MediaBox` costs 0.5 to 1 hour and $5 to $25 when the owner orders it |
 | D4 | Sessions are at most 6 hours, with a stop rule at 5 h 30 (commit what passes, record what is left); tests at planned points (`CLAUDE.md` §8.2) | owner, 2026-10-28 | predictable sessions; a batch that runs out of room ends `incomplete` with its split point named |
 | D5 | The owner launches this order himself; its status is "awaiting owner launch" | owner, 2026-10-28 | the author's flagged choices can be flipped before any spend |
 | D6 | The text verdict: pdfkit's word F1 (`tests/pdfium/words.py`) is computed against each voting member; the file counts against pdfkit when its F1 is below 0.90 against a strict majority of the voters; the gate's median is the median over files of pdfkit's median F1 across voters; thresholds unchanged (median at least 0.97, at most 5 % of decided files counting against pdfkit). Each member's agreement with the others is reported, never used to drop a member | mine, flagged for review; local to `tests/panel/judge.py` | keeps the metric and the thresholds the owner already approved; only the counting moves |
 | D7 | The pixel panel: PDFium through `FPDFImageObj_GetRenderedBitmap`, Poppler `pdfimages`, MuPDF `mutool extract`. A member votes on an image only when its answer has the image's own width and height with `/Decode` applied; otherwise it abstains for that image. The page renderers (PDFium, `pdftoppm`, `mutool draw`) are recorded as capabilities in `tests/panel/members.tsv` and not used by this order, whose gates judge decoded images, not pages. pdf_oxide and pdf-extract vote on text only; hayro is not taken (Appendix B) | mine, flagged for review; local to `tests/panel/readers/` and `judge.py` | a pixel vote is cast only where the comparison is exact; costs one capability measurement in batch A |
-| D8 | The old gate scripts (`text_agreement.py`, `image_agreement.py`, `phase10.py`) stay and keep their meaning, because the release gate re-runs them; the panel gates are new scripts beside them, `tests/dataset/gates/phase5_panel.py` and `phase6_panel.py`. Batch B records the panel numbers in `build-5.md` §9 and `build-6.md` §9; when a panel gate passes on the landed order, the owner's landing merge carries `Build-Phase: 5 done` or `Build-Phase: 6 done` and batch C has prepared the plan's move to `docs/archive/build/` and the `CLAUDE.md` §1 row | mine, flagged for review | a phase can close on the owner's rule without rewriting the release gate; `phase10.py` gathering the panel tables is left to the release session (§8.2) |
+| D8 | The old gate scripts (`text_agreement.py`, `image_agreement.py`, `phase10.py`) stay and keep their meaning, because the release gate re-runs them; the panel gates are new scripts beside them, `tests/dataset/gates/phase5_panel.py` and `phase6_panel.py`. Batch B records the panel numbers in `docs/archive/build/build-5.md` §9 and `docs/archive/build/build-6.md` §9; when a panel gate passes on the landed order, the owner's landing merge carries `Build-Phase: 5 done` or `Build-Phase: 6 done` and batch C has prepared the plan's move to `docs/archive/build/` and the `CLAUDE.md` §1 row | mine, flagged for review | a phase can close on the owner's rule without rewriting the release gate; `phase10.py` gathering the panel tables is left to the release session (§8.2) |
 | D9 | Rust: the `x86_64-pc-windows-gnu` toolchain at a pinned stable release, linking with the pinned WinLibs GCC (no MSVC), unpacked by hash into the main checkout's `build/cache/panel/rust/`; `cargo` with `http.check-revoke = false` for the proxy (recalled: a Windows-only cargo setting); `CARGO_TARGET_DIR` in `build/cache/panel/cargo-target/`; `Cargo.lock` committed | mine, flagged for review; the owner may instead install rustup by hand (§16) | one compile shared by every worktree; costs about 15 minutes of compile the first time and 2 to 3 GB of disk |
 | D10 | Withdrawn by the owner on 2026-11-07 (`OPEN-QUESTIONS.md` §1.5): CJK reading adds no complexity, so no CMap data ships. As written before: the Adobe CMap resources ship as packed range tables cut by a generator under `build/fonts/` into `src/fonts/generated/`, the upstream text files kept in the repository, only the CMaps and orderings the predefined names need. If the DLL then passes its budget, batch C raises the budget by the measured growth with its reason in `build/budgets.tsv` | the data, owner (old §2.10 (a)); the packing and the budget rule mine, flagged | CJK files read; costs DLL bytes (§16) |
 | D11 | The smoke set is `tests/panel/smoke.tsv`, about 60 files: the 21 pdfkit-caused files, 10 PDFium-caused, 4 legitimate, the 3 disputed bitonal images' files, 10 files with DeviceCMYK images and 12 clean files across the text-layout tags | mine, flagged | one mid-batch run of a few minutes instead of a full gate |
 | D12 | The `/MediaBox` specimens are generated at run time by `tests/panel/specimens.py` into `build/cache/panel/specimens/`, never committed | mine (required by `build/check_repo.py`) | no dataset row moves; the dataset's 960 files and its denominators stay |
-| D13 | The continuous-tone gate (`build-6.md` §4 item 3) stays judged by PDFium: it passes (99.03 %) | mine, flagged | no work where nothing fails |
+| D13 | The continuous-tone gate (`docs/archive/build/build-6.md` §4 item 3) stays judged by PDFium: it passes (99.03 %) | mine, flagged | no work where nothing fails |
 
 ---
 
@@ -386,7 +386,7 @@ member of the reference panel". The identifier side does not move:
 - Batch A: fetch or build, pin by hash and cache the seven members; one adapter
   each; cached answers for the 960 files; the capability table; the smoke set.
 - Batch B: the majority judge; the reading and bitonal gates re-expressed as
-  new scripts; the panel numbers in `build-5.md` and `build-6.md`; the three
+  new scripts; the panel numbers in `docs/archive/build/build-5.md` and `docs/archive/build/build-6.md`; the three
   re-decisions measured and either settled or written as owner questions; the
   list of files the panel confirms as pdfkit's.
 - Batch C: CR3, CR4, CR5 when ordered, DFT1 to DFT3 and pdfpig-0002 where the
@@ -441,7 +441,7 @@ tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
 
 | File | Edit |
 |---|---|
-| `CLAUDE.md` §1 | the order's row (made with the order); batch C, when a panel gate passed: the build plans' row loses `build-5.md` or `build-6.md` |
+| `CLAUDE.md` §1 | the order's row (made with the order); batch C, when a panel gate passed: the build plans' row loses `docs/archive/build/build-5.md` or `docs/archive/build/build-6.md` |
 | `CLAUDE.md` §3.5 | `tests/panel/` in the layout block (batch A) |
 | `CLAUDE.md` §4 | the vocabulary of §6 (batch C) |
 | `CLAUDE.md` §6 | the Adobe CMap resources' vendored row (batch C) |
@@ -452,7 +452,7 @@ tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
 | `docs/ABI.md` | unchanged: no JSON shape moves, and batch C says so in its §C |
 | `dataset/README.md` §2 | the panel's cache beside PDFium's (batch A) |
 | `build/toolchain.md` | the panel's pinned versions and digests, the Rust toolchain, the proxy setting, the collection timings (batch A) |
-| `build-5.md`, `build-6.md` §9 | the panel gates' numbers as deviations (batch B; batch C adds its re-run) |
+| `docs/archive/build/build-5.md`, `docs/archive/build/build-6.md` §9 | the panel gates' numbers as deviations (batch B; batch C adds its re-run) |
 | `OPEN-QUESTIONS.md` | the re-decisions' questions where the panel flips a rule (batch B); §2.2's action marked done (batch C) |
 
 ---
@@ -464,7 +464,7 @@ tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
 | Batch | File | Owns | Depends on | Parallel with | Minimum model | Ends with |
 |---|---|---|---|---|---|---|
 | A | `change-01a.md` | `tests/panel/` (created), `build/check_network.py`, `build/toolchain.md`, the `CLAUDE.md` §3.5 line, `dataset/README.md` §2 | nothing | nothing | `opus` | every member fetched or built by hash, its answers cached for the 960 files, `tests/panel/members.tsv` and `tests/panel/smoke.tsv` committed |
-| B | `change-01b.md` | the judge, the two panel gate scripts, `tests/panel/text_causes.tsv`, the re-decisions, `build-5.md` and `build-6.md` §9, `OPEN-QUESTIONS.md` | A | nothing | `opus` | both panel gates run on the full dataset with their numbers in the build files; each re-decision settled or asked |
+| B | `change-01b.md` | the judge, the two panel gate scripts, `tests/panel/text_causes.tsv`, the re-decisions, `docs/archive/build/build-5.md` and `docs/archive/build/build-6.md` §9, `OPEN-QUESTIONS.md` | A | nothing | `opus` | both panel gates run on the full dataset with their numbers in the build files; each re-decision settled or asked |
 | C | `change-01c.md` | `src/fonts/`, `src/text/`, the order-wide documentation sweep (the CMap data and its generator dropped by `OPEN-QUESTIONS.md` §1.5) | B | nothing | `opus` | the files the panel confirms as pdfkit's fixed or named, both gates re-run, the documents describing what landed |
 
 Batch A's note for batch B (on Linux, `docs/change-01a.md` Appendix C): every
@@ -514,7 +514,7 @@ last commit: elapsed time, model spend, the gate numbers, and what remains.
 A strict chain: A, then B from A's finished tip, then C from B's, one session
 each, a branch and a worktree per batch, finished and pushed before the next
 starts; the order lands on `main` once, after C. Nothing runs in parallel: B
-and C share `tests/panel/`, `docs/DESIGN.md`, `build-5.md` and
+and C share `tests/panel/`, `docs/DESIGN.md`, `docs/archive/build/build-5.md` and
 `OPEN-QUESTIONS.md` with their predecessor, and each needs the predecessor's
 result. Split points if a batch runs out of room: A after the text members
 (pixels and structure next); B after the reading gate (bitonal gate and
@@ -544,7 +544,7 @@ another branch owns `src/fonts/` or `src/text/`.
 | `CLAUDE.md` | §3.5 one line | | §1, §4, §6, §7.5, §8.1, §12 | A's line is one entry of the layout block |
 | `dataset/README.md` | §2 paragraph | | sweep | |
 | `docs/DESIGN.md` | | §4, §9.4 lines | §5.2, §5.3, §7 | disjoint sections |
-| `build-5.md`, `build-6.md` | | §9 item | §9 item; moved to `docs/archive/build/` when its panel gate passes | append-only, then one move |
+| `docs/archive/build/build-5.md`, `docs/archive/build/build-6.md` | | §9 item | §9 item; moved to `docs/archive/build/` when its panel gate passes | append-only, then one move |
 | `OPEN-QUESTIONS.md` | | adds questions | marks §2.2 done | append-only |
 
 **Shared files, as the launcher reads them.** Every row above is under
@@ -605,9 +605,9 @@ C's use `tests/unit/support/`'s PDF builder; no PDF is committed.
 | `ACx` | Criterion | Measure | Gate |
 |---|---|---|---|
 | AC1 | Every member of D1 answers from the cache for the dataset | for each member, files answered plus files refused with a cause equals 960, and a second `collect.py` run asks no member anything | pre-merge (A) |
-| AC2 | The reading gate re-expressed by the panel | `phase5_panel.py` over a full run reports the median and the share counting against pdfkit, every `undecided` file listed; numbers recorded in `build-5.md` §9 | pre-merge (B) |
+| AC2 | The reading gate re-expressed by the panel | `phase5_panel.py` over a full run reports the median and the share counting against pdfkit, every `undecided` file listed; numbers recorded in `docs/archive/build/build-5.md` §9 | pre-merge (B) |
 | AC3 | The bitonal gate re-expressed by the panel | `phase6_panel.py` reports images agreeing with the pixel majority over images with a majority, the `undecided` ones listed, and the verdict on qpdf-0026, synth-0263 and synth-0265 named | pre-merge (B) |
-| AC4 | The three re-decisions | each has its measured majority, its action of D3 taken, and its evidence in `build-5.md` or `build-6.md` §9 and, where it flips, a question in `OPEN-QUESTIONS.md` with its price | pre-merge (B) |
+| AC4 | The three re-decisions | each has its measured majority, its action of D3 taken, and its evidence in `docs/archive/build/build-5.md` or `docs/archive/build/build-6.md` §9 and, where it flips, a question in `OPEN-QUESTIONS.md` with its price | pre-merge (B) |
 | AC5 | pdfkit's confirmed misses fixed | of the files `tests/panel/text_causes.tsv` confirms as pdfkit's at B's tip, each is fixed (no longer counting against pdfkit) or carries a cause line saying why not; the share counting against pdfkit does not rise | order-end (C) |
 | AC6 | No other number moves | every row of `build-10.md` §9 item 22 except the reading and bitonal rows is unchanged on C's tip; the leak measures stay 0 | order-end (C) |
 | AC7 | Suites and checks | `ctest --preset unit` and `python build/check.py` green on every batch tip; `python build/check.py --full`, both sanitizer tiers and `python tests/abi/run.py` green on C's tip; the DLL's imports clean | pre-merge, order-end |

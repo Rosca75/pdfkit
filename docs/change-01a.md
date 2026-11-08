@@ -38,7 +38,7 @@ Inherited from the parent. Facts the batch needs beside it:
 - **The cache pattern to copy** is `tests/pdfium/results_cache.py` (DR3 of
   the parent): key, atomic write, transient failures never kept.
 - **Image alignment.** pdfkit's census aligns its images with PDFium's by the
-  SHA-256 of the image's stored bytes (`build-6.md` §9 item 3), and
+  SHA-256 of the image's stored bytes (`docs/archive/build/build-6.md` §9 item 3), and
   `pdfkit images` names each XObject's object number (`docs/ABI.md`, the
   `source` and `object` fields). A member that names images by object number
   (Poppler's `pdfimages -list`, MuPDF's `mutool extract`, recalled) is aligned

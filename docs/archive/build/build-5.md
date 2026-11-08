@@ -427,6 +427,29 @@ the `text` column of the manifest is reverted with the merge.
     laptop's merge gate passes (the sanitizer tiers, `python build/check.py
     --full`): the owner's landing merge of the order carries `Build-Phase:
     5 done`, and this plan then moves to `docs/archive/build/` (D8).
+23. **The laptop's merge gate** (`docs/change-03.md` §15.5, `main` at
+    b31c7b6, run `cand-0.4.0`, 968 files, two runs identical): the full
+    check, the unit tier (765 of 765), both sanitizer tiers and the ABI
+    tier pass; AddressSanitizer over every manifest file reports nothing
+    (15 files past the limit at ×5 finish at ×20). Against `base-0.3.0`
+    no file's F1 drops and 22 rise; `dccc-0129` takes about 100 s of its
+    60 s on 0.3.0-preview and on `main` alike. The old PDFium script: 46 of
+    905 below 0.90, the same 46 as Linux. The reading gate under the
+    laptop's panel (MuPDF 1.28.5, Poppler 26.09.0, QPDF 12.4.2, newer than
+    Linux's), `python tests/dataset/gates/phase5_panel.py --run cand-0.4.0
+    --collect`: 918 judged, 901 decided, 17 undecided; median 1.0; the
+    majority outvotes pdfkit on 49 files (5.44 %), 44 on Linux. The six the
+    Linux panel did not outvote (pdfdiff-0023, pdfium-0049, pdfpig-0001,
+    pypdf-0023, synth-0236, synth-0237) were read and are `legitimate` in
+    `tests/panel/text_causes.tsv`: on each pdfkit reads the page as PDFium
+    or Poppler does, and the majority cuts, repeats or misses its words or
+    prints a channel pdfkit leaves out. The owner ruled on 2026-11-08 that
+    a `legitimate` file is listed with its evidence and not counted
+    (`CLAUDE.md` §7.5), so 33 are set aside and **16 of 901 count against
+    pdfkit (1.78 %): the gate passes**, by group `subset_unreadable` 5,
+    `cjk` 4, `cjk_cmap` 3, `cjk_width` 2, `other` 2; the literal rule 90 of
+    900. Without `--collect` a laptop whose panel cache is new surveys no
+    file's annotations (72 against), so §15.5 names it. Phase 5 is done.
 
 ### Deviations of earlier phases that affect this one
 

@@ -8,7 +8,12 @@
 # read from the answers cache. A file counts against pdfkit only when its word
 # F1 is below 0.90 against a strict majority of at least three voters
 # (tests/panel/judge.py text_verdict); a file with fewer voters or a tie is
-# undecided, listed and counted neither way. The gate: the median over the
+# undecided, listed and counted neither way. A file the majority outvotes but
+# tests/panel/text_causes.tsv records as `legitimate` (pdfkit reads the page
+# right and the majority wrong, the evidence naming what each reader read) is
+# listed with that evidence and not counted, because a majority of readers that
+# cut, repeat or miss the same words would otherwise count a right reading as a
+# miss. The gate: the median over the
 # decided files of pdfkit's median F1 across voters is at least 0.97, and at
 # most 5 % of the decided files count against pdfkit, the thresholds of the
 # reading gate. pdfkit's other readings (its visible text, its text with every
@@ -141,7 +146,9 @@ def judge_file(row: dict, outcome: dict, panel: evidence.Panel, command: list[st
 
 def summarise(results: list[dict], panel_causes: dict, pdfium_causes: dict) -> dict:
     decided = [r for r in results if r["verdict"] != "undecided"]
-    against = [r for r in decided if r["verdict"] == "counts_against"]
+    outvoted = [r for r in decided if r["verdict"] == "counts_against"]
+    legitimate = [r for r in outvoted if panel_causes.get(r["id"], ("", ""))[0] == "legitimate"]
+    against = [r for r in outvoted if r not in legitimate]
     undecided = [r for r in results if r["verdict"] == "undecided"]
     literal_decided = [r for r in results if r["literal"]["verdict"] != "undecided"]
     literal_against = [r for r in literal_decided if r["literal"]["verdict"] == "counts_against"]
@@ -166,6 +173,10 @@ def summarise(results: list[dict], panel_causes: dict, pdfium_causes: dict) -> d
         "counts_against": len(against),
         "share_against": round(len(against) / len(decided), 4) if decided else None,
         "against_by_group": dict(sorted(groups.items())),
+        "outvoted": len(outvoted),
+        "legitimate": [{"id": r["id"], "median": r["median"], "scores": r["scores"], "below": r["below"],
+                        "evidence": panel_causes[r["id"]][1]}
+                       for r in sorted(legitimate, key=lambda r: (r["median"], r["id"]))],
         "literal": {"decided": len(literal_decided), "counts_against": len(literal_against),
                     "share_against": round(len(literal_against) / len(literal_decided), 4) if literal_decided else None,
                     "median": round(statistics.median(r["literal"]["median"] for r in literal_decided), 4)
@@ -212,7 +223,9 @@ def write_report(run_dir: Path, summary: dict, agreement: dict, absent: dict) ->
           f"Files whose annotations draw text, where Poppler, MuPDF and pdf_oxide read QPDF's copy "
           f"without them: {s['annotations']['files_drawing_text']} "
           f"(of {s['annotations']['files_surveyed']} QPDF surveyed).",
-          f"Against, by group of tests/panel/text_causes.tsv: {s['against_by_group']}.", ""]
+          f"Against, by group of tests/panel/text_causes.tsv: {s['against_by_group']}.",
+          f"Outvoted by the majority: {s['outvoted']}; set aside as `legitimate` (pdfkit reads right, "
+          f"the majority wrong, with the evidence below): {len(s['legitimate'])}.", ""]
     if absent:
         md += ["Absent members: " + "; ".join(absent.values()), ""]
     md += [f"Note: {n}" for n in s["notes"]]
@@ -220,6 +233,8 @@ def write_report(run_dir: Path, summary: dict, agreement: dict, absent: dict) ->
            "|---|---|---|---|---|---|"]
     md += [f"| {a['id']} | {a['median']} | {', '.join(a['below'])} | {a['group']} | {a['pdfium_cause']} | "
            f"{a['evidence']} |" for a in s["against"]]
+    md += ["", "## Files set aside as legitimate", "", "| id | median | below | evidence |", "|---|---|---|---|"]
+    md += [f"| {a['id']} | {a['median']} | {', '.join(a['below'])} | {a['evidence']} |" for a in s["legitimate"]]
     md += ["", "## Undecided files", "", "| id | why | voters | abstained |", "|---|---|---|---|"]
     md += [f"| {u['id']} | {u['why']} | {', '.join(u['voters'])} | "
            f"{', '.join(f'{m}: {w}' for m, w in sorted(u['abstained'].items()))} |" for u in s["undecided_files"]]

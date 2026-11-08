@@ -437,6 +437,18 @@ to their phase-1 stubs. Nothing persisted changes shape.
     `python build/check.py --full`): the owner's landing merge of the order
     carries `Build-Phase: 6 done`, and this plan then moves to
     `docs/archive/build/` (D8).
+20. **The laptop's merge gate** (`docs/change-03.md` §15.5, `main` at
+    b31c7b6, run `cand-0.4.0`): the census of the run's `images` folder
+    and `python tests/dataset/gates/phase6_panel.py --run cand-0.4.0`
+    under the laptop's panel give 518 bitonal images, 498 decided, **498 of
+    498 agree with the majority: the gate passes**, 20 undecided. Windows
+    Poppler votes on the one stencil `synth-0263` and is outvoted; the
+    Windows pixel facts of `tests/panel/members.tsv` (abstains, native
+    size, decode applied, colour output) are not yet measured, so its
+    stencil abstention is Linux's alone. The CMYK re-decision
+    (`python tests/panel/redecide.py cmyk --run cand-0.4.0`, MuPDF 1.28.5
+    converting through ICC) confirms the table: 146 judged, 106 holding,
+    ICCBased with four components 0 of 17. Phase 6 is done.
 
 ### Deviations of earlier phases that affect this one
 

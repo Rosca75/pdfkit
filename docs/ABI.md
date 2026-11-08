@@ -135,9 +135,9 @@ type and never a time, so two builds of one tree report the same text.
 |---|---|---|---|---|
 | 1.1 | `pdfkit_open(const uint8_t* bytes, size_t size, const char* options_json, pdfkit_document** out_doc, pdfkit_buffer* out)` | `out`, `out_doc`; `bytes` unless `size` is 0 | `*out_doc` the handle; `out` the open report | `docs/archive/build/build-3.md` |
 | 1.2 | `pdfkit_inspect(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the inspect JSON | `docs/archive/build/build-3.md` |
-| 2 | `pdfkit_text(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the text JSON | `build-5.md` |
-| 3.1 | `pdfkit_images(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the image list JSON | `build-6.md` |
-| 3.2 | `pdfkit_image_data(pdfkit_document* doc, const char* identity, const char* options_json, pdfkit_buffer* out)` | `doc`, `identity`, `out` | PNG or JPEG bytes (not JSON) | `build-6.md` |
+| 2 | `pdfkit_text(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the text JSON | `docs/archive/build/build-5.md` |
+| 3.1 | `pdfkit_images(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the image list JSON | `docs/archive/build/build-6.md` |
+| 3.2 | `pdfkit_image_data(pdfkit_document* doc, const char* identity, const char* options_json, pdfkit_buffer* out)` | `doc`, `identity`, `out` | PNG or JPEG bytes (not JSON) | `docs/archive/build/build-6.md` |
 | 4 | `pdfkit_metadata(pdfkit_document* doc, const char* options_json, pdfkit_buffer* out)` | `doc`, `out` | the metadata JSON | `build-10.md` |
 | 5 | `pdfkit_redact_text(pdfkit_edit* edit, const char* matches_json, pdfkit_buffer* out)` | `edit`, `matches_json`, `out` | the per-match JSON | `docs/archive/build/build-8.md`, ABI 2 `docs/archive/build/build-15.md` |
 | 6 | `pdfkit_redact_images(pdfkit_edit* edit, const char* treatments_json, pdfkit_buffer* out)` | `edit`, `treatments_json`, `out` | the per-treatment JSON | `docs/archive/build/build-9.md` |

@@ -47,7 +47,7 @@ Inherited from the parent. Facts the batch needs beside it:
   duplicate text and refuses when that binary reads them otherwise than the
   run did, so build the run's commit first; `--collect` asks QPDF's survey
   and the members' text of a new copy without annotations.
-- **CR5 is ordered or not by batch B.** It is ordered when `build-5.md` §9's
+- **CR5 is ordered or not by batch B.** It is ordered when `docs/archive/build/build-5.md` §9's
   panel item says "CR5 ordered" and the `type3_code_names` rows are in
   `tests/panel/text_causes.tsv`; that item also names the reading the panel's
   majority uses. Otherwise skip §9.3.
@@ -57,7 +57,7 @@ Inherited from the parent. Facts the batch needs beside it:
   (`src/fonts/type0_font.cpp:46` `predefined_codespace`); `/DW`
   (`src/fonts/type0_font.cpp:175`, `:292`); the CMap model
   (`src/fonts/cmap.cpp` `add_cid_range`, `cid`). The layout passes live in
-  `src/text/` (`build-5.md` §9 items 6 and 7 say what each does and why).
+  `src/text/` (`docs/archive/build/build-5.md` §9 items 6 and 7 say what each does and why).
 - **Generated data has one pattern** (parent §0.5): upstream files in
   `third_party/<name>/`, a generator and a lock file under `build/fonts/`, the
   output in `src/fonts/generated/`, held equal by `build/check_generated.py`.
@@ -130,7 +130,7 @@ and at 5 h 30 of wall-clock stop, commit what passes and record what is left.
 
 1. **Base check.** On batch B's tip, `ctest --preset unit` and
    `python build/check.py` green; read `tests/panel/text_causes.tsv` and
-   `build-5.md` §9's panel item.
+   `docs/archive/build/build-5.md` §9's panel item.
 2. **§9.1, the CMaps**: tests red, data and generator, `PredefinedCmaps`,
    `type0_font.cpp`, tests green, `python build/check.py`, the size measured.
    **Split point**: if 3 hours have passed here, finish §9.1, run step 3, skip
@@ -169,15 +169,15 @@ and at 5 h 30 of wall-clock stop, commit what passes and record what is left.
    `python tests/panel/collect.py`, the two panel gates, the cache), §12;
    `dataset/README.md` (what `expect_text` is judged against, if it moved);
    `OPEN-QUESTIONS.md` (§2.2's action done, with the numbers; the old §2.10
-   items closed or left with their files); `build-5.md` §9 (this batch's
+   items closed or left with their files); `docs/archive/build/build-5.md` §9 (this batch's
    numbers); the `CLAUDE.md` §1 row of this order ("the reference panel
    order, finished; its records until it is archived").
-   **If the reading panel gate passes on this tip**, also: move `build-5.md`
+   **If the reading panel gate passes on this tip**, also: move `docs/archive/build/build-5.md`
    to `docs/archive/build/` with `git mv`, update `CLAUDE.md` §1's build-plan
    row and §2's Build file cell of row 2, and say in the final message that
    the landing merge must carry `Build-Phase: 5 done`. The same for
-   `build-6.md` and `Build-Phase: 6 done` if batch B's bitonal panel gate
-   passed (`build-6.md` §9) and nothing here moved it.
+   `docs/archive/build/build-6.md` and `Build-Phase: 6 done` if batch B's bitonal panel gate
+   passed (`docs/archive/build/build-6.md` §9) and nothing here moved it.
    `build/paths_pending.tsv` without this batch's rows.
 10. **Merge gate** on the tip: `python build/check.py --full`,
     `ctest --preset sanitize`, `ctest --preset clang-sanitize`,
@@ -208,7 +208,7 @@ CLAUDE.md, docs/DESIGN.md, docs/SOURCES.md, dataset/README.md, OPEN-QUESTIONS.md
 | `docs/SOURCES.md` | step 9 |
 | `docs/ABI.md` | unchanged: no JSON shape and no rung value moves; §C says so |
 | `dataset/README.md` | step 9, only if what `expect_text` means moved |
-| `OPEN-QUESTIONS.md`, `build-5.md` | step 9 |
+| `OPEN-QUESTIONS.md`, `docs/archive/build/build-5.md` | step 9 |
 
 ---
 
@@ -270,10 +270,10 @@ whether the landing merge closes phase 5 or 6.
 ## 17. Opening prompt
 
 > Read `CLAUDE.md` (§3, §6, §8, §9 and §11 closely), `docs/DESIGN.md` §5 and
-> §7, and `build-5.md` §9, then read `docs/change-01.md` §0 to §8 and all of
+> §7, and `docs/archive/build/build-5.md` §9, then read `docs/change-01.md` §0 to §8 and all of
 > `docs/change-01c.md`, and implement it exactly as written. Batches A and B
 > are finished: read their §C in `docs/change-01a.md` and `docs/change-01b.md`,
-> then `tests/panel/text_causes.tsv` and the panel item of `build-5.md` §9,
+> then `tests/panel/text_causes.tsv` and the panel item of `docs/archive/build/build-5.md` §9,
 > which say which files and groups are yours and whether CR5 is ordered.
 > Before planning, read `src/fonts/type0_font.cpp`, `src/fonts/cmap.cpp`,
 > `src/fonts/decoding_ladder.cpp`, `build/fonts/glyph_list.py`,
@@ -398,7 +398,7 @@ whether the landing merge closes phase 5 or 6.
    manifest keeps its `expect_text`, `known_gap:pdfkit`, which
    `text_agreement.py --write-manifest` turned to `agree` on Linux alone;
    every other moved row of the manifest is a file this batch fixed.
-10. **`build-5.md` and `build-6.md` stay at the root** although both panel
+10. **`docs/archive/build/build-5.md` and `docs/archive/build/build-6.md` stay at the root** although both panel
     gates pass on this tip: a phase closes only through the owner's
     landing merge (D8), which then carries `Build-Phase: 5 done` and
     `Build-Phase: 6 done`; their §9 holds the numbers.

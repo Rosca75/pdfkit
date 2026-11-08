@@ -296,7 +296,7 @@ Each answer below keeps the rule as written; no action.
 ## 3. Waiting on the owner: the reference panel's verdicts
 
 Raised on 2026-11-08 by the session that built the panel's judge, on the
-Linux run `panel-b-full` (`build-5.md` §9 item 21, `build-6.md` §9 item 18).
+Linux run `panel-b-full` (`docs/archive/build/build-5.md` §9 item 21, `docs/archive/build/build-6.md` §9 item 18).
 
 ### 3.1 Poppler does not vote on the pixels of a stencil mask
 
@@ -343,7 +343,7 @@ about 0.5 to 2 hours and $10 to $40 (one function, its tests, the notice
 row and a gate run); it moves pdfkit away from PDFium on about 100 images
 and towards no majority. **Alternative: the naive complement**, the same
 price; it failed the continuous-tone gate against PDFium before the table
-was ported (`build-6.md` §9 item 5).
+was ported (`docs/archive/build/build-6.md` §9 item 5).
 
 ### 3.3 The panel compares pdfkit with each member on the same surface
 
