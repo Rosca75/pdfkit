@@ -472,9 +472,10 @@ tests/pdfium/text_causes.tsv       (rows of files batch C fixes, removed)
 Batch A's note for batch B (on Linux, `docs/change-01a.md` Appendix C): every
 member is present and answers for the 961 files on disk from the cache;
 Poppler's pixels abstain on stencil masks, whose `/Decode` it leaves
-unapplied; MuPDF's Linux vote on CMYK carries no ICC (Appendix C entry 17);
-a member that times out or crashes twice on a file keeps a refusal marked
-`repeated`.
+unapplied (`abstains` in `tests/panel/members.tsv`, Appendix C entry 21);
+MuPDF's Linux vote on CMYK carries no ICC (Appendix C entry 17); a member that
+times out or crashes twice on a file keeps a `repeated_failure`, an
+abstention.
 
 | Batch | Hours | Model spend at list prices | Calibrated from |
 |---|---|---|---|
@@ -855,3 +856,13 @@ batch run on Linux; a batch run on the laptop follows its file as written.
     the full check is the owner's laptop step. `build/tests/test_checks.py`
     has one failure on Linux that `main` has too: `ArtefactTest` builds a
     planted `pdfkit.dll` with the host's `g++`, which cannot link one.
+21. **Poppler abstains on stencil masks, which narrows §9.5 of
+    `docs/change-01a.md` and D7.** Those say a member that fails a pixel fact
+    gets no `image_pixels` capability. Poppler fails one fact on one class
+    only: it writes a stencil mask's samples as stored, leaving its `/Decode`
+    unapplied (synth-0263 object 3), and applies `/Decode` on images
+    (synth-0265 object 4). So it keeps the capability and abstains on stencil
+    masks alone, recorded as data in the `abstains` column of
+    `tests/panel/members.tsv` (`image_pixels:stencil`, read by
+    `readers.abstains`), which the judge reads rather than a rule in code.
+    The Windows rows of the pixel members say "to record on the laptop".

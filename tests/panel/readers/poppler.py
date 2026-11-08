@@ -105,7 +105,7 @@ def finished_or_refused(outcome: dict) -> dict | None:
     return None
 
 
-def page_pixels(path: Path, page: int, objects: set[int], timeout: float) -> dict:
+def page_pixels(path: Path, page: int, objects: set[int], timeout: float, store=None) -> dict:
     """object -> pixel answer for the wanted objects one page draws."""
     listed = readers.run([tool("pdfimages"), "-list", "-f", str(page), "-l", str(page), str(path)], timeout)
     problem = finished_or_refused(listed)
@@ -126,15 +126,14 @@ def page_pixels(path: Path, page: int, objects: set[int], timeout: float) -> dic
             image = files.get(row["num"])
             if image is None:
                 out[str(row["object"])] = {"error": "not_written"}
-                continue
-            try:
-                out[str(row["object"])] = dict(pixels.compact(pixels.read_any(image.read_bytes())), type=row["type"])
-            except pixels.PixelError as err:
-                out[str(row["object"])] = {"error": "unreadable_output", "detail": str(err)}
+            elif row["width"] * row["height"] > pixels.MAX_PIXELS:
+                out[str(row["object"])] = {"error": "too_large"}
+            else:
+                out[str(row["object"])] = dict(pixels.entry(image.read_bytes(), store), type=row["type"])
     return out
 
 
-def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
+def answer(path: Path, kind: str, timeout: float, request: dict, store=None) -> dict:
     if kind == "text":
         outcome = readers.run([tool("pdftotext"), "-enc", "UTF-8", str(path), "-"], timeout)
         return finished_or_refused(outcome) or parse_text(outcome["stdout"])
@@ -147,7 +146,7 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
         for item in request.get("images", []):
             by_page.setdefault(min(item["pages"]), set()).add(int(item["object"]))
         for page, objects in sorted(by_page.items()):
-            found = page_pixels(path, page, objects, timeout)
+            found = page_pixels(path, page, objects, timeout, store)
             if "__problem__" in found:
                 return found["__problem__"]
             images.update(found)

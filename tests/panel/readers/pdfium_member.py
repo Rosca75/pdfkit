@@ -149,6 +149,8 @@ def rendered(lib, doc, page, obj) -> dict:
     width, height = c_uint(), c_uint()
     if not lib.FPDFImageObj_GetImagePixelSize(obj, ctypes.byref(width), ctypes.byref(height)):
         return {"error": "no_size"}
+    if width.value * height.value > pixels.MAX_PIXELS:
+        return {"error": "too_large", "pixel_size": [width.value, height.value]}
     matrix = Matrix(float(width.value), 0.0, 0.0, float(height.value), 0.0, 0.0)
     if not lib.FPDFPageObj_SetMatrix(obj, ctypes.byref(matrix)):
         return {"error": "no_matrix"}
@@ -363,7 +365,7 @@ def cached_elsewhere(path: Path, kind: str, timeout: float, request: dict, stats
     return text_shape(results_cache.cached_probe(_TimedProbe(timeout), path, ["text"]))
 
 
-def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
+def answer(path: Path, kind: str, timeout: float, request: dict, store=None) -> dict:
     if kind == "text":
         return text_shape(_TimedProbe(timeout).probe(path, ["text"]))
     if kind not in ("pages", "image_pixels"):
@@ -372,10 +374,16 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
         ask = {"path": str(path), "kind": kind, "request": request, "out": str(folder)}
         result = POOLS.get("panel").ask(ask, timeout)
         if result.get("error") in ("timeout", "crash"):
-            result = readers.repeated(result, POOLS.get("panel").ask(ask, 2 * timeout))
+            result = readers.repeated(result, POOLS.get("panel").ask(ask, 2 * timeout), limit=timeout)
         for entry in (result.get("images") or {}).values():
             if "samples_file" in entry:
-                entry["samples"] = Path(entry.pop("samples_file")).read_bytes()
+                # Each image is handed to the cache as it is read, so one is in memory at a time.
+                samples = Path(entry.pop("samples_file")).read_bytes()
+                if store is None:
+                    entry["samples"] = samples
+                else:
+                    entry["blob"] = store(samples)
+                del samples
     return result
 
 

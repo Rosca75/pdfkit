@@ -152,13 +152,13 @@ class RunTest(unittest.TestCase):
         self.assertEqual(killed["error"], "crash")
         self.assertEqual(poppler.finished_or_refused(killed)["error"], "crash")
 
-    def test_a_timeout_or_crash_that_repeats_is_a_refusal(self):
+    def test_a_timeout_or_crash_that_repeats_is_a_repeated_failure(self):
         before = readers.started()
         slow = readers.run([PYTHON, "-c", "import time; time.sleep(10)"], 0.3)
-        self.assertEqual((slow["error"], slow["repeated"]), ("refused", "timeout"))
+        self.assertEqual((slow["error"], slow["repeated"], slow["limit"]), ("repeated_failure", "timeout", 0.3))
         self.assertIn("0.6 s", slow["detail"])
         killed = readers.run([PYTHON, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"], 10)
-        self.assertEqual((killed["error"], killed["repeated"]), ("refused", "crash"))
+        self.assertEqual((killed["error"], killed["repeated"]), ("repeated_failure", "crash"))
         self.assertEqual(readers.started(), before + 4)
 
     def test_a_failure_that_does_not_repeat_stays_transient(self):
@@ -276,6 +276,68 @@ class PinsTest(unittest.TestCase):
     def test_the_combined_digest_does_not_depend_on_order(self):
         self.assertEqual(readers.combined_digest(["b", "a"]), readers.combined_digest(["a", "b"]))
         self.assertNotEqual(readers.combined_digest(["a"]), readers.combined_digest(["a", "b"]))
+
+
+class ReviewTest(unittest.TestCase):
+    def test_a_repeated_failure_names_its_limit(self):
+        timeout = {"ok": False, "error": "timeout", "detail": "no answer within 30 s"}
+        repeated = readers.repeated(timeout, dict(timeout, detail="no answer within 60 s"), limit=30.0)
+        self.assertEqual((repeated["error"], repeated["repeated"], repeated["limit"]),
+                         ("repeated_failure", "timeout", 30.0))
+        self.assertNotIn("repeated_failure", readers.TRANSIENT)
+
+    def test_qpdf_keeps_the_page_count_when_check_crashes(self):
+        crashed = {"ok": False, "error": "repeated_failure", "repeated": "crash", "detail": "crash twice"}
+        outcomes = iter([{"exit": 0, "stdout": b"30\n", "stderr": b""}, crashed])
+        with mock.patch.object(readers, "run", side_effect=lambda *a, **k: next(outcomes)):
+            answer = qpdf.answer(Path("f.pdf"), "structure", 30.0, {})
+        self.assertEqual((answer["ok"], answer["pages"], answer["check"]), (True, 30, "crash"))
+
+    def test_qpdf_refuses_on_an_empty_page_count(self):
+        with mock.patch.object(readers, "run", return_value={"exit": 0, "stdout": b"", "stderr": b""}):
+            answer = qpdf.answer(Path("f.pdf"), "structure", 30.0, {})
+        self.assertEqual(answer["error"], "refused")
+
+    def test_an_image_past_the_pixel_ceiling_is_too_large(self):
+        with mock.patch.object(pixels, "MAX_PIXELS", 10):
+            with self.assertRaises(pixels.TooLarge):
+                pixels.read_pnm(b"P4\n10 2\n" + bytes(4))
+            with self.assertRaises(pixels.TooLarge):
+                pixels.read_png(png(4, 3, 0, 8, [bytes(4)] * 3, [0, 0, 0]))
+            self.assertEqual(pixels.read_pnm(b"P5\n5 2\n255\n" + bytes(10))["width"], 5)
+
+    def test_mupdf_marks_the_pages_it_did_not_write(self):
+        pages = mupdf.text_pages({1: b"one\f\n", 3: b"three\f\n"})
+        self.assertEqual(pages, [{"page": 1, "text": "one"}, {"page": 2, "text": None, "missing": True},
+                                 {"page": 3, "text": "three"}])
+
+    def test_pdfium_stores_each_image_as_it_reads_it(self):
+        stored = []
+
+        class Pool:
+            def ask(self, request, timeout):
+                out = Path(request["out"])
+                images = {}
+                for name in ("4", "5"):
+                    (out / f"{name}.samples").write_bytes(name.encode() * 4)
+                    images[name] = {"width": 2, "height": 2, "layout": "gray",
+                                    "samples_file": str(out / f"{name}.samples")}
+                return {"ok": True, "images": images}
+
+        def store(samples):
+            stored.append(samples)
+            return f"digest-{len(stored)}"
+
+        with mock.patch.object(pdfium_member.POOLS, "get", return_value=Pool()):
+            answer = pdfium_member.answer(Path("f.pdf"), "image_pixels", 30.0, {}, store=store)
+        self.assertEqual(stored, [b"4444", b"5555"])
+        self.assertEqual(answer["images"]["5"]["blob"], "digest-2")
+        self.assertNotIn("samples", answer["images"]["5"])
+
+    def test_poppler_abstains_on_stencil_masks_by_its_row(self):
+        self.assertIn("abstains", readers.MEMBER_COLUMNS)
+        self.assertEqual(readers.abstains("poppler", "image_pixels", "linux"), {"stencil"})
+        self.assertEqual(readers.abstains("mupdf", "image_pixels", "linux"), set())
 
 
 if __name__ == "__main__":

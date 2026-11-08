@@ -36,8 +36,11 @@ Inherited from the parent. Facts the batch needs beside it:
   stencil masks, whose `/Decode` it leaves unapplied; PDFium paints a stencil
   black on white where Poppler and MuPDF write a mask's sample 1 black, so
   `pixel_verdict` compares a stencil by what it paints; MuPDF's Linux CMYK
-  vote carries no ICC (`docs/change-01.md` Appendix C entry 17); a refusal
-  marked `repeated` is a member that timed out or crashed twice on the file.
+  vote carries no ICC (`docs/change-01.md` Appendix C entry 17); Poppler's
+  abstention on stencil masks is data, `readers.abstains("poppler",
+  "image_pixels")` from the `abstains` column of `tests/panel/members.tsv`;
+  a `repeated_failure` (a member that timed out or crashed twice on the file)
+  and a `too_large` image are abstentions, never refusals.
 - **pdfkit's side of each comparison** comes from a dataset run, exactly as
   the old gates read it: the text is `text.text` of each outcome
   (`tests/pdfium/text_agreement.py` `score_run`, `:64-97`, says which blocks

@@ -3,10 +3,12 @@
 #
 # MuPDF as a member of the reference panel, through `mutool`. `text`: `mutool
 # draw -q -F txt -o <folder>/%d.txt <file>`, one file per page, each ending in a
-# form feed, a page MuPDF cannot draw leaving no file and so a page without
-# text; a non-zero exit after some pages were written is an answer with its
-# messages, and a refusal only when no page was. `pages`: `mutool pages <file>`, one <page> element per page with its
-# <MediaBox>, and <CropBox> and <Rotate> when the page states them.
+# form feed, a page MuPDF cannot draw leaving no file, so its place is kept
+# with no text and marked `missing` (pages after the last one written are not
+# known); a non-zero exit after some pages were written is an answer with its
+# messages, and a refusal only when no page was. `pages`: `mutool pages
+# <file>`, one <page> element per page with its <MediaBox>, and <CropBox> and
+# <Rotate> when the page states them.
 # `image_pixels`: `mutool extract -r <file> <object>...` in a scratch folder,
 # which writes image-<object>.png (or .pam), the image decoded (-r makes a
 # JPEG or CMYK image decoded to RGB rather than written as its own bytes); a
@@ -77,20 +79,25 @@ def parse_pages(stdout: bytes) -> dict:
     return {"ok": True, "count": len(pages), "pages": pages}
 
 
-def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
+def text_pages(written: dict[int, bytes]) -> list[dict]:
+    """The pages in page order up to the last one MuPDF wrote; a page it wrote no file for keeps
+    its place, marked `missing`, so every page is found by its number."""
+    return [{"page": n, "text": page_text(written[n])} if n in written
+            else {"page": n, "text": None, "missing": True}
+            for n in range(1, max(written, default=0) + 1)]
+
+
+def answer(path: Path, kind: str, timeout: float, request: dict, store=None) -> dict:
     if kind == "text":
         with readers.scratch() as folder:
             outcome = readers.run([mutool(), "draw", "-q", "-F", "txt", "-o", str(folder / "%d.txt"),
                                    str(path)], timeout)
             if readers.failed(outcome):
                 return outcome
-            written = {int(f.stem): f for f in folder.glob("*.txt") if f.stem.isdigit()}
+            written = {int(f.stem): f.read_bytes() for f in folder.glob("*.txt") if f.stem.isdigit()}
             if outcome["exit"] != 0 and not written:
                 return readers.refusal(outcome["stderr"], outcome["exit"])
-            count = max(written, default=0)
-            answer = {"ok": True, "pages": [
-                {"text": page_text(written[n].read_bytes())} if n in written else {"text": None}
-                for n in range(1, count + 1)]}
+            answer = {"ok": True, "pages": text_pages(written)}
             if outcome["exit"] != 0:
                 # MuPDF stops a page it cannot finish and says so; the pages it wrote are its answer.
                 answer["exit"] = outcome["exit"]
@@ -110,13 +117,7 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
                 return problem
             for number in objects:
                 written = sorted(folder.glob(f"image-{number:04d}.*"))
-                if not written:
-                    images[str(number)] = {"error": "not_written"}
-                    continue
-                try:
-                    images[str(number)] = pixels.compact(pixels.read_any(written[0].read_bytes()))
-                except pixels.PixelError as err:
-                    images[str(number)] = {"error": "unreadable_output", "detail": str(err),
-                                           "file": written[0].suffix}
+                images[str(number)] = pixels.entry(written[0].read_bytes(), store) if written \
+                    else {"error": "not_written"}
         return {"ok": True, "images": images}
     return readers.unsupported(NAME, kind)

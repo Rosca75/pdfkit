@@ -27,8 +27,25 @@ _BITS = [bytes(0 if (byte >> (7 - i)) & 1 else 255 for i in range(8)) for byte i
 _INVERT = bytes(255 - i for i in range(256))
 
 
+# The largest image a pixel answer holds, in pixels: the dataset's largest
+# wanted image (a stencil of pdfjs-0016) has 113 million, and one at the
+# ceiling takes a PDFium worker and the collection about 2 GB together, so three
+# workers stay within the host's memory. A larger image is `too_large`, an
+# abstention.
+MAX_PIXELS = 1 << 27
+
+
 class PixelError(ValueError):
     """A member's output that is not an image this module reads."""
+
+
+class TooLarge(PixelError):
+    """An image past MAX_PIXELS, refused before its samples are expanded."""
+
+
+def guard(width: int, height: int) -> None:
+    if width * height > MAX_PIXELS:
+        raise TooLarge(f"{width}x{height} is past the ceiling of {MAX_PIXELS} pixels")
 
 
 def image(width: int, height: int, layout: str, samples: bytes, source: str) -> dict:
@@ -65,6 +82,7 @@ def read_pnm(data: bytes) -> dict:
         return read_pam(data)
     if magic == b"P4":
         (width, height), pos = _pnm_tokens(data, 2)
+        guard(width, height)
         stride = (width + 7) // 8
         raster = data[pos:pos + stride * height]
         if len(raster) != stride * height:
@@ -74,6 +92,7 @@ def read_pnm(data: bytes) -> dict:
         return image(width, height, "gray", samples, "pbm")
     if magic in (b"P5", b"P6"):
         (width, height, maxval), pos = _pnm_tokens(data, 3)
+        guard(width, height)
         channels = 1 if magic == b"P5" else 3
         if maxval != 255:
             raise PixelError(f"a PNM of maximum value {maxval}; only 255 is read")
@@ -94,6 +113,7 @@ def read_pam(data: bytes) -> dict:
         if len(parts) == 2 and not line.startswith("#"):
             fields[parts[0]] = parts[1].strip()
     width, height = int(fields["WIDTH"]), int(fields["HEIGHT"])
+    guard(width, height)
     depth, maxval = int(fields["DEPTH"]), int(fields["MAXVAL"])
     if maxval != 255:
         raise PixelError(f"a PAM of maximum value {maxval}; only 255 is read")
@@ -167,6 +187,7 @@ def read_png(data: bytes) -> dict:
     if header is None:
         raise PixelError("a PNG without IHDR")
     width, height, depth, colour, _, _, interlace = header
+    guard(width, height)
     if interlace:
         raise PixelError("an interlaced PNG")
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[colour]
@@ -251,4 +272,19 @@ def compact(img: dict) -> dict:
         red = samples[0::3]
         if red == samples[1::3] and red == samples[2::3]:
             return dict(img, layout="gray", samples=red)
+    return img
+
+
+def entry(data: bytes, store=None) -> dict:
+    """A member's written image as a pixel answer: the image in the common form, its samples
+    handed to `store` (which keeps them and returns their digest) when one is given; `too_large`
+    past MAX_PIXELS and `unreadable_output` for an output this module does not read."""
+    try:
+        img = compact(read_any(data))
+    except TooLarge as err:
+        return {"error": "too_large", "detail": str(err)}
+    except PixelError as err:
+        return {"error": "unreadable_output", "detail": str(err)}
+    if store is not None:
+        img["blob"] = store(img.pop("samples"))
     return img

@@ -15,10 +15,10 @@
 # image of an image census (JBIG2 and CCITT, the bitonal gate's images) and
 # every image whose colour space is DeviceCMYK, a four-component ICCBased,
 # Separation or DeviceN (the CMYK re-decision). The census is the images.tsv of
-# a run of tests/pdfium/image_agreement.py (`--census <run-id>`, by default the
-# newest run that has one); an image is named by its object number, and QPDF's
-# raw stream bytes of that object (the `raw_streams` kind, cached like any
-# answer) give the SHA-256 PDFium aligns its image objects by, with Poppler's
+# a run of tests/pdfium/image_agreement.py (`--census <run-id>`, by default
+# the census the newest collection read); an image is named by its object
+# number, and QPDF's raw stream bytes of that object (the `raw_streams` kind,
+# cached like any answer) give the SHA-256 PDFium aligns its image objects by, with Poppler's
 # per-page draw order (the `image_list` kind) where two objects hold the same
 # bytes. The request each file was asked with (`request` for Poppler and MuPDF,
 # `pdfium` for PDFium, which adds the draw order) is written into the report's
@@ -26,8 +26,9 @@
 #
 # It writes dataset/reports/<run-id>/panel/collect.json and images.tsv and
 # prints, per member and kind, the files answered, refused (by cause),
-# transient and unsupported, the answers read back from the cache, the
-# questions asked and the seconds spent, and the child processes started: a
+# repeated (the same timeout or crash twice, an abstention), transient and
+# unsupported, the answers read back from the cache, the questions asked and
+# the seconds spent, and the child processes started: a
 # collection whose every answer is cached starts none.
 """Collect the panel's answers: python tests/panel/collect.py --run-id <id> [--kinds ...] [--smoke]."""
 
@@ -65,8 +66,10 @@ def smoke_ids() -> list[str]:
     return [line.split("\t")[0] for line in SMOKE.read_text(encoding="utf-8").splitlines()[1:] if line.strip()]
 
 
-def find_census(run_id: str | None) -> Path | None:
-    """images.tsv of the named run, or of the newest run that has one."""
+def find_census(run_id: str | None) -> Path:
+    """images.tsv of the named run, or the census the newest collection read: a collection that
+    names no census asks with the requests the last one cached, so a warm run stays warm when a
+    newer census appears. With neither, --census is required."""
     if run_id:
         path = common.reports_dir() / run_id / "images" / "images.tsv"
         if not path.exists():
@@ -74,8 +77,14 @@ def find_census(run_id: str | None) -> Path | None:
                                    "run `python tests/pdfium/image_agreement.py --out "
                                    f"{common.reports_dir() / run_id / 'images'}` first")
         return path
-    found = sorted(common.reports_dir().glob("*/images/images.tsv"), key=lambda p: p.stat().st_mtime)
-    return found[-1] if found else None
+    reports = sorted(common.reports_dir().glob("*/panel/collect.json"), key=lambda p: p.stat().st_mtime)
+    for report in reversed(reports):
+        named = (answers.read_json(report) or {}).get("census")
+        if named and Path(named).exists():
+            return Path(named)
+    raise common.ToolError("no census is named and no collection names one",
+                           "--census <run-id> naming a run with images/images.tsv",
+                           "pass --census, the run of tests/pdfium/image_agreement.py whose images the panel decodes")
 
 
 def pixel_reason(row: dict) -> str | None:
@@ -139,16 +148,20 @@ class Tally:
                                        "error": answer.get("error"), "detail": answer.get("detail")})
             elif answer.get("error") == "unsupported":
                 self.counts[key]["unsupported"] += 1
+            elif answer.get("error") == "repeated_failure":
+                self.counts[key]["repeated"] += 1
+                self.causes[key][f"repeated {answer.get('repeated')}"] += 1
             else:
                 self.counts[key]["refused"] += 1
                 self.causes[key][cause_of(answer)] += 1
 
 
 def cause_of(answer: dict) -> str:
-    """A short cause for a refusal: the member's first line, its numbers dropped."""
+    """A short cause for a refusal: the last line of the member's message, where its error
+    follows its warnings, with its numbers dropped."""
     detail = (answer.get("detail") or answer.get("error") or "").strip().splitlines()
-    first = detail[-1] if detail else "refused"
-    text = "".join("#" if c.isdigit() else c for c in first)
+    last = detail[-1] if detail else "refused"
+    text = "".join("#" if c.isdigit() else c for c in last)
     return text[:90]
 
 
@@ -197,7 +210,7 @@ def summary_rows(tally: Tally, applicable: dict) -> list[dict]:
         stats = tally.stats[(member, kind)]
         rows.append({"member": member, "kind": kind, "applicable": applicable.get(kind, 0),
                      "answered": counts["answered"], "refused": counts["refused"],
-                     "transient": counts["transient"], "unsupported": counts["unsupported"],
+                     "repeated": counts["repeated"], "transient": counts["transient"], "unsupported": counts["unsupported"],
                      "cached": stats.cached, "asked": stats.asked,
                      "seconds": round(tally.seconds[(member, kind)], 1),
                      "causes": dict(tally.causes[(member, kind)].most_common()),
@@ -294,9 +307,9 @@ def main() -> int:
                                         ",".join(map(str, image["pages"]))]) + "\n")
 
     common.print_table(
-        ["member", "kind", "applicable", "answered", "refused", "transient", "unsupported", "cached",
+        ["member", "kind", "applicable", "answered", "refused", "repeated", "transient", "unsupported", "cached",
          "asked", "seconds"],
-        [[r["member"], r["kind"], r["applicable"], r["answered"], r["refused"], r["transient"],
+        [[r["member"], r["kind"], r["applicable"], r["answered"], r["refused"], r["repeated"], r["transient"],
           r["unsupported"], r["cached"], r["asked"], r["seconds"]] for r in summary])
     print(f"files: {len(rows)}; seconds: {seconds}; child processes started: {processes}; "
           f"report: {out_dir / 'collect.json'}")

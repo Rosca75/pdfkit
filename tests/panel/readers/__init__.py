@@ -15,10 +15,10 @@
 #
 # Failure causes: `timeout` (no answer within the limit) and `crash` (killed by
 # a signal) are asked once more at twice the limit; a failure that does not
-# repeat says nothing about the file and is never cached. `refused` (the
-# member's own non-zero exit with its message, or the same timeout or crash
-# twice, marked `repeated`) is the member's answer about the file and is cached
-# like a success (answers.py).
+# repeat says nothing about the file and is never cached. The same failure twice
+# is a `repeated_failure`, cached and read as an abstention. `refused` (the
+# member's own non-zero exit with its message) is the member's answer about the
+# file and is cached like a success (answers.py).
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ import common  # noqa: E402
 MEMBERS_TSV = PANEL / "members.tsv"
 MEMBER_COLUMNS = ("member", "platform", "role", "licence", "version", "upstream", "archive_sha256",
                   "packages", "binaries", "binary_digest", "capabilities", "native_size",
-                  "decode_applied", "colour_output", "notes")
+                  "decode_applied", "colour_output", "abstains", "notes")
 # The member modules, in the order reports list them.
 MODULES = ("pdfium_member", "poppler", "mupdf", "oxide", "extract", "qpdf", "lopdf")
 KINDS = ("text", "pages", "structure", "image_pixels", "raw_streams")
@@ -144,6 +144,17 @@ def live_digest(row: dict) -> str:
     return combined_digest([sha256_of(path) for path, _ in binaries(row)])
 
 
+def abstains(member: str, kind: str, host: str | None = None) -> set[str]:
+    """The image classes on which a member abstains for a kind, from the row's `abstains` column
+    (`kind:class,class;kind:class`), measured with the pixel facts."""
+    out: set[str] = set()
+    for item in filter(None, (pin(member, host).get("abstains") or "").split(";")):
+        name, _, classes = item.strip().partition(":")
+        if name == kind:
+            out.update(c for c in classes.split(",") if c)
+    return out
+
+
 def package_versions(names: list[str]) -> dict[str, str | None]:
     """The installed version of each Debian package, None when absent (dpkg-query)."""
     out: dict[str, str | None] = {name: None for name in names}
@@ -230,17 +241,22 @@ def run(command: list[str], timeout: float, cwd: Path | None = None, retry: bool
     if not retry or not failed(first):
         return first
     second = _run_once(command, 2 * timeout, cwd)
-    return repeated(first, second)
+    return repeated(first, second, limit=timeout)
 
 
-def repeated(first: dict, second: dict) -> dict:
+def repeated(first: dict, second: dict, limit: float | None = None) -> dict:
     """The outcome of a retry after a transient failure: the retry's own result when it finished
-    or failed differently; a refusal when it failed the same way, because a member that crashes
-    or hangs on a file twice cannot read it, and asking it at every collection would never end."""
+    or failed differently; a `repeated_failure` when it failed the same way. That is kept in the
+    cache, because a member that crashes or hangs on a file twice would otherwise be asked at
+    every collection, and is read as an abstention, never as the member's own refusal of the
+    file. It names the first time limit, so a collection run with a larger one asks again."""
     if not failed(second) or second.get("error") != first.get("error"):
         return second
-    detail = f"{first['error']} twice: {first.get('detail')}; then {second.get('detail')}"
-    return {"ok": False, "error": "refused", "detail": detail, "repeated": first["error"]}
+    answer = {"ok": False, "error": "repeated_failure", "repeated": first["error"],
+              "detail": f"{first['error']} twice: {first.get('detail')}; then {second.get('detail')}"}
+    if limit is not None:
+        answer["limit"] = limit
+    return answer
 
 
 def _run_once(command: list[str], timeout: float, cwd: Path | None) -> dict:

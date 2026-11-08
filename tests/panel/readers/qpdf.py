@@ -3,9 +3,11 @@
 #
 # QPDF as a structure member of the reference panel, through the `qpdf`
 # command. `structure`: `qpdf --show-npages <file>` (the page count; its
-# failure is QPDF's refusal of the file), then `qpdf --check <file>`: the PDF
-# version, whether the file is encrypted or linearised, and the check's status
-# from its exit (0 no errors, 3 warnings, 2 errors) with its first lines.
+# failure, or no count printed, is QPDF's refusal of the file), then `qpdf
+# --check <file>`: the PDF version, whether the file is encrypted or
+# linearised, and the check's status from its exit (0 no errors, 3 warnings,
+# 2 errors) with its first lines, or `crash` or `timeout` when the check fails
+# so twice, the page count kept.
 # `raw_streams`: for each object asked, the SHA-256 of `qpdf
 # --show-object=<n> --raw-stream-data <file>`, the stream's bytes as stored
 # (decrypted, not decoded), which is what the image census and PDFium's
@@ -73,10 +75,17 @@ def answer(path: Path, kind: str, timeout: float, request: dict) -> dict:
             return pages
         if pages["exit"] not in (0, 3):
             return readers.refusal(pages["stderr"], pages["exit"])
+        count = pages["stdout"].split()
+        if not count or not count[0].isdigit():
+            return readers.refusal(b"--show-npages printed no page count: " + pages["stderr"], pages["exit"])
+        result = {"ok": True, "pages": int(count[0])}
         check = readers.run([qpdf(), "--check", str(path)], timeout)
+        if check.get("error") == "repeated_failure":
+            # The page count stands; the check that crashed or hung twice is reported as such.
+            result.update(check=check["repeated"], messages=check.get("detail"))
+            return result
         if readers.failed(check):
             return check
-        result = {"ok": True, "pages": int(pages["stdout"].split()[0])}
         result.update(parse_check(check["exit"], check["stdout"], check["stderr"]))
         return result
     if kind == "raw_streams":

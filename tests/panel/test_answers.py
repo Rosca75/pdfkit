@@ -42,8 +42,8 @@ class FakeMember:
     def binary_digest(self):
         return self.digest
 
-    def answer(self, path, kind, timeout, request):
-        del path, kind, timeout, request
+    def answer(self, path, kind, timeout, request, store=None):
+        del path, kind, timeout, request, store  # samples stay in the answer for store_pixels
         self.asked += 1
         reply = self.replies.pop(0)
         return {key: (bytes(value) if isinstance(value, bytearray) else value) for key, value in reply.items()}
@@ -161,6 +161,43 @@ class AnswersTest(unittest.TestCase):
     def test_a_version_becomes_a_folder_name(self):
         self.assertEqual(answers.safe("chromium/8111"), "chromium-8111")
         self.assertEqual(answers.safe("1.23.10+ds1-1build3"), "1.23.10+ds1-1build3")
+
+    def test_a_repeated_failure_is_kept_as_its_own_code(self):
+        self.assertNotIn("repeated_failure", answers.TRANSIENT)
+        member = FakeMember([{"ok": False, "error": "repeated_failure", "repeated": "crash",
+                              "detail": "crash twice"}])
+        answers.cached_answer(member, self.input, "text")
+        again = answers.cached_answer(member, self.input, "text")
+        self.assertEqual((again["error"], again["repeated"]), ("repeated_failure", "crash"))
+        self.assertEqual(member.asked, 1)
+
+    def test_a_repeated_timeout_is_asked_again_under_a_larger_limit(self):
+        member = FakeMember([{"ok": False, "error": "repeated_failure", "repeated": "timeout", "limit": 30.0},
+                             {"ok": True, "pages": []}])
+        answers.cached_answer(member, self.input, "text", timeout=30.0)
+        self.assertEqual(answers.cached_answer(member, self.input, "text", timeout=30.0)["error"],
+                         "repeated_failure")
+        self.assertEqual(member.asked, 1)
+        self.assertTrue(answers.cached_answer(member, self.input, "text", timeout=60.0)["ok"])
+        self.assertEqual(member.asked, 2)
+        self.assertTrue(answers.cached_answer(member, self.input, "text", timeout=90.0)["ok"])
+        self.assertEqual(member.asked, 2)
+
+    def test_pixels_are_stored_as_each_image_is_read(self):
+        seen = []
+
+        class Streaming(FakeMember):
+            def answer(self, path, kind, timeout, request, store=None):
+                images = {}
+                for number, samples in (("1", b"\x00" * 4), ("2", b"\xff" * 4)):
+                    images[number] = {"width": 2, "height": 2, "layout": "gray", "blob": store(samples)}
+                    seen.append(answers.read_blob(answers.member_folder("fake", "1.0+test", "ab" * 32),
+                                                  "image_pixels", images[number]["blob"]))
+                return {"ok": True, "images": images}
+
+        answer = answers.cached_answer(Streaming([]), self.input, "image_pixels", images=[])
+        self.assertEqual(seen, [b"\x00" * 4, b"\xff" * 4])
+        self.assertEqual(answer["images"]["2"]["blob"], hashlib.sha256(b"\xff" * 4).hexdigest())
 
 
 if __name__ == "__main__":
