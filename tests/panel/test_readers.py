@@ -83,6 +83,13 @@ class MupdfTest(unittest.TestCase):
                                               "rotate": 270})
         self.assertEqual(answer["pages"][1], {"media": [0.0, 0.0, 300.0, 400.0], "rotate": 0})
 
+    def test_page_sizes_are_the_sizes_mupdf_lays_each_page_out_on(self):
+        out = (b'<?xml version="1.0"?>\n<document name="a.pdf">\n<page id="page1" width="612" height="792">\n'
+               b'<block bbox="40 726.2 206.75 759.17">\n</block>\n</page>\n'
+               b'<page id="page2" width="300.5" height="400">\n</page>\n</document>\n')
+        self.assertEqual(mupdf.parse_sizes(out), {"ok": True, "count": 2,
+                                                  "pages": [{"size": [612.0, 792.0]}, {"size": [300.5, 400.0]}]})
+
     def test_a_page_file_loses_its_closing_form_feed(self):
         self.assertEqual(mupdf.page_text(b"Once upon a qoww.\n\n\f\n"), "Once upon a qoww.\n\n")
         self.assertEqual(mupdf.page_text("café\f".encode("utf-8")), "café")
@@ -99,6 +106,58 @@ class QpdfTest(unittest.TestCase):
         self.assertEqual(damaged["check"], "warnings")
         self.assertFalse(damaged["encrypted"])
         self.assertIn("damaged", damaged["messages"])
+
+    # A QPDF JSON document (version 2): two pages, the first holding a widget, a link and a stamp
+    # through an indirect /Annots array, the second a FreeText; a form on the catalog.
+    DOC = {"pages": [{"object": "4 0 R"}, {"object": "5 0 R"}], "qpdf": [
+        {"jsonversion": 2, "maxobjectid": 12},
+        {"obj:4 0 R": {"value": {"/Annots": "6 0 R", "/Parent": "3 0 R"}},
+         "obj:5 0 R": {"value": {"/Annots": [{"/Subtype": "/FreeText", "/Contents": "u:note"}], "/Parent": "3 0 R"}},
+         "obj:6 0 R": {"value": ["7 0 R", "8 0 R", "9 0 R"]},
+         "obj:7 0 R": {"value": {"/Subtype": "/Widget", "/FT": "/Tx", "/V": "u:Jane"}},
+         "obj:8 0 R": {"value": {"/Subtype": "/Link", "/A": {"/URI": "u:x"}}},
+         "obj:9 0 R": {"value": {"/Subtype": "/Stamp", "/AP": {"/N": "10 0 R"}}},
+         "obj:10 0 R": {"stream": {"dict": {"/Length": 40}}},
+         "obj:11 0 R": {"value": {"/Type": "/Catalog", "/Pages": "3 0 R", "/AcroForm": {"/Fields": ["7 0 R"]}}},
+         "trailer": {"value": {"/Root": "11 0 R", "/Size": 13}}}]}
+
+    def test_the_annotation_survey_names_what_draws_text(self):
+        survey = qpdf.survey(self.DOC)
+        self.assertEqual(survey["annotations"], 4)
+        self.assertEqual(survey["subtypes"], {"FreeText": 1, "Link": 1, "Stamp": 1, "Widget": 1})
+        self.assertEqual(survey["text"], {"Widget": 1, "FreeText": 1})
+        self.assertEqual(survey["appearances"], [10])
+        self.assertTrue(survey["form"])
+
+    def test_a_link_alone_draws_no_text(self):
+        doc = {"pages": [{"object": "4 0 R"}], "qpdf": [{"jsonversion": 2}, {
+            "obj:4 0 R": {"value": {"/Annots": [{"/Subtype": "/Link"}]}},
+            "trailer": {"value": {"/Root": "1 0 R"}}, "obj:1 0 R": {"value": {"/Type": "/Catalog"}}}]}
+        survey = qpdf.survey(doc)
+        self.assertEqual((survey["annotations"], survey["text"], survey["appearances"], survey["form"]),
+                         (1, {}, [], False))
+
+    def test_an_appearance_s_forms_are_followed(self):
+        objects = {"obj:10 0 R": {"stream": {"dict": {"/Resources": "2 0 R"}}},
+                   "obj:2 0 R": {"value": {"/XObject": {"/Fm0": "12 0 R", "/Im0": "13 0 R"}}},
+                   "obj:12 0 R": {"stream": {"dict": {"/Subtype": "/Form"}}},
+                   "obj:13 0 R": {"stream": {"dict": {"/Subtype": "/Image"}}}}
+        self.assertEqual(qpdf.forms_of(objects, 10), [12])
+        self.assertEqual(qpdf.forms_of(objects, 12), [])
+
+    def test_an_appearance_holds_text_when_it_shows_a_string(self):
+        self.assertTrue(qpdf.shows_text(b"q BT /F1 9 Tf 2 3 Td (APPROVED) Tj ET Q"))
+        self.assertTrue(qpdf.shows_text(b"BT [(A) -20 (B)] TJ ET"))
+        self.assertFalse(qpdf.shows_text(b"q 1 0 0 rg 0 0 10 10 re f Q"))
+        self.assertFalse(qpdf.shows_text(b"BT ET"))
+
+    def test_the_stripped_copy_drops_annots_and_the_form_alone(self):
+        update = qpdf.strip_update(self.DOC)
+        head, objects = update["qpdf"]
+        self.assertEqual(head, {"jsonversion": 2, "maxobjectid": 12})
+        self.assertEqual(sorted(objects), ["obj:11 0 R", "obj:4 0 R", "obj:5 0 R"])
+        self.assertEqual(objects["obj:4 0 R"], {"value": {"/Parent": "3 0 R"}})
+        self.assertEqual(objects["obj:11 0 R"], {"value": {"/Type": "/Catalog", "/Pages": "3 0 R"}})
 
 
 class RustMembersTest(unittest.TestCase):
