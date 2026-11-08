@@ -75,6 +75,9 @@ class Lexer {
   [[nodiscard]] std::size_t position() const noexcept { return position_; }
   void seek(std::size_t position) noexcept;
   [[nodiscard]] platform::ByteSpan bytes() const noexcept { return bytes_; }
+  // Whether a string token ran to the end of the data without its closing
+  // delimiter, so every byte after its opening was read as its text.
+  [[nodiscard]] bool string_ran_to_end() const noexcept { return string_ran_to_end_; }
 
   // Skips white space and comments; the position is then at a token's first
   // byte or at the end.
@@ -97,6 +100,7 @@ class Lexer {
 
   platform::ByteSpan bytes_;
   std::size_t position_;
+  bool string_ran_to_end_ = false;
 };
 
 }  // namespace pdfkit::syntax

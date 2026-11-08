@@ -93,6 +93,8 @@ std::string WriteReport::json() const {
     writer.end_object();
   }
   writer.end_array();
+  writer.key("damaged_pages");
+  syntax::PageDamage::write(writer, damaged_pages);
   writer.end_object();
   return writer.take();
 }

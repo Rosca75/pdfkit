@@ -3,8 +3,10 @@
 //
 // Catalogue function 1.2, Inspect: pdfkit_inspect reports a document's
 // version, page count, page boxes and rotation, encryption, repairs and
-// warnings (CLAUDE.md section 2, docs/ABI.md). It reads only what open
-// already read, so it never fails on a valid handle; it takes no options.
+// warnings (CLAUDE.md section 2, docs/ABI.md), and the pages whose text could
+// not be read in full. It reads every page's content once to name them,
+// keeping the answer on the handle, and a limit met there names the page
+// not_checked, so it never fails on a valid handle; it takes no options.
 
 #include "pdfkit/pdfkit.h"
 
@@ -17,8 +19,10 @@
 #include "platform/json_value.hpp"
 #include "platform/json_writer.hpp"
 #include "syntax/page.hpp"
+#include "syntax/page_damage.hpp"
 
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -47,6 +51,8 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_inspect(pdfkit_document* doc, const c
               "\", but inspect takes none",
           "an empty JSON object or NULL", "pass NULL or {} as options_json");
     }
+    // Read first, so the warnings it meets are among those written.
+    const std::vector<pdfkit::syntax::PageDamage> damaged = handle.damage->all();
     const pdfkit::syntax::Document& document = *handle.document;
     pdfkit::platform::JsonWriter writer;
     writer.begin_object();
@@ -70,6 +76,8 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_inspect(pdfkit_document* doc, const c
     pdfkit::api::write_repairs(writer, document);
     writer.key("warnings");
     pdfkit::api::write_warnings(writer, document);
+    writer.key("damaged_pages");
+    pdfkit::syntax::PageDamage::write(writer, damaged);
     writer.end_object();
     pdfkit::api::write_buffer(out, writer.take());
     return PDFKIT_OK;

@@ -284,8 +284,9 @@ std::string PdfEncryptor::encrypt_string(std::uint32_t number, std::uint32_t gen
 }
 
 std::string PdfEncryptor::encrypt_stream(std::uint32_t number, std::uint32_t generation,
-                                         const std::string& bytes, bool is_metadata) const {
-  if (spec_.revision >= 4 && spec_.stream_filter == "Identity") {
+                                         const std::string& bytes, bool is_metadata,
+                                         bool own_filter) const {
+  if (spec_.revision >= 4 && spec_.stream_filter == "Identity" && !own_filter) {
     return bytes;
   }
   if (is_metadata && !spec_.encrypt_metadata) {

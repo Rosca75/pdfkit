@@ -9,13 +9,14 @@
 // the operations the lexer read with their byte ranges, where each piece of
 // the page's /Contents starts, and whether the bytes were read only up to a
 // fault, which is everything the serialiser needs to write the stream back
-// and a redaction needs to edit it.
+// and a redaction needs to edit it, and what of it could not be read in full.
 
 #ifndef PDFKIT_TEXT_CONTENT_STREAM_HPP
 #define PDFKIT_TEXT_CONTENT_STREAM_HPP
 
 #include "syntax/content_lexer.hpp"
 #include "syntax/object.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/matrix.hpp"
 
 #include <cstddef>
@@ -46,6 +47,11 @@ class ContentStream {
   // The stream decoded only up to a fault, or the lexer recovered from a
   // fault inside it, so it is read as far as it reads.
   bool damaged = false;
+  // What of the walk's content could not be read in full: each filter fault
+  // of its stream (of each /Contents piece for the page) and each loss of
+  // its lexer, by damage class (docs/DESIGN.md, the damaged pages section).
+  // A recovery that loses nothing is counted in damaged alone.
+  std::vector<syntax::PageDamage::Stream> damage;
 };
 
 }  // namespace pdfkit::text

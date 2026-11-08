@@ -53,7 +53,8 @@
 // font, because a placeholder is arbitrary text, and one cut out of a
 // surface would hide a survivor that holds it ("de" in "Jean de la
 // Fontaine"). The re-read is bounded by the limits the input was opened
-// with. pdfkit_check runs the same search over any bytes.
+// with. pdfkit_check runs the same search over any bytes, and names the pages
+// of those bytes whose text could not be read in full from the same walk.
 
 #ifndef PDFKIT_REDACT_SELF_CHECK_HPP
 #define PDFKIT_REDACT_SELF_CHECK_HPP
@@ -63,6 +64,7 @@
 #include "redact/edit_plan.hpp"
 #include "redact/match_finder.hpp"
 #include "syntax/limits.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/rect.hpp"
 #include "writer/write_report.hpp"
 
@@ -132,6 +134,17 @@ class SelfCheck {
     std::size_t pages = 0;
     // The pages whose text was read.
     std::size_t pages_read = 0;
+    // When asked for, every page of pdf whose text could not be read in
+    // full, in page order (docs/DESIGN.md, the damaged pages section).
+    std::vector<syntax::PageDamage> damaged_pages;
+    // The streams that could not be searched, because they are encrypted
+    // under a crypt filter whose key the handler does not hold: the object,
+    // and the page whose content it is, when it is one.
+    struct Unsearched {
+      std::uint32_t object = 0;
+      std::optional<std::uint32_t> page;
+    };
+    std::vector<Unsearched> not_searched;
   };
 
   // Searches pdf for needles. Throws the document's refusal when pdf does
@@ -141,14 +154,18 @@ class SelfCheck {
   // already searched with every needle (the write pipeline gives it only
   // for a plan of search strings alone). Every other surface is searched in
   // full.
+  // damage asks for the damaged pages of every page, read whether or not a
+  // needle searches it.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                   std::span<const MatchFinder::Match> needles,
-                                  const std::set<std::uint32_t>* pages = nullptr);
+                                  const std::set<std::uint32_t>* pages = nullptr,
+                                  bool damage = false);
   // The same with every kind of request; the pages of the located and the
   // string matches are read whatever pages names.
   [[nodiscard]] static Result run(platform::ByteSpan pdf, const syntax::Limits& limits,
                                   const Needles& needles,
-                                  const std::set<std::uint32_t>* pages = nullptr);
+                                  const std::set<std::uint32_t>* pages = nullptr,
+                                  bool damage = false);
 
   // The self-check stage of the write pipeline: verifies pdf, the output of
   // plan whose pages are report.pages, and records the verdict in report;

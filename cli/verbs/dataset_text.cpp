@@ -60,6 +60,18 @@ std::string failure(pdfkit_status status, const std::string& text) {
 
 }  // namespace
 
+std::string damaged_page_numbers(const JsonText& answer) {
+  std::string out = "[";
+  if (const JsonText::Node* pages = answer.member(answer.root(), "damaged_pages")) {
+    for (std::size_t i = 0; i < pages->items.size(); ++i) {
+      const JsonText::Node* page = answer.member(answer.node(pages->items[i]), "page");
+      out += (i == 0 ? "" : ", ") +
+             std::string(page != nullptr ? page->raw : std::string_view("null"));
+    }
+  }
+  return out + "]";
+}
+
 std::string dataset_text(pdfkit_document* document) {
   pdfkit_buffer buffer{nullptr, 0, nullptr};
   const pdfkit_status status =
@@ -165,7 +177,7 @@ std::string dataset_text(pdfkit_document* document) {
   for (std::size_t m = 0; m < mismatches.size(); ++m) {
     out += (m == 0 ? "" : ", ") + json_quote(mismatches[m]);
   }
-  out += "]}}";
+  out += "]}, \"damaged_pages\": " + damaged_page_numbers(*json) + "}";
   return out;
 }
 

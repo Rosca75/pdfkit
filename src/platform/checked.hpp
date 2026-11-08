@@ -46,6 +46,14 @@ template <std::integral T>
   return static_cast<T>(a + b);
 }
 
+// a + b, or the largest value of T when the sum would pass it: for a count
+// a report keeps, which must not fail the call that reports it.
+template <std::unsigned_integral T>
+[[nodiscard]] constexpr T saturating_add(T a, T b) noexcept {
+  constexpr T max = std::numeric_limits<T>::max();
+  return b > max - a ? max : static_cast<T>(a + b);
+}
+
 template <std::integral T>
 [[nodiscard]] T checked_mul(T a, T b, std::string_view what) {
   constexpr T max = std::numeric_limits<T>::max();

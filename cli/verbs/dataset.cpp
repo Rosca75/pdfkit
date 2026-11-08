@@ -230,6 +230,7 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
     writer.raw("code", "null");
     writer.raw("version", "null");
     writer.raw("pages", "null");
+    writer.raw("damaged_pages", "null");
   } else {
     const Call inspected = take(pdfkit_inspect(document, nullptr, &out), out);
     if (inspected.status == PDFKIT_OK) {
@@ -241,10 +242,12 @@ std::string outcome(std::string_view id, const std::vector<std::uint8_t>* bytes,
       writer.raw("code", "null");
       writer.raw("version", version != nullptr ? version->raw : std::string_view("null"));
       writer.raw("pages", pages != nullptr ? pages->raw : std::string_view("null"));
+      writer.raw("damaged_pages", report ? damaged_page_numbers(*report) : std::string("null"));
     } else {
       write_failure(writer, inspected);
       writer.raw("version", "null");
       writer.raw("pages", "null");
+      writer.raw("damaged_pages", "null");
     }
   }
   writer.close_object();

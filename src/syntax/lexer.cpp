@@ -223,6 +223,7 @@ Lexer::Token Lexer::read_literal_string(std::size_t start) {
   while (true) {
     if (at_end()) {
       token.repaired = true;
+      string_ran_to_end_ = true;
       break;
     }
     const unsigned value = peek_byte();
@@ -244,6 +245,7 @@ Lexer::Token Lexer::read_literal_string(std::size_t start) {
     } else if (value == '\\') {
       if (at_end()) {
         token.repaired = true;
+        string_ran_to_end_ = true;
         break;
       }
       const unsigned escaped = peek_byte();
@@ -302,6 +304,7 @@ Lexer::Token Lexer::read_hex_string(std::size_t start) {
   while (true) {
     if (at_end()) {
       token.repaired = true;
+      string_ran_to_end_ = true;
       break;
     }
     const unsigned value = peek_byte();

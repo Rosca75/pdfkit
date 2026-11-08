@@ -31,6 +31,7 @@
 #include "fonts/font_loader.hpp"
 #include "syntax/document.hpp"
 #include "syntax/page.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/optional_content.hpp"
 #include "text/page_content.hpp"
 
@@ -51,8 +52,13 @@ class ContentInterpreter {
   ContentInterpreter(syntax::Document& document, fonts::FontLoader& loader,
                      const OptionalContent& optional_content);
 
+  // What a walk reads: everything, or only what names the page's damage
+  // (every stream decoded and lexed, every form a Do draws followed, and no
+  // record made), which costs a fraction of a full reading.
+  enum class Reading : std::uint8_t { full, damage };
+
   // Interprets one page of the document.
-  [[nodiscard]] PageContent run(const syntax::Page& page);
+  [[nodiscard]] PageContent run(const syntax::Page& page, Reading reading = Reading::full);
 
  private:
   // One page's walk, defined in the source file.
@@ -61,10 +67,17 @@ class ContentInterpreter {
   syntax::Document* document_;
   fonts::FontLoader* loader_;
   const OptionalContent* optional_content_;
+  // A form stream decoded: its bytes, whether a filter met a fault, and what
+  // the decoding left unread, as damaged streams of the page drawing it.
+  struct FormBytes {
+    std::shared_ptr<const std::vector<std::byte>> bytes;
+    bool damaged = false;
+    std::vector<syntax::PageDamage::Stream> damage;
+  };
+
   // The decoded bytes of each form stream, by object number, so a form drawn
   // on many pages is decoded and charged to the budget once.
-  std::map<std::uint32_t, std::shared_ptr<const std::vector<std::byte>>> forms_;
-  std::map<std::uint32_t, bool> form_damaged_;
+  std::map<std::uint32_t, FormBytes> forms_;
 };
 
 }  // namespace pdfkit::text

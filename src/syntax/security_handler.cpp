@@ -5,9 +5,10 @@
 // algorithm numbers are those of ISO 32000-1 section 7.6.3 and ISO 32000-2
 // section 7.6.4 (read in the design record's sources); the behaviour follows
 // pdf.js's crypto.js (read) where the specification leaves a choice: a bad
-// AES pad keeps the bytes, AES data shorter than one block decrypts to
-// nothing, and a crypt filter /Length is read as bits when above 32 and as
-// bytes otherwise.
+// AES pad keeps the bytes, and AES data shorter than one block decrypts to
+// nothing. The key length of revisions 2 to 4 is the /Encrypt dictionary's
+// /Length in bits (40 when absent, and always for revision 2), read as a
+// multiple of 8 from 40 to 128; a crypt filter's own /Length is not read.
 
 #include "syntax/security_handler.hpp"
 
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <span>
 #include <utility>
 
@@ -216,103 +218,121 @@ SecurityHandler SecurityHandler::open(const Dictionary& encrypt, const std::stri
                        : main_method == Method::aes256 ? "AESV3"
                                                        : "Identity";
 
+  // The file key from the empty user password, checked against /U (and
+  // /Perms for revisions 5 and 6); throws the refusal when it is wrong.
+  const auto derive = [&]() {
+    const std::string owner_entry = string_entry(encrypt, "O");
+    const std::string user_entry = string_entry(encrypt, "U");
+
+    if (revision >= 5) {
+      // Algorithm 2.A with the empty password (SASLprep of "" is "").
+      if (user_entry.size() < 48) {
+        refuse_unsupported("a revision " + std::to_string(revision) + " handler whose /U is short");
+      }
+      const std::string validation_salt = user_entry.substr(32, 8);
+      const std::string key_salt = user_entry.substr(40, 8);
+      if (hash_r6(revision, "", validation_salt, "") != user_entry.substr(0, 32)) {
+        refuse_password(revision);
+      }
+      const std::string intermediate = hash_r6(revision, "", key_salt, "");
+      const std::string ue = string_entry(encrypt, "UE");
+      if (ue.size() < 32) {
+        refuse_unsupported("a revision " + std::to_string(revision) +
+                           " handler whose /UE is short");
+      }
+      const std::string zero_iv(16, '\0');
+      handler.file_key_ = text_of(
+          Aes::cbc_decrypt(span_of(intermediate), span_of(zero_iv), span_of(ue.substr(0, 32))));
+      description.key_bits = 256;
+      // /Perms: AES-256 of one block under the file key holds the permissions
+      // in bytes 0 to 3 and "adb" in bytes 9 to 11 (algorithm 13). Without
+      // "adb" the key decrypted from /UE is wrong and every string and stream
+      // would decrypt to noise, so the file is refused as PDFium refuses it; a
+      // permissions mismatch or a missing /Perms is only a warning.
+      const std::string perms = string_entry(encrypt, "Perms");
+      if (perms.size() >= 16) {
+        const std::string clear = text_of(Aes::cbc_decrypt(
+            span_of(handler.file_key_), span_of(zero_iv), span_of(perms.substr(0, 16))));
+        if (clear.substr(9, 3) != "adb") {
+          refuse_key_check(revision);
+        }
+        const auto permissions = static_cast<std::uint32_t>(encrypt.get("P").integer().value_or(0));
+        std::uint32_t held = 0;
+        for (unsigned i = 0; i < 4; ++i) {
+          held |= static_cast<std::uint32_t>(static_cast<unsigned char>(clear[i])) << (8U * i);
+        }
+        handler.perms_mismatch_ = held != permissions;
+      } else {
+        handler.perms_mismatch_ = true;
+      }
+      return;
+    }
+
+    // Algorithm 2: the file key from the padded empty password.
+    std::int64_t length_bits = encrypt.get("Length").integer().value_or(40);
+    if (revision == 2) {
+      length_bits = 40;
+    }
+    if (length_bits < 40 || length_bits > 128 || length_bits % 8 != 0) {
+      length_bits = std::clamp<std::int64_t>(length_bits / 8 * 8, 40, 128);
+    }
+    const auto key_length = static_cast<std::size_t>(length_bits / 8);
+    description.key_bits = static_cast<int>(length_bits);
+    const auto permissions = static_cast<std::uint32_t>(encrypt.get("P").integer().value_or(0));
+    std::string input = padding();
+    input += owner_entry.substr(0, 32);
+    for (unsigned shift = 0; shift < 32; shift += 8) {
+      input.push_back(static_cast<char>((permissions >> shift) & 0xFFU));
+    }
+    input += id0;
+    if (revision >= 4 && !description.encrypt_metadata) {
+      input += std::string(4, '\xFF');
+    }
+    std::string key = md5(input);
+    if (revision >= 3) {
+      for (int i = 0; i < 50; ++i) {
+        key = md5(key.substr(0, key_length));
+      }
+    }
+    handler.file_key_ = key.substr(0, key_length);
+
+    // Algorithms 4 and 5: the empty password is right when /U matches.
+    if (revision == 2) {
+      if (rc4(handler.file_key_, padding()) != user_entry.substr(0, 32)) {
+        refuse_password(revision);
+      }
+    } else {
+      std::string value = rc4(handler.file_key_, md5(padding() + id0));
+      for (unsigned i = 1; i <= 19; ++i) {
+        value = rc4(xor_key(handler.file_key_, i), value);
+      }
+      if (value.substr(0, 16) != user_entry.substr(0, 16)) {
+        refuse_password(revision);
+      }
+    }
+  };
+
   // With /StmF and /StrF both /Identity nothing the document draws is
-  // encrypted; a user password then guards only what /EFF names (embedded
-  // files, never read here), so it is not checked (PDFium opens such files).
+  // encrypted; a user password then guards only what /EFF names, so it is
+  // not required (PDFium opens such files). The key the empty password gives
+  // is still derived when /U accepts it, because a stream may name a crypt
+  // filter in its own /Crypt /DecodeParms; otherwise there is none and such
+  // a stream is locked (SecurityHandler::locked).
   if (version >= 4 && handler.stream_method_ == Method::identity &&
       handler.string_method_ == Method::identity) {
-    description.key_bits = static_cast<int>(encrypt.get("Length").integer().value_or(0));
+    try {
+      derive();
+    } catch (const platform::Error&) {
+      handler.file_key_.clear();
+    }
+    // The bits of the key held, or the /Length written when none is.
+    description.key_bits = handler.file_key_.empty()
+                               ? static_cast<int>(encrypt.get("Length").integer().value_or(0))
+                               : static_cast<int>(handler.file_key_.size() * 8);
+    handler.perms_mismatch_ = false;
     return handler;
   }
-
-  const std::string owner_entry = string_entry(encrypt, "O");
-  const std::string user_entry = string_entry(encrypt, "U");
-
-  if (revision >= 5) {
-    // Algorithm 2.A with the empty password (SASLprep of "" is "").
-    if (user_entry.size() < 48) {
-      refuse_unsupported("a revision " + std::to_string(revision) + " handler whose /U is short");
-    }
-    const std::string validation_salt = user_entry.substr(32, 8);
-    const std::string key_salt = user_entry.substr(40, 8);
-    if (hash_r6(revision, "", validation_salt, "") != user_entry.substr(0, 32)) {
-      refuse_password(revision);
-    }
-    const std::string intermediate = hash_r6(revision, "", key_salt, "");
-    const std::string ue = string_entry(encrypt, "UE");
-    if (ue.size() < 32) {
-      refuse_unsupported("a revision " + std::to_string(revision) + " handler whose /UE is short");
-    }
-    const std::string zero_iv(16, '\0');
-    handler.file_key_ = text_of(
-        Aes::cbc_decrypt(span_of(intermediate), span_of(zero_iv), span_of(ue.substr(0, 32))));
-    description.key_bits = 256;
-    // /Perms: AES-256 of one block under the file key holds the permissions
-    // in bytes 0 to 3 and "adb" in bytes 9 to 11 (algorithm 13). Without
-    // "adb" the key decrypted from /UE is wrong and every string and stream
-    // would decrypt to noise, so the file is refused as PDFium refuses it; a
-    // permissions mismatch or a missing /Perms is only a warning.
-    const std::string perms = string_entry(encrypt, "Perms");
-    if (perms.size() >= 16) {
-      const std::string clear = text_of(Aes::cbc_decrypt(
-          span_of(handler.file_key_), span_of(zero_iv), span_of(perms.substr(0, 16))));
-      if (clear.substr(9, 3) != "adb") {
-        refuse_key_check(revision);
-      }
-      const auto permissions = static_cast<std::uint32_t>(encrypt.get("P").integer().value_or(0));
-      std::uint32_t held = 0;
-      for (unsigned i = 0; i < 4; ++i) {
-        held |= static_cast<std::uint32_t>(static_cast<unsigned char>(clear[i])) << (8U * i);
-      }
-      handler.perms_mismatch_ = held != permissions;
-    } else {
-      handler.perms_mismatch_ = true;
-    }
-    return handler;
-  }
-
-  // Algorithm 2: the file key from the padded empty password.
-  std::int64_t length_bits = encrypt.get("Length").integer().value_or(40);
-  if (revision == 2) {
-    length_bits = 40;
-  }
-  if (length_bits < 40 || length_bits > 128 || length_bits % 8 != 0) {
-    length_bits = std::clamp<std::int64_t>(length_bits / 8 * 8, 40, 128);
-  }
-  const auto key_length = static_cast<std::size_t>(length_bits / 8);
-  description.key_bits = static_cast<int>(length_bits);
-  const auto permissions = static_cast<std::uint32_t>(encrypt.get("P").integer().value_or(0));
-  std::string input = padding();
-  input += owner_entry.substr(0, 32);
-  for (unsigned shift = 0; shift < 32; shift += 8) {
-    input.push_back(static_cast<char>((permissions >> shift) & 0xFFU));
-  }
-  input += id0;
-  if (revision >= 4 && !description.encrypt_metadata) {
-    input += std::string(4, '\xFF');
-  }
-  std::string key = md5(input);
-  if (revision >= 3) {
-    for (int i = 0; i < 50; ++i) {
-      key = md5(key.substr(0, key_length));
-    }
-  }
-  handler.file_key_ = key.substr(0, key_length);
-
-  // Algorithms 4 and 5: the empty password is right when /U matches.
-  if (revision == 2) {
-    if (rc4(handler.file_key_, padding()) != user_entry.substr(0, 32)) {
-      refuse_password(revision);
-    }
-  } else {
-    std::string value = rc4(handler.file_key_, md5(padding() + id0));
-    for (unsigned i = 1; i <= 19; ++i) {
-      value = rc4(xor_key(handler.file_key_, i), value);
-    }
-    if (value.substr(0, 16) != user_entry.substr(0, 16)) {
-      refuse_password(revision);
-    }
-  }
+  derive();
   return handler;
 }
 
@@ -320,6 +340,12 @@ std::vector<std::byte> SecurityHandler::apply(Method method, Object::Reference o
                                               platform::ByteSpan data) const {
   if (method == Method::identity) {
     return {data.begin(), data.end()};
+  }
+  if (method == Method::undefined || file_key_.empty()) {
+    // A handler whose /StmF and /StrF are /Identity and whose /U refuses the
+    // empty password has no file key, so data under its other crypt filters
+    // is locked and not read (locked() names it).
+    return {};
   }
   std::string key = file_key_;
   if (method != Method::aes256) {
@@ -351,14 +377,13 @@ std::string SecurityHandler::decrypt_string(Object::Reference owner,
   return text_of(apply(string_method_, owner, span_of(bytes)));
 }
 
-std::vector<std::byte> SecurityHandler::decrypt_stream(Object::Reference owner,
-                                                       const Dictionary& dictionary,
-                                                       platform::ByteSpan data) const {
+std::optional<SecurityHandler::Method> SecurityHandler::stream_method(
+    const Dictionary& dictionary) const {
   if (dictionary.get("Type").is_name("XRef")) {
-    return {data.begin(), data.end()};
+    return std::nullopt;
   }
   if (!description_.encrypt_metadata && dictionary.get("Type").is_name("Metadata")) {
-    return {data.begin(), data.end()};
+    return std::nullopt;
   }
   // A stream whose first filter is /Crypt names its own crypt filter in its
   // /DecodeParms /Name, defaulting to /Identity (ISO 32000-1 section 7.4.10).
@@ -374,15 +399,34 @@ std::vector<std::byte> SecurityHandler::decrypt_stream(Object::Reference owner,
     const Dictionary* crypt = first.dictionary();
     const std::string* name = crypt != nullptr ? crypt->get("Name").name() : nullptr;
     if (name == nullptr || *name == "Identity") {
-      return {data.begin(), data.end()};
+      return std::nullopt;
     }
     for (const auto& [defined, method] : crypt_filters_) {
       if (defined == *name) {
-        return apply(method, owner, data);
+        return method;
       }
     }
+    // A name /CF does not define: the data is encrypted under a filter
+    // nothing here describes, so it is locked rather than read as clear.
+    return Method::undefined;
   }
-  return apply(stream_method_, owner, data);
+  return stream_method_;
+}
+
+bool SecurityHandler::locked(const Dictionary& dictionary) const {
+  const std::optional<Method> method = stream_method(dictionary);
+  return method &&
+         (*method == Method::undefined || (*method != Method::identity && file_key_.empty()));
+}
+
+std::vector<std::byte> SecurityHandler::decrypt_stream(Object::Reference owner,
+                                                       const Dictionary& dictionary,
+                                                       platform::ByteSpan data) const {
+  const std::optional<Method> method = stream_method(dictionary);
+  if (!method) {
+    return {data.begin(), data.end()};
+  }
+  return apply(*method, owner, data);
 }
 
 }  // namespace pdfkit::syntax

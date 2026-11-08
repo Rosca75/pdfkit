@@ -11,11 +11,15 @@
 
 #include "text/content_interpreter.hpp"
 
+#include "support/require_value.hpp"
 #include "text/support/text_document.hpp"
+#include "text/text_reader.hpp"
 
 #include <doctest.h>
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -340,4 +344,29 @@ TEST_CASE("patterns and soft masks are noted, not walked, and inline images keep
   CHECK(page.images[0].kind == ImageOccurrence::Kind::inline_image);
   REQUIRE(page.images[0].colour_spaces.dictionary() != nullptr);
   CHECK(page.images[0].colour_spaces.dictionary()->contains("C0"));
+}
+
+TEST_CASE("the damage reading finds the full reading's damage and makes no record") {
+  TextDocument document;
+  const std::uint32_t inner = document.add_stream(
+      "/Type /XObject /Subtype /Form /BBox [0 0 200 50]", "BT /F1 10 Tf 0 0 Td (A) Tj ET (z) zork");
+  const std::uint32_t outer = document.add_stream(
+      "/Type /XObject /Subtype /Form /BBox [0 0 200 50] /Resources << /XObject << /In " +
+          std::to_string(inner) + " 0 R >> /Font << /F1 " + std::to_string(document.helvetica()) +
+          " 0 R >> >>",
+      "q /In Do Q");
+  document.page("BT /F1 10 Tf 0 0 Td (B) Tj ET /Out Do",
+                "/XObject << /Out " + std::to_string(outer) + " 0 R >>");
+  document.open();
+  pdfkit::text::TextReader reader(document.document());
+  const PageContent full = reader.interpret(1);
+  const PageContent damage = reader.interpret(1, pdfkit::text::ContentInterpreter::Reading::damage);
+  CHECK(damage.glyphs.empty());
+  const pdfkit::syntax::PageDamage read = pdfkit::test::require_value(full.damaged_page());
+  CHECK(pdfkit::test::require_value(damage.damaged_page()).streams == read.streams);
+  CHECK(read.glyphs == 2U);
+  const std::vector<std::uint32_t> path{outer, inner};
+  REQUIRE_FALSE(read.streams.empty());
+  CHECK(read.streams.front().form_path == path);
+  CHECK(read.streams.front().damage == "unknown_operator");
 }

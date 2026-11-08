@@ -63,6 +63,8 @@ to find it.
 | An object-stream lookup by index, falling back to the object number | https://github.com/mozilla/pdf.js/blob/master/src/core/xref.js | recalled; tested in `tests/unit/syntax/object_streams_test.cpp` |
 | The standard security handler's algorithms 1 to 5 and the padding string; algorithms 2.A, 2.B, 8 to 10 and 13 for revisions 5 and 6 | ISO 32000-1 §7.6.3; ISO 32000-2 §7.6.4 | read in the design record; tested in `tests/unit/syntax/security_handler_test.cpp` through the test tree's own encryptor |
 | The content operators of Annex A, table A.1 | ISO 32000-1 Annex A | read; tested in `tests/unit/syntax/content_lexer_test.cpp` |
+| `BX` and `EX` bracket operators a reader may not know, which it ignores without error | ISO 32000-1 §7.8.2 | recalled; tested in `tests/unit/syntax/content_lexer_test.cpp` (an unknown operator inside them is no loss) |
+| A full flush aligns the next deflate block to a byte; the block type 11 is reserved and is an error | RFC 1951 §3.2.3, https://www.rfc-editor.org/rfc/rfc1951; the zlib manual (`Z_FULL_FLUSH`), https://zlib.net/manual.html | recalled; the unit tier's damaged Flate fixtures inflate their prefix whole and stop at the reserved block (`tests/unit/syntax/filters_test.cpp`) |
 | Measured sizes of open implementations (for estimates) | https://github.com/UglyToad/PdfPig; https://github.com/mozilla/pdf.js; https://github.com/pdfcpu/pdfcpu; https://github.com/py-pdf/pypdf; https://github.com/pdfminer/pdfminer.six | read |
 
 ## 4. DESIGN.md §5 and §6: fonts, the ladder, the interpreter

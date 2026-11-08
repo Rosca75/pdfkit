@@ -8,8 +8,9 @@
 // cross-reference stream with any /W, object streams, incremental updates
 // with /Prev, a hybrid /XRefStm, a linearization dictionary, and encryption
 // under each revision through PdfEncryptor. Every damage the dataset's
-// mutator knows is a named knob of Layout, so a test reads as the file it
-// makes. Strings that must be encrypted with their object are written through
+// mutator knows is a named knob of Layout, and every fault of the Flate
+// filter a knob of StreamOptions, so a test reads as the file it makes.
+// Strings that must be encrypted with their object are written through
 // str(), which the build replaces by the hexadecimal string, encrypted when
 // the file is.
 
@@ -19,6 +20,7 @@
 #include "support/pdf_encryptor.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -32,6 +34,12 @@ namespace pdfkit::test {
 // The form of the cross-reference sections the build writes.
 enum class XrefForm : std::uint8_t { table, stream, hybrid };
 
+// The damage a Flate stream's data carries, each a fault the Flate filter
+// names (docs/DESIGN.md section 3.1): a wrong Adler-32 with every byte
+// intact, a block of a reserved type where the damage starts, or the data
+// cut where the damage starts, before its last block.
+enum class FlateDamage : std::uint8_t { none, checksum, corrupt, truncated };
+
 // How the build writes one stream.
 struct StreamOptions {
   // Compress the data with zlib and add /Filter /FlateDecode.
@@ -42,6 +50,12 @@ struct StreamOptions {
   bool length_indirect = false;
   // The keyword endstream is left out.
   bool omit_endstream = false;
+  // The damage the Flate data carries (with flate only).
+  FlateDamage flate_damage = FlateDamage::none;
+  // Where the damage starts, as an offset in the data before it is
+  // compressed; no value is the middle. What lies before it decodes as it
+  // was written.
+  std::optional<std::size_t> damage_at = std::nullopt;
 };
 
 // How the build writes one object.
@@ -91,6 +105,7 @@ class PdfBuilder {
   using StreamOptions = test::StreamOptions;
   using ObjectOptions = test::ObjectOptions;
   using Layout = test::Layout;
+  using FlateDamage = test::FlateDamage;
 
   PdfBuilder();
 
@@ -126,6 +141,13 @@ class PdfBuilder {
   // entries; returns the page object's number.
   std::uint32_t add_page(const std::string& content, const std::string& extra_entries = "",
                          bool flate = false);
+  // The same with the content stream written under options, with further
+  // stream dictionary entries (a /Filter the data is already encoded with).
+  std::uint32_t add_page(const std::string& content, const std::string& extra_entries,
+                         const StreamOptions& options, const std::string& stream_entries = "");
+  // Adds a page of the given entries (its /Contents among them, or none)
+  // beside /Type, /Parent and /MediaBox; returns the page object's number.
+  std::uint32_t add_page_entries(const std::string& entries);
   [[nodiscard]] std::uint32_t catalog() const noexcept { return root_; }
   [[nodiscard]] std::uint32_t page_tree() const noexcept { return pages_; }
   [[nodiscard]] const std::vector<std::uint32_t>& pages() const noexcept { return page_list_; }
@@ -135,6 +157,10 @@ class PdfBuilder {
 
   // The deflated form of data, as zlib writes it.
   [[nodiscard]] static std::string deflate(const std::string& data);
+  // The deflated form of data carrying damage from offset at of data on: the
+  // data before at is flushed to a byte boundary, so it inflates whole.
+  [[nodiscard]] static std::string deflate_damaged(const std::string& data, FlateDamage damage,
+                                                   std::size_t at);
 
  private:
   struct Entry {
