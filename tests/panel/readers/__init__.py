@@ -49,6 +49,10 @@ MEMBER_COLUMNS = ("member", "platform", "role", "licence", "version", "upstream"
 MODULES = ("pdfium_member", "poppler", "mupdf", "oxide", "extract", "qpdf", "lopdf")
 KINDS = ("text", "pages", "structure", "image_pixels", "raw_streams")
 TRANSIENT = {"timeout", "crash", "worker"}
+# A Windows process ended by an unhandled exception exits with its NTSTATUS code, whose
+# severity bits make it at least 0xC0000000 (0xC0000005 an access violation); Windows has no
+# signals, so this is its crash.
+WINDOWS_ERROR_STATUS = 0xC0000000
 # Where a member's error text is cut, so a cached refusal stays small.
 DETAIL_LIMIT = 400
 NOT_RECORDED = "to record on the laptop"
@@ -270,6 +274,9 @@ def _run_once(command: list[str], timeout: float, cwd: Path | None) -> dict:
         return {"ok": False, "error": "worker", "detail": f"could not start {command[0]}: {err}"}
     if proc.returncode < 0:
         return {"ok": False, "error": "crash", "detail": f"killed by signal {-proc.returncode}",
+                "stderr": tail(proc.stderr)}
+    if platform() == "windows" and proc.returncode >= WINDOWS_ERROR_STATUS:
+        return {"ok": False, "error": "crash", "detail": f"ended by exception {proc.returncode:#010x}",
                 "stderr": tail(proc.stderr)}
     return {"exit": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 

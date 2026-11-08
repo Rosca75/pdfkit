@@ -197,6 +197,10 @@ class RustMembersTest(unittest.TestCase):
 
 
 real_run = readers.run
+# A process that crashes on its host: killed by a signal on Linux, ended with the
+# access violation status 0xC0000005 on Windows, which has no signals.
+CRASH = [PYTHON, "-c", "import ctypes; ctypes.windll.kernel32.ExitProcess(0xC0000005)"
+         if sys.platform == "win32" else "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"]
 
 
 class RunTest(unittest.TestCase):
@@ -206,7 +210,7 @@ class RunTest(unittest.TestCase):
                          {"ok": False, "error": "refused", "detail": "Syntax Error", "exit": 1})
         slow = readers.run([PYTHON, "-c", "import time; time.sleep(10)"], 0.3, retry=False)
         self.assertEqual(slow["error"], "timeout")
-        kill = [PYTHON, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"]
+        kill = CRASH
         killed = readers.run(kill, 10, retry=False)
         self.assertEqual(killed["error"], "crash")
         self.assertEqual(poppler.finished_or_refused(killed)["error"], "crash")
@@ -216,7 +220,7 @@ class RunTest(unittest.TestCase):
         slow = readers.run([PYTHON, "-c", "import time; time.sleep(10)"], 0.3)
         self.assertEqual((slow["error"], slow["repeated"], slow["limit"]), ("repeated_failure", "timeout", 0.3))
         self.assertIn("0.6 s", slow["detail"])
-        killed = readers.run([PYTHON, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"], 10)
+        killed = readers.run(CRASH, 10)
         self.assertEqual((killed["error"], killed["repeated"]), ("repeated_failure", "crash"))
         self.assertEqual(readers.started(), before + 4)
 

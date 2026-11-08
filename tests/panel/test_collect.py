@@ -52,7 +52,8 @@ class CensusTest(unittest.TestCase):
             census.write_text("set\tid\n", encoding="utf-8")
 
     def test_the_named_run_wins(self):
-        self.assertEqual(collect.find_census("new"), self.root / "reports" / "new" / "images" / "images.tsv")
+        self.assertEqual(collect.find_census("new").resolve(),
+                         (self.root / "reports" / "new" / "images" / "images.tsv").resolve())
 
     def test_the_last_collection_names_the_census(self):
         report = self.root / "reports" / "panel" / "panel" / "collect.json"
