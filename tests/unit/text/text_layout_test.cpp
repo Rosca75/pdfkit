@@ -133,6 +133,41 @@ TEST_CASE("two runs of large glyphs on baselines a fifth of their size apart are
   CHECK(document.read().text() == "8B\nB 8");
 }
 
+TEST_CASE("a cluster of many baselines stops looking for crossing runs at the budget") {
+  // 1,500 single glyphs at 1,000 pt on baselines 0.05 pt apart, one cluster:
+  // walking them costs more than the budget of a million pair visits, so the
+  // two runs drawn across each other above them (pdfdiff-0018's shape) are
+  // not looked at and stay one line; the result is the same on every read.
+  const std::string times =
+      "/F4 << /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>";
+  std::string content = "BT /F1 1000 Tf ";
+  for (int k = 0; k < 1500; ++k) {
+    content += "1 0 0 1 " + std::to_string(1000 + (150 * k)) + " " + std::to_string(k * 0.05) +
+               " Tm (.) Tj ";
+  }
+  content += "/F4 500 Tf 1 0 0 1 10 180 Tm (B 8) Tj /F1 660 Tf 1 0 0 1 10 100 Tm (8B) Tj ET";
+  std::size_t lines = 0;
+  for (int read_count = 0; read_count < 2; ++read_count) {
+    TextDocument document;
+    document.page(content, "", "/MediaBox [0 -100 300000 1000]", times);
+    const PageText page = document.read();
+    REQUIRE(page.hidden_blocks.empty());
+    std::size_t holding = 0;
+    for (const auto& block : page.blocks) {
+      for (const auto& line : block.lines) {
+        std::string text;
+        for (const auto& word : line.words) {
+          text += word.text;
+        }
+        holding += (text.find("8B") != std::string::npos || text.find('B') != std::string::npos);
+      }
+    }
+    CHECK(holding == 1U);
+    lines = read_count == 0 ? holding : lines;
+    CHECK(holding == lines);
+  }
+}
+
 TEST_CASE("subscripts drawn across their line's letters stay in the line") {
   // dccc-0128's "m1 x m2": the subscripts "1" and "2" at 7 pt, one run 2 pt
   // below the 10 pt "m x m", each over a letter of it and it over them.

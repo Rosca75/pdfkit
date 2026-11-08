@@ -31,7 +31,6 @@ namespace {
 // many font sizes.
 constexpr double ideographic_gap = 1.0;
 constexpr double line_gap = 2.0;
-constexpr double baseline_tolerance = 0.2;
 // A glyph drawn this many font sizes before the one drawn just ahead of it on
 // its baseline starts a new run of the content.
 constexpr double run_backstep = 0.5;
@@ -48,8 +47,9 @@ constexpr double repositioned_word_gap = 0.15;
 // larger's: a subscript or a superscript is set at 0.7 of its line or less,
 // pdfdiff-0018's two lines at 500 and 660 pt (0.76).
 constexpr double crossing_size_share = 0.75;
-// The glyphs one baseline cluster may compare to find runs drawn across
-// each other, so a page of many baselines in one cluster stays linear.
+// The work one baseline cluster may spend looking for runs drawn across each
+// other, counted in pairs of baselines and of runs visited and in glyphs
+// compared, so a cluster of many baselines costs a bounded time.
 constexpr std::size_t crossing_budget = 1'000'000;
 // Runs of at most this many glyphs take their place by position.
 constexpr std::size_t short_run = 2;
@@ -362,7 +362,7 @@ class Builder {
       double anchor_size = 0.0;
       for (const std::size_t i : members) {
         const Item& item = items_[i];
-        const double limit = baseline_tolerance * std::max(anchor_size, item.size);
+        const double limit = TextLayout::baseline_tolerance * std::max(anchor_size, item.size);
         if (clusters.empty() || std::abs(item.across - anchor) > limit) {
           clusters.emplace_back();
           anchor = item.across;
@@ -415,17 +415,22 @@ class Builder {
   // so do a raised letter of a logo, which crosses a glyph or two of its line
   // rather than a run, and a run of subscripts or superscripts, smaller than
   // crossing_size_share of the run it crosses (dccc-0128's "m1 x m2"). The
-  // comparisons of one cluster stop at crossing_budget, and the cluster then
-  // stays one line.
+  // search stops when it has spent crossing_budget: the lines it cut before
+  // stay cut, and every later baseline joins the line under way.
   [[nodiscard]] std::vector<std::vector<std::size_t>> split_crossing(
       std::vector<std::size_t> cluster) const {
     // The baselines, each with its glyphs and its runs (glyphs other than
     // spaces, in position order).
+    struct Run {
+      // The run's largest glyph size.
+      double size = 0.0;
+      std::vector<std::size_t> items;
+    };
     struct Baseline {
       double across = 0.0;
       double size = 0.0;
       std::vector<std::size_t> items;
-      std::vector<std::vector<std::size_t>> runs;
+      std::vector<Run> runs;
     };
     std::vector<Baseline> baselines;
     std::ranges::stable_sort(cluster, [&](std::size_t a, std::size_t b) {
@@ -446,7 +451,8 @@ class Builder {
         baseline.runs.emplace_back();
       }
       if (!glyphs_[item.draw].is_space()) {
-        baseline.runs.back().push_back(i);
+        baseline.runs.back().items.push_back(i);
+        baseline.runs.back().size = std::max(baseline.runs.back().size, item.size);
       }
     }
     std::vector<std::vector<std::size_t>> out;
@@ -455,21 +461,21 @@ class Builder {
       return out;
     }
     for (Baseline& baseline : baselines) {
-      std::erase_if(baseline.runs,
-                    [](const std::vector<std::size_t>& run) { return run.size() < 2; });
-      for (std::vector<std::size_t>& run : baseline.runs) {
-        std::ranges::stable_sort(run, [&](std::size_t a, std::size_t b) { return ahead(a, b); });
+      std::erase_if(baseline.runs, [](const Run& run) { return run.items.size() < 2; });
+      for (Run& run : baseline.runs) {
+        std::ranges::stable_sort(run.items,
+                                 [&](std::size_t a, std::size_t b) { return ahead(a, b); });
       }
     }
-    // The glyphs of a run compared so far, against crossing_budget.
-    std::size_t compared = 0;
+    // The work spent so far, against crossing_budget.
+    std::size_t spent = 0;
     // Whether at least half of from's glyphs have their middles in an
     // advance of a glyph of onto.
     const auto mostly_over = [&](const std::vector<std::size_t>& from,
                                  const std::vector<std::size_t>& onto) {
       std::size_t count = 0;
-      compared += from.size();
-      if (compared > crossing_budget) {
+      spent += from.size();
+      if (spent > crossing_budget) {
         return false;
       }
       for (const std::size_t i : from) {
@@ -489,29 +495,25 @@ class Builder {
       return 2 * count >= from.size();
     };
     const auto crosses = [&](const Baseline& a, const Baseline& b) {
-      if (std::abs(a.across - b.across) <= overprint_baseline * std::max(a.size, b.size)) {
+      ++spent;
+      if (spent > crossing_budget ||
+          std::abs(a.across - b.across) <= overprint_baseline * std::max(a.size, b.size)) {
         return false;
       }
-      const auto size_of = [&](const std::vector<std::size_t>& run) {
-        double size = 0.0;
-        for (const std::size_t i : run) {
-          size = std::max(size, items_[i].size);
-        }
-        return size;
-      };
-      return std::ranges::any_of(a.runs, [&](const std::vector<std::size_t>& run) {
-        return std::ranges::any_of(b.runs, [&](const std::vector<std::size_t>& other) {
-          const double small = std::min(size_of(run), size_of(other));
-          const double large = std::max(size_of(run), size_of(other));
-          return small >= crossing_size_share * large && mostly_over(run, other) &&
-                 mostly_over(other, run);
+      return std::ranges::any_of(a.runs, [&](const Run& run) {
+        return std::ranges::any_of(b.runs, [&](const Run& other) {
+          ++spent;
+          const double small = std::min(run.size, other.size);
+          const double large = std::max(run.size, other.size);
+          return spent <= crossing_budget && small >= crossing_size_share * large &&
+                 mostly_over(run.items, other.items) && mostly_over(other.items, run.items);
         });
       });
     };
     std::vector<std::size_t> in_line;
     out.emplace_back();
     for (std::size_t b = 0; b < baselines.size(); ++b) {
-      if (std::ranges::any_of(in_line, [&](std::size_t other) {
+      if (spent <= crossing_budget && std::ranges::any_of(in_line, [&](std::size_t other) {
             return crosses(baselines[b], baselines[other]);
           })) {
         out.emplace_back();

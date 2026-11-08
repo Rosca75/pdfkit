@@ -364,7 +364,9 @@ whether the landing merge closes phase 5 or 6.
    separates two baselines whose runs of two glyphs or more cross each
    other, at least half of each run's glyphs over the other's, the smaller
    run at least 0.75 of the larger's size (pdfdiff-0018's are 0.76), within
-   a budget of a million glyph comparisons per cluster. A first form that
+   a budget of a million visits of baseline and run pairs and glyph
+   comparisons per cluster, past which the lines already cut stay cut and
+   later baselines join the line under way (a unit case reaches it). A first form that
    compared every glyph of a baseline split subscripts and LaTeX's raised
    "A" and was narrowed to runs; a second split dccc-0128's subscripts of
    "m1 x m2" and was narrowed by the size share after review. dccc-0128
