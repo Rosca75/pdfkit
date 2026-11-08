@@ -8,7 +8,10 @@
 # known); a non-zero exit after some pages were written is an answer with its
 # messages, and a refusal only when no page was. `pages`: `mutool pages
 # <file>`, one <page> element per page with its <MediaBox>, and <CropBox> and
-# <Rotate> when the page states them.
+# <Rotate> when the page states them (a box a page inherits is not printed).
+# `page_sizes`, asked by the re-decisions alone: `mutool draw -q -F stext -o -
+# <file>`, whose <page> elements carry the width and height MuPDF lays each
+# page out on, the size it gives a page that states no box included.
 # `image_pixels`: `mutool extract -r <file> <object>...` in a scratch folder,
 # which writes image-<object>.png (or .pam), the image decoded (-r makes a
 # JPEG or CMYK image decoded to RGB rather than written as its own bytes); a
@@ -36,6 +39,7 @@ CAPABILITIES = ("text", "pages", "image_pixels")
 PAGE = re.compile(r'<page pagenum="(\d+)">(.*?)</page>', re.S)
 BOX = re.compile(r'<(MediaBox|CropBox) l="([^"]*)" b="([^"]*)" r="([^"]*)" t="([^"]*)"')
 ROTATE = re.compile(r'<Rotate v="(-?\d+)"')
+SIZE = re.compile(r'<page id="[^"]*" width="([^"]*)" height="([^"]*)"')
 
 
 def version() -> str:
@@ -79,6 +83,11 @@ def parse_pages(stdout: bytes) -> dict:
     return {"ok": True, "count": len(pages), "pages": pages}
 
 
+def parse_sizes(stdout: bytes) -> dict:
+    pages = [{"size": [float(w), float(h)]} for w, h in SIZE.findall(stdout.decode("utf-8", "replace"))]
+    return {"ok": True, "count": len(pages), "pages": pages}
+
+
 def text_pages(written: dict[int, bytes]) -> list[dict]:
     """The pages in page order up to the last one MuPDF wrote; a page it wrote no file for keeps
     its place, marked `missing`, so every page is found by its number."""
@@ -106,6 +115,9 @@ def answer(path: Path, kind: str, timeout: float, request: dict, store=None) -> 
     if kind == "pages":
         outcome = readers.run([mutool(), "pages", str(path)], timeout)
         return refused_or_failed(outcome) or parse_pages(outcome["stdout"])
+    if kind == "page_sizes":
+        outcome = readers.run([mutool(), "draw", "-q", "-F", "stext", "-o", "-", str(path)], timeout)
+        return refused_or_failed(outcome) or parse_sizes(outcome["stdout"])
     if kind == "image_pixels":
         objects = sorted({int(item["object"]) for item in request.get("images", [])})
         images: dict = {}

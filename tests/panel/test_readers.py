@@ -83,6 +83,13 @@ class MupdfTest(unittest.TestCase):
                                               "rotate": 270})
         self.assertEqual(answer["pages"][1], {"media": [0.0, 0.0, 300.0, 400.0], "rotate": 0})
 
+    def test_page_sizes_are_the_sizes_mupdf_lays_each_page_out_on(self):
+        out = (b'<?xml version="1.0"?>\n<document name="a.pdf">\n<page id="page1" width="612" height="792">\n'
+               b'<block bbox="40 726.2 206.75 759.17">\n</block>\n</page>\n'
+               b'<page id="page2" width="300.5" height="400">\n</page>\n</document>\n')
+        self.assertEqual(mupdf.parse_sizes(out), {"ok": True, "count": 2,
+                                                  "pages": [{"size": [612.0, 792.0]}, {"size": [300.5, 400.0]}]})
+
     def test_a_page_file_loses_its_closing_form_feed(self):
         self.assertEqual(mupdf.page_text(b"Once upon a qoww.\n\n\f\n"), "Once upon a qoww.\n\n")
         self.assertEqual(mupdf.page_text("café\f".encode("utf-8")), "café")
