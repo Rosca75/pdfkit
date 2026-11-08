@@ -2,7 +2,8 @@
 # Copyright 2026 The pdfkit authors
 #
 # Tests of the dataset tier's judging rules for the write and select columns, the
-# --checks subset of the summary and the page-count rule of an identity write.
+# --checks subset of the summary, the page-count rule of an identity write and
+# the damaged pages inspect and text name.
 
 from __future__ import annotations
 
@@ -97,7 +98,7 @@ class SummaryTest(unittest.TestCase):
                  "expect_images": "n/a", "expect_redact": "n/a", "expect_metadata": "n/a",
                  "expect_write": "identical", "expect_select": "n/a", "expect_fonts": "n/a",
                  "expect_redact_text": "n/a", "expect_set_metadata": "n/a",
-                 "expect_redact_images": "n/a", "expect_find": "n/a"}]
+                 "expect_redact_images": "n/a", "expect_find": "n/a", "expect_damage": "n/a"}]
         written = {"x": {"id": "x", "result": "written", "bytes": json.dumps(body).encode(), "seconds": 0.1}}
         return rows, written
 
@@ -133,7 +134,7 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(set(run.COLUMNS), set(common.EXPECTATIONS))
         self.assertEqual(run.COLUMNS["expect_fonts"], "text")
         self.assertEqual(set(run.CHECKS), {"open", "text", "images", "redact", "metadata", "write", "select",
-                                           "redact_text", "set_metadata", "redact_images", "find"})
+                                           "redact_text", "set_metadata", "redact_images", "find", "inspect"})
 
 
 class TimeoutTest(unittest.TestCase):
@@ -278,6 +279,41 @@ class RedactTextTest(unittest.TestCase):
     def test_a_known_gap_passes_apart(self):
         refused = {"status": "error", "code": "PDFKIT_E_SELF_CHECK", "message": "found"}
         self.assertEqual(self.judge(refused, "known_gap:metadata"), ("pass", "known_gap"))
+
+
+class DamageTest(unittest.TestCase):
+    def judge(self, expected, inspect_pages, text_pages=None, text_status="ok"):
+        body = {"id": "x", "sha256": "h", "open": {"status": "ok", "pages": 3, "repairs": []},
+                "inspect": {"status": "ok", "code": None, "damaged_pages": inspect_pages},
+                "text": {"status": text_status,
+                         "damaged_pages": inspect_pages if text_pages is None else text_pages}}
+        return run.check("expect_damage", expected, body)
+
+    def test_the_named_pages_must_be_the_expected_ones(self):
+        self.assertEqual(self.judge("none", [])[0], "pass")
+        self.assertEqual(self.judge("none", [2])[0], "fail")
+        self.assertEqual(self.judge("pages:2,3", [2, 3])[0], "pass")
+        self.assertEqual(self.judge("pages:2,3", [2])[0], "fail")
+        self.assertEqual(self.judge("some", [3])[0], "pass")
+        self.assertEqual(self.judge("some", [])[0], "fail")
+
+    def test_inspect_and_text_must_name_the_same_pages(self):
+        self.assertEqual(self.judge("pages:2", [2], [2, 3])[0], "fail")
+        self.assertEqual(self.judge("known_gap:x", [2], [3])[0], "fail")
+        self.assertEqual(self.judge("pages:2", [2], [], text_status="error")[0], "pass")
+
+    def test_a_known_gap_and_n_a(self):
+        self.assertEqual(self.judge("known_gap:unread", [5])[0], "pass")
+        self.assertEqual(self.judge("n/a", [5])[0], "skipped")
+
+    def test_the_values_written_from_a_run(self):
+        rows = [{"id": i, "expect_damage": v} for i, v in
+                (("a", "none"), ("b", "some"), ("c", "n/a"), ("d", "known_gap:x"), ("e", "none"))]
+        first = {i: {"result": "written", "bytes": json.dumps(
+            {"inspect": {"status": "ok", "damaged_pages": pages}}).encode()}
+            for i, pages in (("a", [1, 4]), ("b", []), ("c", [2]), ("d", [2]))}
+        first["e"] = {"result": "hang"}
+        self.assertEqual(run.damage_values(rows, first), {"a": "pages:1,4", "b": "none"})
 
 
 if __name__ == "__main__":

@@ -71,11 +71,12 @@ TEST_CASE("the text JSON of a two-page fixture, twice, byte for byte") {
   std::string second;
   REQUIRE(document.text(nullptr, first) == PDFKIT_OK);
   REQUIRE(document.text("{}", second) == PDFKIT_OK);
-  // The pages, then the document fingerprint (64 hexadecimal digits).
+  // The pages, then the document fingerprint (64 hexadecimal digits), then
+  // the damaged pages, of which a sound fixture has none.
   const std::string_view pages = expected.substr(0, expected.size() - 1);
   CHECK(std::string_view(first).substr(0, pages.size()) == pages);
   CHECK(first.substr(pages.size(), 16) == ",\"fingerprint\":\"");
-  CHECK(first.size() == pages.size() + 16 + 64 + 2);
+  CHECK(first.substr(pages.size() + 16 + 64) == "\",\"damaged_pages\":[]}");
   CHECK(first == second);
 }
 

@@ -25,7 +25,7 @@ namespace {
 
 // Raised on every addition to the ABI and on a change of meaning the owner
 // orders (docs/ABI.md, Versioning).
-constexpr std::uint32_t abi_version = 3;
+constexpr std::uint32_t abi_version = 4;
 
 std::string version_json() {
   platform::JsonWriter writer;

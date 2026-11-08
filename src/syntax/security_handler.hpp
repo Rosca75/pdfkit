@@ -21,6 +21,7 @@
 #include "syntax/object.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,9 @@ namespace pdfkit::syntax {
 
 class SecurityHandler {
  public:
-  enum class Method : std::uint8_t { identity, rc4, aes128, aes256 };
+  // undefined: a stream's own /Crypt filter names a filter /CF does not
+  // define, whose data is never read as clear.
+  enum class Method : std::uint8_t { identity, rc4, aes128, aes256, undefined };
 
   // What the open report and inspect say about the encryption.
   struct Description {
@@ -54,6 +57,10 @@ class SecurityHandler {
   [[nodiscard]] std::vector<std::byte> decrypt_stream(Object::Reference owner,
                                                       const Dictionary& dictionary,
                                                       platform::ByteSpan data) const;
+  // Whether a stream whose dictionary is dictionary is encrypted under a
+  // crypt filter whose key this handler does not hold (an /Identity handler
+  // whose /U refuses the empty password), so its data cannot be read.
+  [[nodiscard]] bool locked(const Dictionary& dictionary) const;
 
   [[nodiscard]] const Description& description() const noexcept { return description_; }
   // Revisions 5 and 6: /Perms is missing or names other permissions than /P,
@@ -66,6 +73,10 @@ class SecurityHandler {
 
   [[nodiscard]] std::vector<std::byte> apply(Method method, Object::Reference owner,
                                              platform::ByteSpan data) const;
+  // The method a stream is decrypted with; no value when it is not
+  // decrypted (a cross-reference stream, a clear metadata stream, its own
+  // /Identity crypt filter).
+  [[nodiscard]] std::optional<Method> stream_method(const Dictionary& dictionary) const;
 
   Description description_;
   std::string file_key_;

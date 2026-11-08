@@ -33,11 +33,11 @@ TextReader::TextReader(syntax::Document& document)
       optional_content_(document),
       interpreter_(document, loader_, optional_content_) {}
 
-PageContent TextReader::interpret(std::uint32_t number) {
+PageContent TextReader::interpret(std::uint32_t number, ContentInterpreter::Reading reading) {
   if (number == 0 || number > document_->pages().size()) {
     throw std::out_of_range("page number outside the document");
   }
-  return interpreter_.run(document_->pages()[number - 1]);
+  return interpreter_.run(document_->pages()[number - 1], reading);
 }
 
 PageText TextReader::read(std::uint32_t number) {

@@ -150,6 +150,50 @@ std::string PdfBuilder::deflate(const std::string& data) {
   return out;
 }
 
+std::string PdfBuilder::deflate_damaged(const std::string& data, FlateDamage damage,
+                                        std::size_t at) {
+  if (damage == FlateDamage::none) {
+    return deflate(data);
+  }
+  if (damage == FlateDamage::checksum) {
+    // The last byte of the Adler-32 trailer (RFC 1950) flipped.
+    std::string out = deflate(data);
+    out.back() = static_cast<char>(static_cast<unsigned char>(out.back()) ^ 0x01U);
+    return out;
+  }
+  // The data before at, ended by a full flush, which aligns the next block
+  // to a byte (RFC 1951 section 3.2.3, recalled).
+  z_stream stream{};
+  if (deflateInit(&stream, Z_DEFAULT_COMPRESSION) != Z_OK) {
+    throw std::runtime_error("PdfBuilder: zlib deflateInit failed");
+  }
+  const std::size_t split = std::min(at, data.size());
+  std::string out(deflateBound(&stream, static_cast<uLong>(data.size())) + 64, '\0');
+  std::string input = data;
+  stream.next_in = reinterpret_cast<Bytef*>(input.data());
+  stream.avail_in = static_cast<uInt>(split);
+  stream.next_out = reinterpret_cast<Bytef*>(out.data());
+  stream.avail_out = static_cast<uInt>(out.size());
+  if (::deflate(&stream, Z_FULL_FLUSH) != Z_OK) {
+    deflateEnd(&stream);
+    throw std::runtime_error("PdfBuilder: zlib deflate failed");
+  }
+  const std::size_t boundary = stream.total_out;
+  stream.avail_in = static_cast<uInt>(data.size() - split);
+  const int result = ::deflate(&stream, Z_FINISH);
+  out.resize(stream.total_out);
+  deflateEnd(&stream);
+  if (result != Z_STREAM_END) {
+    throw std::runtime_error("PdfBuilder: zlib deflate failed");
+  }
+  if (damage == FlateDamage::truncated) {
+    return out.substr(0, boundary);
+  }
+  // A final block of the reserved type 11, which no inflater reads.
+  out[boundary] = static_cast<char>(0x07);
+  return out;
+}
+
 std::uint32_t PdfBuilder::reserve() {
   return next_number_++;
 }
@@ -214,10 +258,25 @@ void PdfBuilder::begin_document() {
 
 std::uint32_t PdfBuilder::add_page(const std::string& content, const std::string& extra_entries,
                                    bool flate) {
-  const std::uint32_t contents = add_stream("", content, StreamOptions{flate, 0, false, false});
+  StreamOptions options;
+  options.flate = flate;
+  return add_page(content, extra_entries, options);
+}
+
+std::uint32_t PdfBuilder::add_page(const std::string& content, const std::string& extra_entries,
+                                   const StreamOptions& options,
+                                   const std::string& stream_entries) {
+  const std::uint32_t contents = add_stream(stream_entries, content, options);
   const std::uint32_t page = add("<< /Type /Page /Parent " + std::to_string(pages_) +
                                  " 0 R /MediaBox [0 0 612 792] /Contents " +
                                  std::to_string(contents) + " 0 R " + extra_entries + " >>");
+  page_list_.push_back(page);
+  return page;
+}
+
+std::uint32_t PdfBuilder::add_page_entries(const std::string& entries) {
+  const std::uint32_t page = add("<< /Type /Page /Parent " + std::to_string(pages_) +
+                                 " 0 R /MediaBox [0 0 612 792] " + entries + " >>");
   page_list_.push_back(page);
   return page;
 }
@@ -229,6 +288,11 @@ std::string PdfBuilder::build(const Layout& layout) const {
     encryptor.emplace(*encryption_, id0);
   }
   const PdfEncryptor* cipher = encryptor ? &*encryptor : nullptr;
+  // A Flate stream's data with the damage its options name.
+  const auto encoded = [](const Entry& entry) {
+    return deflate_damaged(entry.data, entry.stream.flate_damage,
+                           entry.stream.damage_at.value_or(entry.data.size() / 2));
+  };
 
   std::vector<Revision> revisions = revisions_;
   std::uint32_t next = next_number_;
@@ -291,10 +355,11 @@ std::string PdfBuilder::build(const Layout& layout) const {
       const PdfEncryptor* strings = is_encrypt_dictionary ? nullptr : cipher;
       if (entry.length_object) {
         // Written before its stream, as the reference resolves either way.
-        std::string data = entry.stream.flate ? deflate(entry.data) : entry.data;
+        std::string data = entry.stream.flate ? encoded(entry) : entry.data;
         if (cipher != nullptr) {
           data = cipher->encrypt_stream(number, generation, data,
-                                        entry.entries.find("/Metadata") != std::string::npos);
+                                        entry.entries.find("/Metadata") != std::string::npos,
+                                        entry.entries.find("/Name /StdCF") != std::string::npos);
         }
         rows.push_back({*entry.length_object, 1, static_cast<std::uint64_t>(offset_now()), 0});
         out += std::to_string(*entry.length_object) + " 0 obj\n" +
@@ -304,10 +369,11 @@ std::string PdfBuilder::build(const Layout& layout) const {
       rows.push_back({number, 1, static_cast<std::uint64_t>(offset_now()), generation});
       out += std::to_string(number) + " " + std::to_string(generation) + " obj\n";
       if (entry.is_stream) {
-        std::string data = entry.stream.flate ? deflate(entry.data) : entry.data;
+        std::string data = entry.stream.flate ? encoded(entry) : entry.data;
         if (cipher != nullptr) {
           data = cipher->encrypt_stream(number, generation, data,
-                                        entry.entries.find("/Metadata") != std::string::npos);
+                                        entry.entries.find("/Metadata") != std::string::npos,
+                                        entry.entries.find("/Name /StdCF") != std::string::npos);
         }
         std::string length = entry.length_object
                                  ? std::to_string(*entry.length_object) + " 0 R"

@@ -102,6 +102,7 @@ add_executable(pdfkit_tests
   writer/write_determinism_test.cpp
   writer/xref_stream_writer_test.cpp
   api/abi_test.cpp
+  api/damaged_pages_test.cpp
   api/find_test.cpp
   api/literal_matching_test.cpp
   api/open_inspect_test.cpp

@@ -179,6 +179,18 @@ against editing and not against reading, and trying passwords is out of scope.
   object stream (the stream as a whole is decrypted), the `/Encrypt` dictionary's
   own strings, the `/ID` array, and the XMP metadata stream when
   `/EncryptMetadata` is false.
+- **An /Identity handler**: when `/StmF` and `/StrF` are both `/Identity` the
+  user password guards only what `/EFF` names and is not required; the file
+  key the empty password gives is derived (algorithm 2 or 2.A) and kept when
+  `/U` accepts it, so a stream whose own `/Crypt` filter names a crypt filter
+  is decrypted. When `/U` refuses it there is no file key, and such a stream
+  is locked: it decodes to nothing, marked so, its page is named
+  `encrypted_stream` (§19.1) and `pdfkit_check` lists it in `not_searched`,
+  never refusing the file and never reading the stream as empty. A stream
+  whose own `/Crypt` filter names a filter `/CF` does not define is locked
+  likewise, under any handler, rather than read as clear. A write copies a
+  locked stream as empty data with its `/Crypt` filter dropped, since the
+  output is unencrypted, so its page's `copied_as_is` reads no.
 - **Refusals**: a non-empty user password, or a revision 5 or 6 `/Perms` that
   does not decrypt, is `password_required`; a handler other than `/Standard` (a
   public-key or vendor handler), or a revision, version, crypt filter or method
@@ -198,6 +210,8 @@ lists them with the matching `/DecodeParms` entry:
   a damaged stream yields what inflated before the damage, the object is marked
   damaged and a `damaged_stream` warning names the page, because every viewer
   reads it so and a page half read is still a page the caller can decide about.
+  A missing Adler-32 is no fault (viewers do not check it); a present one that
+  disagrees keeps every byte decoded.
 - **LZWDecode** with `/EarlyChange` (default 1), code widths 9 to 12, the clear
   and end-of-data codes.
 - **ASCII85Decode**: `z` for four zero bytes (outside a group only), white space
@@ -215,6 +229,20 @@ lists them with the matching `/DecodeParms` entry:
   images layer decodes them (§9) and the writer copies them untouched.
 - Abbreviated names in inline images (`/Fl`, `/LZW`, `/A85`, `/AHx`, `/RL`,
   `/DCT`, `/CCF`) are mapped to the full names.
+- **Every fault carries a damage class** and, where the filter knows where it
+  stopped, the bytes of its input it did not read, because a content stream
+  that met one names its page as damaged (§19.1): `flate_checksum` (the
+  Adler-32 disagrees; nothing unread, some bytes may be garbage),
+  `flate_corrupt` (zlib stops at corrupt data, or cannot start; the rest
+  unread), `flate_truncated` (the data ends before its last block),
+  `flate_dictionary` (a preset dictionary, which PDF does not define; nothing
+  decoded), `lzw` (an undefined code), `ascii_hex` (a byte that is not a
+  digit), `ascii85` (an invalid byte, a group past 2^32 - 1, a single final
+  digit), `run_length` (the data ends inside a run) and `predictor`
+  (parameters no predictor defines, kept unpredicted, or a PNG row of an
+  unknown type). An LZW stream without its end code, an ASCIIHex stream
+  without `>` and an ASCII85 stream without `~>` end where their data ends,
+  which is no fault, as every reader reads them.
 
 ### 3.2 The limits
 
@@ -267,6 +295,34 @@ count and the ceiling.
   occur inside binary data; otherwise the data ends at the first `EI` preceded by
   white space and followed by white space or the end of the stream, whose
   following bytes lex as operators (PdfPig's check against a false `EI`).
+- **Recoveries**: the lexer reads past what does not lex and counts every
+  recovery. Those that can take text are losses, which name the page as
+  damaged (§19.1), each with a class: `unknown_operator` (a keyword the
+  operators of Annex A do not hold, outside `BX` and `EX`, which ISO 32000-1
+  §7.8.2 sets aside for operators a reader may not know), `unlexable_content`
+  (an operator read as a value inside an array or a dictionary operand, a
+  dictionary key that is not a name, containers nested past the parser's
+  limit, operands past 65,536 before an operator, a string that runs to the
+  end of the content) and `inline_image` (a dictionary key that is not a name,
+  a key followed by `ID`, no `ID`, no `EI`). A recovery that skips no byte and
+  drops no operator is no loss: operands left at the end or before `BI` (no
+  operator was there to draw them), a stray delimiter (`)`, a lone `>`, `]`,
+  `>>`, a brace), a token read leniently (§1.1), an array or dictionary left
+  open at the end of the content, an indirect reference written in content
+  (`5 0 R` alone, `/OC 5 0 R BDC` where a `BDC` or `DP` follows, `[5 0 R]`,
+  `7 0 R` in an inline image's dictionary: the `R` after two integers, and a
+  reference's generation and `R` where a dictionary key belongs; an `R` with
+  other operands, or a name before any other operator, is a loss, because the
+  operator after it lost operands that drew or decided text), and an unknown operator with no operand or numbers
+  alone (a mangled keyword a stream recovery leaves, `CT` written for `BT`),
+  because no operand of it could have carried or decided text; an unknown
+  operator with a string, an array, a name or a dictionary among its operands
+  (a corrupted `Tj`, `Tf` or `Do`) is a loss. The parser names each recovery's
+  kind, so the lexer decides this from the kind, never from a message, and
+  the tokens and the operators' numbering are those of any reading. The
+  losses are kept one per class and `/Contents` piece, with the first fault,
+  their count and the bytes they took, so their memory is bounded by the
+  classes whatever the content holds.
 - **What is never followed**: an external stream (`/F` on a stream), a `/URI`,
   a `/Launch`, `/GoToR` or `/GoToE` action, JavaScript, an embedded file's
   content, and any resource not inside the bytes given, because the library
@@ -452,7 +508,10 @@ page's concatenated content and, recursively, every form XObject it draws.
 - Type 3 glyph procedures are not walked for text; the Type 3 glyph is one glyph
   record, its box from `/FontBBox` and `/FontMatrix`.
 - An unknown operator is skipped with its operands; a damaged stream is
-  interpreted as far as it lexes and the page is noted.
+  interpreted as far as it lexes and the page is noted. Each walk records its
+  stream's filter fault (for the page, per `/Contents` piece) and its lexer's
+  losses; a form is decoded once per interpreter and its fault is recorded on
+  every walk of it, so every page drawing it is named (§19.1).
 
 ### 6.2 The glyph record
 
@@ -1390,7 +1449,7 @@ Every refusal carries the three fields of CLAUDE.md §3.3 (`failed`,
 | Warning code | When | The message names |
 |---|---|---|
 | `repaired` | the file was read by reconstruction (§1.6) or an object needed recovery | each reason, once |
-| `damaged_stream` | a stream decoded only up to a fault | the object and the page, and that the page was read as far as it decodes |
+| `damaged_stream` | a stream decoded only up to a fault, or a content stream the lexer recovered in (§4) | the object and the page, and that the page was read as far as it decodes; the page is named in `damaged_pages` too when the fault can take text (§19.1) |
 | `unreadable_text` | a page holds codes no rung could read | the page, the count and the font names |
 | `hidden_text` | a page holds glyphs of a hidden class | the page and the count per class |
 | `font_not_embedded` | a page uses a font with no program and no `/Widths` outside the Core 14 aliases | the page and the font name, and that widths are estimated |
@@ -1399,3 +1458,57 @@ Every refusal carries the three fields of CLAUDE.md §3.3 (`failed`,
 | `xmp_unreadable` | the XMP packet does not scan | that the packet is dropped from any output |
 | `pending_redactions` | the input holds `/Redact` annotations never applied | the page and the count, and that the marked text is still in the input |
 | `resource_missing` | a content stream names a resource that resolves to nothing | the page and the name |
+
+### 19.1 Damaged pages
+
+pdfkit reports and does not refuse: every output a caller reads
+(`pdfkit_inspect`, `pdfkit_text`, `pdfkit_find`, `pdfkit_check` and the write
+report) names, in `damaged_pages` (`docs/ABI.md` §4.4.1), each page whose text
+could not be read in full, so a caller never takes partial text for the whole
+page or "nothing found" for "nothing there". What a damaged page means for its
+work is the caller's to decide.
+
+- **What names a page**: a content stream of the page (a `/Contents` piece, or
+  a form any draw on the page reaches) that met a filter fault (§3.1) or a
+  lexer loss (§4), that is left encoded with a filter a content stream is not
+  read through (`unsupported_filter`: an image codec, a filter no reader
+  defines), encrypted under a key it does not hold (`encrypted_stream`) or
+  held in an external file (`external_stream`), a `/Contents`
+  entry that resolves to no stream (`missing_stream`), and a `Do` whose
+  XObject resolves to nothing (`missing_object`, which may have been a form
+  with text), because pdfkit cannot show that no text was lost. A
+  borderline case names the page, because a false silence costs more than a
+  false mention: a checksum that disagrees with bytes that read whole, and an
+  unknown operator, name it.
+- **What names none**: a stream the parser recovered whole (a wrong
+  `/Length`, a missing `endstream`, the data ending at the next `endstream`),
+  which is a `repaired` reason of the document (§1.3); a lexer recovery that
+  loses nothing (§4); a stream that is not page content (a font program, an
+  image, the XMP packet), whose faults the functions reading them report.
+- **One source**: the content interpreter's walk records the damage; no
+  second decoder decides it, because two readers of one stream disagree.
+  Each entry names the stream as a glyph record does (§6.2), a `/Contents`
+  piece by its place in the array, its class, the first fault of that class,
+  their count and the bytes decoded and left unread.
+- **Inspect reads every page** once to name them, and keeps the answer on the
+  document handle, so a later call answers the same and inspect does not
+  depend on what was called before. It reads a page for its damage alone
+  (every stream decoded and lexed, every form a `Do` reaches followed, no
+  record made), and a damaged page again in full for the glyphs read on it,
+  because records are most of a reading's cost: on 2,000 pages of 60 lines
+  the scan takes 0.14 s where a full reading takes 4.7 s (release build). A limit (§3.2) met while it reads a page
+  names that page `not_checked`, because inspect never fails on a valid
+  handle; met by the full reading of a page the damage reading found
+  damaged, it keeps those classes beside `not_checked`; the reading is charged to the document's budget like any other.
+  Text and find name the pages they read; check names every page of the bytes
+  it was given.
+- **The write report** names each output page whose source page is damaged,
+  with `text_redaction` (a search string of the plan, which is searched on
+  every page, or a match on that page, ran over it, so the self-check's
+  verification there is incomplete) and `copied_as_is` (the output page, read
+  again by the same walk, still holds damage: a damaged stream the write did
+  not touch is copied byte for byte, and a rewritten stream keeps the bytes no
+  operator draws, while a rewrite of a truncated stream writes only what
+  decoded; not known, `null`, when the output cannot be read again within the
+  limits, and that reading never fails the write). Bytes copied as they were can hold a word no reader shows and a
+  byte search finds.

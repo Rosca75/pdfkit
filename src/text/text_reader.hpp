@@ -41,7 +41,8 @@ class TextReader {
 
   // The interpreter alone, for a caller that needs the records and not the
   // layout (the image listing, the surgery).
-  [[nodiscard]] PageContent interpret(std::uint32_t number);
+  [[nodiscard]] PageContent interpret(std::uint32_t number, ContentInterpreter::Reading reading =
+                                                                ContentInterpreter::Reading::full);
 
  private:
   syntax::Document* document_;

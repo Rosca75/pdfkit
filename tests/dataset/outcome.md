@@ -53,7 +53,7 @@ function the verb did not run is `null`.
     "repairs": ["startxref did not land on a cross-reference section"],
     "warnings": ["repaired"]
   },
-  "inspect": {"status": "ok", "code": null, "version": "1.7", "pages": 3},
+  "inspect": {"status": "ok", "code": null, "version": "1.7", "pages": 3, "damaged_pages": []},
   "text": {
     "status": "ok",
     "code": null,
@@ -66,7 +66,8 @@ function the verb did not run is `null`.
     "warnings": ["hidden_text"],
     "structure_order_pages": 0,
     "reserialisation": {"streams": 3, "identical": 3, "damaged": 0, "failed": 0,
-                        "mismatches": []}
+                        "mismatches": []},
+    "damaged_pages": []
   },
   "images": {
     "status": "ok",
@@ -327,7 +328,10 @@ warning codes met (sorted, each once), the pages the structure tree ordered,
 and the re-serialisation check: content stream walks written back, walks
 identical to their bytes, walks read only up to a fault, undamaged walks that
 differ (`failed`, which the reading gate holds at zero), and at most ten
-mismatches named. Its `status` is `skipped` when `open` did not succeed.
+mismatches named; last, the numbers of the pages its `damaged_pages` names
+(`docs/ABI.md` §4.4.1). Its `status` is `skipped` when `open` did not succeed.
+`inspect.damaged_pages` is the same list from `pdfkit_inspect`, called before
+any page is read, `null` when inspect did not run or failed.
 
 `redact` is always `null`: the redactions are measured under `redact_text`
 and `redact_images`, whose outputs `tests/pdfium/compare.py --check redact`
@@ -373,6 +377,8 @@ redacted strings.
 | `expect_redact_images` = `known_gap:<reason>` | none | passes apart, a refusal included |
 | `expect_find` = `agree` | `find.status`, `find.agree`, `find.feedback` | `ok`; agreement and feedback are judged by `tests/dataset/gates/phase12.py` |
 | `expect_find` = `known_gap:<reason>` | none | passes apart, a refusal included |
+| `expect_damage` = `none`, `some`, `pages:<n>,...` | `inspect.status`, `inspect.damaged_pages`, `text.status`, `text.damaged_pages` | `ok`, inspect names no page, at least one, or exactly those listed, and, when `text` is `ok`, `text.damaged_pages` is the same list |
+| `expect_damage` = `known_gap:<reason>` | the same | inspect and text name the same pages (counted apart) |
 | any column = `n/a` | none | not checked |
 
 A function whose status is `not_implemented` makes its column **skipped** for

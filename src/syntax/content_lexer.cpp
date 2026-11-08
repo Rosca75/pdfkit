@@ -3,16 +3,20 @@
 //
 // The content-stream tokeniser: operands are parsed with the object parser
 // (references off), operators end an operation, and the inline image's data
-// is delimited by the rules of docs/DESIGN.md chapter 4.
+// is delimited by the rules of docs/DESIGN.md chapter 4. A recovery that can
+// take text is kept as a loss beside the count of every recovery.
 
 #include "syntax/content_lexer.hpp"
 
+#include "platform/checked.hpp"
 #include "syntax/dictionary.hpp"
 #include "syntax/filters.hpp"
 #include "syntax/parser.hpp"
 
 #include <algorithm>
 #include <array>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -92,10 +96,95 @@ ContentLexer::Location ContentLexer::locate(std::size_t offset) const noexcept {
   return {piece, offset - piece_starts_[piece]};
 }
 
+bool ContentLexer::lose(std::string_view damage, std::size_t start,
+                        std::optional<std::size_t> bytes) {
+  const std::size_t piece = locate(start).piece;
+  // Losses arrive in byte order, so the entry of this piece and class, when
+  // there is one, lies after every entry of an earlier piece.
+  for (auto loss = losses_.rbegin(); loss != losses_.rend() && loss->piece == piece; ++loss) {
+    if (loss->damage == damage) {
+      loss->count = platform::saturating_add(loss->count, std::size_t{1});
+      if (loss->bytes && bytes) {
+        loss->bytes = platform::saturating_add(*loss->bytes, *bytes);
+      } else {
+        loss->bytes.reset();
+      }
+      return false;
+    }
+  }
+  losses_.push_back({std::string(damage), std::string(), start, bytes, 1, piece});
+  return true;
+}
+
+void ContentLexer::lose_recoveries(const std::vector<Parser::Recovery>& recoveries,
+                                   std::size_t start) {
+  // The parser's recoveries that drop a token which could be drawing: a
+  // keyword read as null (an operator inside an array or a dictionary), a
+  // key that is not a name, a container past the nesting limit. The others
+  // (a reference written in content, a stray delimiter, a container left
+  // open, a key without a value, a token read leniently) drop nothing an
+  // operator draws.
+  using Why = Parser::Recovery::Kind;
+  for (const Parser::Recovery& recovery : recoveries) {
+    if ((recovery.kind == Why::keyword_value || recovery.kind == Why::nesting ||
+         recovery.kind == Why::key_not_name) &&
+        lose("unlexable_content", start, std::nullopt)) {
+      losses_.back().fault = what_ + ": " + recovery.message;
+    }
+  }
+  if (lexer_.string_ran_to_end() && !string_lost_) {
+    string_lost_ = true;
+    if (lose("unlexable_content", start, joined_.size() - std::min(start, joined_.size()))) {
+      losses_.back().fault = what_ + ": a string opened at byte " + std::to_string(start) +
+                             " runs to the end of the content, which is read as its text";
+    }
+  }
+}
+
+bool ContentLexer::draws_nothing(const Operation& operation) const {
+  // No operand, or numbers alone ("n g R" written bare among them): a
+  // mangled keyword or an operator misspelt (CT for BT) whose operands could
+  // carry no text and name no resource.
+  if (std::ranges::all_of(operation.operands,
+                          [](const Object& operand) { return operand.number().has_value(); })) {
+    return true;
+  }
+  // "/Name n g R" before a marked-content operator (/OC 5 0 R BDC): the
+  // reference takes the operands of BDC or DP, which draws nothing. Before
+  // any other operator (a Tj, a Do, a Tf) it takes operands that drew or
+  // decided text.
+  const std::vector<Object>& operands = operation.operands;
+  if (operation.op != "R" || operands.size() != 3 || operands[0].name() == nullptr ||
+      !operands[1].integer().has_value() || !operands[2].integer().has_value()) {
+    return false;
+  }
+  const std::string next = next_operator(operation.end);
+  return next == "BDC" || next == "DP";
+}
+
+std::string ContentLexer::next_operator(std::size_t position) const {
+  // A bounded look ahead, so a long run of operands costs no more than it
+  // costs the next call; past it the operator is taken as unknown.
+  constexpr int max_tokens = 64;
+  Lexer probe(joined_, position);
+  for (int i = 0; i < max_tokens; ++i) {
+    const Lexer::Token token = probe.next();
+    if (token.kind == Lexer::TokenKind::end) {
+      break;
+    }
+    if (token.kind == Lexer::TokenKind::keyword && token.text != "true" && token.text != "false" &&
+        token.text != "null") {
+      return token.text;
+    }
+  }
+  return {};
+}
+
 std::optional<ContentLexer::Operation> ContentLexer::next() {
   using Kind = Lexer::TokenKind;
   std::vector<Object> operands;
   std::optional<std::size_t> start;
+  bool overflowed = false;
   while (true) {
     const Lexer::Token token = lexer_.next();
     if (token.kind == Kind::end) {
@@ -124,6 +213,16 @@ std::optional<ContentLexer::Operation> ContentLexer::next() {
       operation.start = *start;
       operation.end = token.end;
       operation.operator_start = token.start;
+      if (operation.op == "BX") {
+        ++compatibility_;
+      } else if (operation.op == "EX" && compatibility_ > 0) {
+        --compatibility_;
+      } else if (compatibility_ == 0 && !is_operator(operation.op) && !draws_nothing(operation) &&
+                 lose("unknown_operator", operation.start, operation.end - operation.start)) {
+        losses_.back().fault = what_ + ": the operator '" + operation.op + "' at byte " +
+                               std::to_string(token.start) +
+                               " is not a content operator; it draws nothing";
+      }
       return operation;
     }
     if (token.kind == Kind::stray || token.kind == Kind::array_close ||
@@ -132,13 +231,22 @@ std::optional<ContentLexer::Operation> ContentLexer::next() {
       ++faults_;
       continue;
     }
-    std::vector<std::string> recoveries;
+    std::vector<Parser::Recovery> recoveries;
     Object operand = Parser::parse_value(lexer_, token, false, recoveries);
     faults_ += recoveries.size();
+    lose_recoveries(recoveries, token.start);
     if (operands.size() < max_operands) {
       operands.push_back(std::move(operand));
     } else {
       ++faults_;
+      if (!overflowed) {
+        overflowed = true;
+        if (lose("unlexable_content", token.start, std::nullopt)) {
+          losses_.back().fault = what_ + ": more than " + std::to_string(max_operands) +
+                                 " operands precede an operator at byte " +
+                                 std::to_string(token.start) + "; the rest are dropped";
+        }
+      }
     }
   }
 }
@@ -217,6 +325,10 @@ ContentLexer::Operation ContentLexer::inline_image(std::size_t start, std::size_
   operation.operator_start = operator_start;
   Dictionary dictionary;
   std::optional<Lexer::Token> id;
+  // The integer value just read, and whether the generation of a reference
+  // followed it, so its R is known for what it is.
+  bool integer_value = false;
+  bool generation_read = false;
   while (true) {
     const Lexer::Token token = lexer_.next();
     if (token.kind == Kind::end) {
@@ -228,21 +340,45 @@ ContentLexer::Operation ContentLexer::inline_image(std::size_t start, std::size_
     }
     if (token.kind != Kind::name) {
       ++faults_;
+      // "/Key n g R" written in an inline image's dictionary: the generation
+      // and the R stand where keys belong and drop nothing.
+      const bool generation = integer_value && token.kind == Kind::integer &&
+                              Lexer(joined_, lexer_.position()).next().is_keyword("R");
+      const bool reference = generation || (generation_read && token.is_keyword("R"));
+      generation_read = generation;
+      integer_value = false;
+      if (!reference && lose("inline_image", start, std::nullopt)) {
+        losses_.back().fault = what_ + ": the inline image at byte " + std::to_string(start) +
+                               " holds a dictionary key at byte " + std::to_string(token.start) +
+                               " that is not a name";
+      }
       continue;
     }
+    generation_read = false;
     const Lexer::Token value = lexer_.next();
     if (value.is_keyword("ID")) {
       ++faults_;
+      if (lose("inline_image", start, std::nullopt)) {
+        losses_.back().fault = what_ + ": the inline image at byte " + std::to_string(start) +
+                               " gives /" + token.text + " no value";
+      }
       id = value;
       break;
     }
-    std::vector<std::string> recoveries;
-    dictionary.set(token.text, Parser::parse_value(lexer_, value, false, recoveries));
+    std::vector<Parser::Recovery> recoveries;
+    Object parsed = Parser::parse_value(lexer_, value, false, recoveries);
+    integer_value = parsed.integer().has_value();
+    dictionary.set(token.text, std::move(parsed));
     faults_ += recoveries.size();
+    lose_recoveries(recoveries, value.start);
   }
   operation.operands.push_back(Object::make_dictionary(dictionary));
   if (!id) {
     ++faults_;
+    if (lose("inline_image", start, joined_.size() - start)) {
+      losses_.back().fault = what_ + ": the inline image at byte " + std::to_string(start) +
+                             " has no ID; the rest of the content is read as its dictionary";
+    }
     operation.data_start = operation.data_end = operation.end = joined_.size();
     return operation;
   }
@@ -312,6 +448,10 @@ ContentLexer::Operation ContentLexer::inline_image(std::size_t start, std::size_
   }
   if (!ei) {
     ++faults_;
+    if (lose("inline_image", start, bytes.size() - data_start)) {
+      losses_.back().fault = what_ + ": the inline image at byte " + std::to_string(start) +
+                             " has no EI; the rest of the content is read as its data";
+    }
     operation.data_end = operation.end = bytes.size();
     lexer_.seek(bytes.size());
     return operation;

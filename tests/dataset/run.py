@@ -41,7 +41,7 @@ COLUMNS = {"expect_open": "open", "expect_text": "text", "expect_images": "image
            "expect_redact": "redact", "expect_metadata": "metadata", "expect_write": "write",
            "expect_select": "select", "expect_fonts": "text", "expect_redact_text": "redact_text",
            "expect_set_metadata": "set_metadata", "expect_redact_images": "redact_images",
-           "expect_find": "find"}
+           "expect_find": "find", "expect_damage": "inspect"}
 # The names --checks accepts are the outcome keys the columns read, each once.
 CHECKS = tuple(dict.fromkeys(COLUMNS.values()))
 # The first line of a report by AddressSanitizer or UndefinedBehaviorSanitizer
@@ -193,6 +193,8 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
             return "fail", "fields not written as asked: " + ", ".join(part["mismatches"])
         pages = (outcome.get("open") or {}).get("pages")
         return judge_output(part, pages, pages, expected)
+    if column == "expect_damage":
+        return judge_damage(part, outcome.get("text") or {}, expected)
     if column == "expect_redact_images":
         # An image the output still lists under a removed or treated identity
         # kept its original bytes: the survival the gate stops the line on.
@@ -202,6 +204,43 @@ def check(column: str, expected: str, outcome: dict) -> tuple[str, str]:
             return "fail", "the job found no image to treat"
         return judge_output(part, part.get("pages"), (outcome.get("open") or {}).get("pages"), expected)
     return "pass", ""
+
+
+def judge_damage(inspect: dict, text: dict, expected: str) -> tuple[str, str]:
+    """The damaged pages rule: pdfkit_inspect names the pages the manifest expects (none, at
+    least one, or exactly those listed), and pdfkit_text, which reads every page, names the
+    same, because one walk decides both whatever was called first."""
+    named = inspect.get("damaged_pages")
+    if not isinstance(named, list):
+        return "fail", "pdfkit_inspect wrote no damaged_pages"
+    if text.get("status") == "ok" and text.get("damaged_pages") != named:
+        return "fail", f"pdfkit_inspect names pages {named}, pdfkit_text {text.get('damaged_pages')}"
+    if expected.startswith("known_gap:"):
+        return "pass", "known_gap"
+    if expected == "none":
+        ok = not named
+    elif expected == "some":
+        ok = bool(named)
+    else:
+        ok = named == common.damaged_pages(expected)
+    return ("pass" if ok else "fail"), f"expected {expected}, pdfkit_inspect names pages {named}"[:160]
+
+
+def damage_values(rows: list[dict], first: dict) -> dict[str, str]:
+    """Per judged row whose run wrote an outcome, the expect_damage its inspect answer
+    gives: `pages:<list>` or `none`; n/a and known gaps are kept."""
+    values = {}
+    for row in rows:
+        record = first.get(row["id"]) or {}
+        if row["expect_damage"] == "n/a" or row["expect_damage"].startswith("known_gap:"):
+            continue
+        if record.get("result") != "written":
+            continue
+        inspect = json.loads(record["bytes"]).get("inspect") or {}
+        named = inspect.get("damaged_pages")
+        if inspect.get("status") == "ok" and isinstance(named, list):
+            values[row["id"]] = "pages:" + ",".join(str(p) for p in named) if named else "none"
+    return values
 
 
 def judge_output(part: dict, pages, source_pages, expected: str) -> tuple[str, str]:
@@ -345,6 +384,9 @@ def main() -> int:
                         "sanitizer runtime on PATH; any ASan or UBSan report fails the run")
     parser.add_argument("--timeout-scale", type=float, default=1.0,
                         help="multiply every file's time limit (the sanitizer pass's documented command uses it)")
+    parser.add_argument("--write-damage", action="store_true",
+                        help="write each run row's expect_damage (pages:<list> or none) from its inspect "
+                        "answer into dataset/manifest.tsv, keeping n/a and known gaps")
     args = parser.parse_args()
 
     checks = tuple(c.strip() for c in args.checks.split(",") if c.strip())
@@ -398,6 +440,13 @@ def main() -> int:
     write_markdown(summary, run_dir / "summary.md")
     # The repeat run's outcomes and outputs are only needed for the comparison above.
     shutil.rmtree(second_dir, ignore_errors=True)
+    if args.write_damage:
+        values = damage_values(rows, first)
+        manifest = common.read_manifest()
+        for row in manifest:
+            row["expect_damage"] = values.get(row["id"], row["expect_damage"])
+        common.write_manifest(manifest)
+        print(f"expect_damage written for {len(values)} rows", file=sys.stderr)
     print(json.dumps({k: summary[k] for k in ("run", "files", "seconds", "columns", "verb_not_implemented")}
                      | {"hangs": len(summary["hangs"]), "crashes": len(summary["crashes"]),
                         "nondeterministic": len(summary["nondeterministic"]),

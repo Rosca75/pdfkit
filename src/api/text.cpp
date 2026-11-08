@@ -7,8 +7,9 @@
 // time and written as they are read, holding only the page before, whose last
 // line a hyphen may join to the next page's first line (docs/DESIGN.md
 // chapter 7: across a page break only when both pages are extracted
-// together). A page number outside the document is invalid_argument, checked
-// before any page is read.
+// together), then names the pages read whose text could not be read in full.
+// A page number outside the document is invalid_argument, checked before any
+// page is read.
 
 #include "pdfkit/pdfkit.h"
 
@@ -20,10 +21,12 @@
 #include "platform/export.hpp"
 #include "platform/json_value.hpp"
 #include "platform/json_writer.hpp"
+#include "syntax/page_damage.hpp"
 #include "text/page_text.hpp"
 #include "text/text_json.hpp"
 #include "text/text_reader.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <set>
@@ -138,8 +141,13 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_text(pdfkit_document* doc, const char
     writer.begin_object();
     writer.key("pages").begin_array();
     std::optional<pdfkit::text::PageText> held;
+    std::vector<pdfkit::syntax::PageDamage> damaged;
     for (const std::uint32_t number : options.pages) {
       pdfkit::text::PageText page = reader.read(number);
+      handle.damage->record(page.content);
+      if (std::optional<pdfkit::syntax::PageDamage> damage = page.content.damaged_page()) {
+        damaged.push_back(std::move(*damage));
+      }
       if (held) {
         if (held->page + 1 == page.page && !held->blocks.empty() && !page.blocks.empty() &&
             !held->blocks.back().lines.empty() && !page.blocks.front().lines.empty()) {
@@ -157,6 +165,10 @@ extern "C" PDFKIT_API pdfkit_status pdfkit_text(pdfkit_document* doc, const char
     // The document fingerprint a glyph range of this extraction is given back
     // with (docs/DESIGN.md section 11): the SHA-256 of the file from its header.
     writer.key("fingerprint").string(fingerprint(document));
+    // The pages read whose text is not whole, in page order.
+    std::ranges::stable_sort(damaged, {}, &pdfkit::syntax::PageDamage::page);
+    writer.key("damaged_pages");
+    pdfkit::syntax::PageDamage::write(writer, damaged);
     writer.end_object();
     pdfkit::api::write_buffer(out, writer.take());
     return PDFKIT_OK;

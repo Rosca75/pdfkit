@@ -143,8 +143,8 @@ std::vector<SymbolCalls> catalogue_calls(Fixture& f) {
   };
 }
 
-TEST_CASE("the ABI version is 3") {
-  CHECK(pdfkit_abi_version() == 3U);
+TEST_CASE("the ABI version is 4") {
+  CHECK(pdfkit_abi_version() == 4U);
 }
 
 TEST_CASE("every catalogue symbol is exercised by this test") {
@@ -201,8 +201,8 @@ TEST_CASE("pdfkit_version reports the version, the ABI and the catalogue") {
   OwnedBuffer out;
   REQUIRE(pdfkit_version(out.get()) == PDFKIT_OK);
   const JsonValue version = JsonReader::parse(out.text());
-  CHECK(version.find("version")->as_string() == "0.3.0-preview");
-  CHECK(version.find("abi")->as_int64() == std::int64_t{3});
+  CHECK(version.find("version")->as_string() == "0.4.0-preview");
+  CHECK(version.find("abi")->as_int64() == std::int64_t{4});
   CHECK_FALSE(version.find("build")->as_string().empty());
   const auto& catalogue = version.find("catalogue")->as_array();
   REQUIRE(catalogue.size() == pdfkit::api::Catalogue::rows().size());

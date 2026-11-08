@@ -5,8 +5,8 @@ outputs, its status codes, the JSON error object, the versioning rule, and the
 command-line tool's verbs and exit codes. The header is
 `include/pdfkit/pdfkit.h`; `CLAUDE.md` §2 owns which functions exist, and this
 file owns how they are called. This build implements every catalogue
-function; the version of the library is 0.3.0-preview (the text
-`pdfkit_version` reports, its release label included) and of the ABI 3.
+function; the version of the library is 0.4.0-preview (the text
+`pdfkit_version` reports, its release label included) and of the ABI 4.
 
 ## 1. Calling rules
 
@@ -102,7 +102,7 @@ string, malformed JSON), then does its work. An optional JSON argument may be
 
 | Symbol | Signature | Behaviour |
 |---|---|---|
-| `pdfkit_abi_version` | `uint32_t pdfkit_abi_version(void)` | the ABI version, 3 |
+| `pdfkit_abi_version` | `uint32_t pdfkit_abi_version(void)` | the ABI version, 4 |
 | `pdfkit_version` | `pdfkit_status pdfkit_version(pdfkit_buffer* out)` | the version object below |
 | `pdfkit_buffer_free` | `void pdfkit_buffer_free(pdfkit_buffer* buffer)` | frees and zeroes the buffer; a zeroed buffer or `NULL` is a no-op |
 | `pdfkit_close` | `void pdfkit_close(pdfkit_document* doc)` | destroys the document; `NULL` is a no-op |
@@ -113,8 +113,8 @@ The version object:
 
 ```json
 {
-  "version": "0.3.0-preview",
-  "abi": 3,
+  "version": "0.4.0-preview",
+  "abi": 4,
   "build": "gcc 16.1.0, Release",
   "catalogue": [
     {"number": "1.1", "function": "Open", "symbol": "pdfkit_open", "verb": "inspect",
@@ -194,7 +194,7 @@ On success `*out_doc` receives the handle and `out` the open report:
 |---|---|
 | `version` | the header's version, raised by a later catalog `/Version`; empty when no header was found |
 | `page_count` | the pages in tree order |
-| `encryption` | `null` for an unencrypted file; otherwise the standard handler's version (`/V`), revision (`/R`), method (`RC4`, `AESV2`, `AESV3` or `Identity`), key length in bits and whether the metadata is encrypted |
+| `encryption` | `null` for an unencrypted file; otherwise the standard handler's version (`/V`), revision (`/R`), method (`RC4`, `AESV2`, `AESV3` or `Identity`), key length in bits (the key held; for an `Identity` handler whose `/U` refuses the empty password, the `/Length` written, 0 when absent) and whether the metadata is encrypted |
 | `repairs` | every recovery the file needed, each named once, in the order met; at most 100, the last line then counting the rest; empty for a file read as written |
 | `warnings` | the warnings of `docs/DESIGN.md` chapter 19 met while opening, each with `code`, `message` and `page` (`null` when it concerns no page); when `repairs` is not empty the first is `repaired`, which also carries the `reasons` |
 
@@ -207,8 +207,9 @@ and the refusals `not_pdf`, `no_page`, `password_required`,
 
 ### 4.4 pdfkit_inspect (catalogue 1.2)
 
-`pdfkit_inspect` reports what open read; it takes no options (`NULL` or `{}`;
-anything else is `invalid_argument`) and never fails on a valid handle:
+`pdfkit_inspect` reports what open read and names every page whose text
+could not be read in full; it takes no options (`NULL` or `{}`; anything else
+is `invalid_argument`) and never fails on a valid handle:
 
 ```json
 {
@@ -217,16 +218,86 @@ anything else is `invalid_argument`) and never fails on a valid handle:
   "pages": [{"page": 1, "media_box": [0, 0, 612, 792], "crop_box": [10, 20, 300, 400], "rotate": 90}],
   "encryption": null,
   "repairs": [],
-  "warnings": []
+  "warnings": [],
+  "damaged_pages": []
 }
 ```
 
 `pages` holds one object per page in tree order: its number from 1, the media
 box and the crop box as `[left, bottom, right, top]` in points (normalised, the
 crop box clipped to the media box, a missing media box being US Letter), and
-the rotation (0, 90, 180 or 270). `encryption`, `repairs` and `warnings` are
-those of the open report at the time of the call. Keys are written in the order
-shown, so two calls give the same bytes.
+the rotation (0, 90, 180 or 270). `encryption` and `repairs` are those of the
+open report; `warnings` those met so far, the warnings of reading every page
+included. `damaged_pages` (§4.4.1) names every page of the document: inspect
+reads each page's content once to name them (for its damage alone, and a
+damaged page in full for its glyphs) and keeps the answer on the handle, so it answers the same whatever was called before it, and a limit of
+§4.3 met while a page is read names that page `not_checked` instead of failing.
+Keys are written in the order shown, so two calls give the same bytes.
+
+#### 4.4.1 damaged_pages
+
+Every output a caller reads (`pdfkit_inspect`, `pdfkit_text`, `pdfkit_find`,
+`pdfkit_check` and the write report) ends with `damaged_pages`: the pages
+whose text could not be read in full, in page order, so a caller never takes
+partial text for the whole page or "nothing found" for "nothing there"
+(`docs/DESIGN.md` §19.1). A page pdfkit repaired with nothing lost is not
+named: a wrong `/Length` or a missing `endstream` is a `repaired` reason of the
+document (§4.3). pdfkit decides nothing with the list; what a damaged page
+means for the caller's work is the caller's.
+
+```json
+"damaged_pages": [
+  {"page": 13, "glyphs": 700,
+   "streams": [{"stream": {"piece": 0, "form": null, "form_path": []},
+                "class": "flate_checksum",
+                "fault": "FlateDecode: the Flate data's Adler-32 checksum does not match its decoded bytes (48388 bytes decoded)",
+                "count": 1, "decoded_bytes": 48388, "unread_bytes": 0}]}]
+```
+
+| Key | Holds |
+|---|---|
+| `page` | the page, from 1 (in the write report, the output page) |
+| `glyphs` | the glyphs read on the page, hidden ones included |
+| `streams` | per content stream that lost text and per class, in the order the page's content and its form draws are walked: `stream`, `class`, `fault`, `count`, `decoded_bytes`, `unread_bytes` |
+| `stream` | `piece`, the place from 0 of the piece in the page's `/Contents` (0 for a single stream; `null` for a form); `form`, the form's object number (`null` for the page's content); `form_path`, the forms the draw was reached through, outermost first, ending with the form, as a glyph record's `stream` names them (§4.9). A form drawn on several pages names every one; `null` for `not_checked` |
+| `class` | one of the classes below |
+| `fault` | the decoder's, the content lexer's or the interpreter's message for the first fault of that class |
+| `count` | the faults of that class in that stream (the unknown operators of one piece are one entry) |
+| `decoded_bytes` | the bytes the stream decoded to (0 for a stream that is missing, external or encrypted under a key pdfkit does not hold; for `missing_object`, the bytes of the stream that drew it) |
+| `unread_bytes` | for a filter's class, the bytes of the faulting filter's input it did not read; for a lexer's class, the content bytes the losses of that class took from the drawing, summed; `null` when not known |
+
+| `class` | What met it | What is lost |
+|---|---|---|
+| `flate_checksum` | the Flate data's Adler-32 does not match its decoded bytes | nothing visibly: every byte decoded, but some may be garbage |
+| `flate_corrupt` | zlib stopped at corrupt data | everything after the fault |
+| `flate_truncated` | the Flate data ends before its last block | the tail the data never held |
+| `flate_dictionary` | the Flate data names a preset dictionary | the whole stream |
+| `lzw` | an undefined LZW code | everything after it |
+| `ascii_hex` | a byte that is not a hexadecimal digit | everything after it |
+| `ascii85` | an invalid byte, a group past 2^32 - 1, or a single final digit | everything after it |
+| `run_length` | the data ends inside a run | the rest of the run |
+| `predictor` | predictor parameters no predictor defines, or a PNG row of an unknown type | the bytes are read as they came, unpredicted |
+| `unsupported_filter` | a filter the content cannot be read through: an image codec or a filter no reader defines | the whole stream, lexed still encoded |
+| `external_stream` | the stream's data is an external file (`/F`), which pdfkit never reads | the whole stream |
+| `encrypted_stream` | the stream is encrypted under a crypt filter its own `/Crypt` filter names, whose key needs a user password (the handler's `/StmF` and `/StrF` are `/Identity` and its `/U` or `/Perms` refuses the empty password, so pdfkit holds no file key; with the empty password accepted, the stream is decrypted and read), or under a name `/CF` does not define | the whole stream |
+| `missing_stream` | a `/Contents` entry that resolves to no stream | whatever it drew |
+| `missing_object` | a `Do` whose XObject resolves to no stream (a name the resources do not hold, or an object the file lacks), which also gives `resource_missing` | whatever the object drew, a form's text included |
+| `unknown_operator` | a keyword the content operators do not hold, outside `BX` and `EX`, with an operand that could have carried or decided text (a string, an array, a name, a dictionary): a corrupted `Tj`, `Tf` or `Do` | the operator and its operands draw nothing |
+| `unlexable_content` | an operator read as an operand's value (inside an array or a dictionary), a dictionary key that is not a name, containers nested past 64, more than 65,536 operands before an operator, a string that runs to the end of the content | the operators inside it |
+| `inline_image` | an inline image whose dictionary does not read (a key that is not a name, a key with no value, no `ID`) or whose `EI` is not found | the rest of the content, read as its data |
+| `not_checked` | a limit of §4.3 met while inspect, the write report or `pdfkit_check` read the page (check's own limits are the defaults); beside the classes found before it when the limit was met by the full reading of a page already found damaged | not known; the page is not read in full, and its `glyphs` is 0 |
+
+A lexer recovery that skips no byte and drops no operator names no page and
+keeps its `damaged_stream` warning: operands left at the end of the content
+or before `BI`, a stray delimiter, a token read leniently, an indirect
+reference written in content (`/OC 5 0 R BDC`, `<< /Foo [5 0 R] >>`, `7 0 R`
+in an inline image's dictionary), and an unknown operator with no operand or
+numbers alone (a mangled `endstreM-'m` a stream recovery leaves, `CT` written
+for `BT`). An `R` is lossless only with exactly `n g` as its operands, or a
+name then `n g` before a `BDC` or `DP` (`/OC 5 0 R BDC`); with any other
+operands (`(Secret) 5 0 R Tj`, `/Im1 5 0 R Do`, `/F1 5 0 R 12 Tf`) it takes
+the operands of the operator that follows and names the page
+`unknown_operator`.
 
 ### 4.5 pdfkit_channels (catalogue 8)
 
@@ -309,7 +380,9 @@ bytes.
   "rectangles": [],
   "images": [],
   "self_check": {"status": "not_run", "reason": "no text redaction in the edit plan"},
-  "warnings": []
+  "warnings": [],
+  "damaged_pages": [{"page": 1, "source_page": 3, "glyphs": 700, "streams": [...],
+                     "text_redaction": true, "copied_as_is": true}]
 }
 ```
 
@@ -334,6 +407,7 @@ With a text redaction in the plan, `rectangles` and `self_check` read:
 | `images` | per image identity the plan treats, in identity order: `identity`, `treatment` (`box`, `blur`, `remove`, or `region` for region boxes alone), `objects` (the image objects replaced or emptied), `inline_draws` (the inline draws rewritten or removed), `draws_removed` (the `Do` and `BI` operations removed), `sha256` (per replaced object, and once per rewritten inline image, the SHA-256 of the new encoded data as stored: the stream's bytes, or the inline data from after `ID` to its closing `>`); empty without a treatment |
 | `self_check` | `{"status": "not_run", "reason": ...}` when the plan holds no text match and no rewritten metadata field; `{"status": "passed", "strings": n, "located": l, "metadata_values": m}` when the output was re-read and none of the n requests verified survives where it is verified (`docs/DESIGN.md` §18): the search strings in every surface, the l glyph-range matches at their location, the m original values of the metadata fields rewritten (those the plan does not also search for) in the Info dictionary, the XMP packet and the string objects; a survivor fails the whole call with `PDFKIT_E_SELF_CHECK` and the error object names every survivor's string, surface (`location` for a glyph range's text at its location) and page, and no PDF is returned |
 | `warnings` | the `pending_redactions` warnings of the source, and `xmp_unreadable` when the catalog's XMP packet did not decode or scan and was dropped |
+| `damaged_pages` | §4.4.1, per output page whose source page could not be read in full, in output order: `page` (the output page), then `source_page` before `glyphs`, and after `streams` `text_redaction` (true when a search string of the plan, searched on every page, or a match of the plan on that page searched or edited it, so the self-check's verification over that page is incomplete) and `copied_as_is` (true when the output page, read again by the same walk, still holds damage: a damaged stream copied as it was, or bytes no operator draws that a rewrite kept; false when a rewrite wrote only what decoded; `null` when it is not known, because the output could not be opened or its page read again within the open limits (it then names only `not_checked`); for a source page named `not_checked`, the output's own reading decides it like any other); the streams named are the source's; the reading never fails a write |
 
 ### 4.8 pdfkit_image_data (catalogue 3.2)
 
@@ -420,7 +494,8 @@ Options, each optional; any other key, or a value of another type, is
               "optional_content": {"groups": [], "off": false}, "clip": null, "hidden": [],
               "duplicate_of": null, "duplicates": []}]
 }],
- "fingerprint": "83ce7cec117fa30dbe1a3a3dc1d454be02cf1c463c8c69dcc8d69ce41f19c89f"}
+ "fingerprint": "83ce7cec117fa30dbe1a3a3dc1d454be02cf1c463c8c69dcc8d69ce41f19c89f",
+ "damaged_pages": []}
 ```
 
 | Key | Holds |
@@ -436,6 +511,7 @@ Options, each optional; any other key, or a value of another type, is
 | `glyphs` | the glyph list in reading order (the visible blocks' glyphs, then the hidden blocks'), each record with every field of `CLAUDE.md` §4: `draw` (its place in draw order), `stream` (the walk: its index, the form object or `null` for the page, the form path), `operator` and `operand` (the operator's index in its walk and the operand holding the code, for `TJ` the index inside the array), `bytes` (the half-open byte range of the code as written in the walk's bytes) and `hex`, `font`, `code` and `code_length`, `text` and `rung`, `decomposed` (a ligature's letters), `width` (thousandths of text space), `adjustment` (the `TJ` number before it), `advance` (text space, `Tc` and `Tw` included), `vertical`, the text state (`text_matrix` before the glyph, `ctm`, `char_spacing`, `word_spacing`, `horizontal_scaling`, `leading`, `rise`, `font_size`, `render_mode`), the device geometry (`origin`, `advance_end`, `box`, `size`, `angle`), `fill`, `marked_content` (innermost tag and MCID), `actual_text` (the span and whether the span's text went to an earlier glyph), `optional_content`, `clip` (`null` when nothing clips), `hidden`, `duplicate_of` and `duplicates` (draw indices) |
 | `spans` | per marked-content span with replacement text, in the order met: its tag, `/ActualText`, `/Alt` and `/E`, and the walk and operator of its `BDC` |
 | `fingerprint` | after the pages: the document fingerprint, the SHA-256 (lower-case hexadecimal) of the file from its `%PDF-` header on, which a glyph range given to `pdfkit_redact_text` carries back so a range of another document is refused |
+| `damaged_pages` | after the fingerprint: §4.4.1 for the pages asked, in page order |
 
 Every key is written in the order shown and every geometric number rounded to
 0.01 pt, so two calls give the same bytes. Failures: `invalid_argument` for a
@@ -670,13 +746,24 @@ the folding as in §4.11 (nothing folded unless asked). Finding a string is the 
 
 ```json
 {"strings": 2, "pages": 1, "count": 1,
- "survivors": [{"string": "zebulon", "page": 1, "surface": "text", "object": null}]}
+ "survivors": [{"string": "zebulon", "page": 1, "surface": "text", "object": null}],
+ "not_searched": [],
+ "damaged_pages": []}
 ```
 
 `surface` is `text` (a page's text, hidden text included), `actual_text`,
 `alt`, `expansion`, `info`, `xmp`, `string` (a string object, `object` naming
 it) or `stream` (the decoded bytes of a stream or of a content stream's string
 operands, `object` naming it); `page` is null for a surface outside the pages.
+`not_searched` lists each stream no search could read, because it is
+encrypted under a crypt filter whose key needs a user password, or under a
+crypt filter `/CF` does not define (the `encrypted_stream` of §4.4.1): its
+`object` and the `page` whose content it is (`null` otherwise), the XMP
+packet first, then the other streams in object-number order, so a count of 0 never stands for a stream that was not
+read. `damaged_pages` (§4.4.1) names every page of the bytes whose text could not be
+read in full, whatever strings were given (none included), because a string
+may survive there where no reader of pdfkit's sees it; a limit met on a page
+the search does not read names it `not_checked`.
 Failures: `invalid_argument` for a null `out`, malformed or unknown keys, a
 string without `text`; the open's refusal (`not_pdf`, `password_required` and
 the rest) under `PDFKIT_E_REFUSED` when the bytes do not open.
@@ -837,7 +924,8 @@ document.
      {"occurrence": 0, "page": 3, "list": 2, "surface": "alt", "path": ["Alt"],
       "stream": 0, "operator": 41, "properties": null, "object": null,
       "string": "Logo of the EU", "first": 12, "last": 14, "text": "EU",
-      "glued_before": "", "glued_after": ""}]}]}
+      "glued_before": "", "glued_after": ""}]}],
+ "damaged_pages": []}
 ```
 
 | Key | Holds |
@@ -857,6 +945,7 @@ document.
 | `strings[].stream`, `operator`, `properties`, `object` | 0 for the page's content or the form's object number; the index of the `BDC` or `DP` in that stream; the `/Properties` name, `null` when the list is inline; the list's object number, `null` when it is direct |
 | `strings[].string`, `first`, `last`, `text` | the whole string as UTF-8, the half-open range of the occurrence in its code points (not UTF-16 units), and its text |
 | `strings[].glued_before`, `glued_after` | the string's characters next to the range up to white space on each side |
+| `damaged_pages` | after the values: §4.4.1 for the pages asked, in page order; an occurrence on such a page may be missing from the counts |
 | `glued_before`, `glued_after` | the characters of the word or words the occurrence lies inside that precede its first glyph and follow its last, as the extraction reads them; empty when it starts or ends a word. In the reading order a word is a word of `pdfkit_text` (a word joined across a line by a hyphen is the two words the extraction writes); in another order they are the glyphs that order reads next to the occurrence up to a word gap or a white-space glyph. On "The EU and the neutral Europe agreed." the value `EU` with case folding gives `""` and `""` for the word, `"n"` and `"tral"` for the `eu` of "neutral", `""` and `"rope"` for "Europe" |
 
 Every key is written in the order shown; two calls give the same bytes. A
@@ -895,6 +984,7 @@ named), optionally `pdfkit_check` on the bytes, and `pdfkit_buffer_free`,
 | 1 | `0.1.0-preview` | the catalogue of `CLAUDE.md` §2 |
 | 2 | `0.2.0-preview` | `glued_before`, `glued_after` and `strings` in `pdfkit_find`; the `string` match of `pdfkit_redact_text`; `equivalents` and `ignore` in a folding; **changed meaning**: a folding left out folds nothing (it folded everything in ABI 1), ordered by the owner because pdfkit applies no rule it was not asked for; the overlap rule's tie stated |
 | 3 | `0.3.0-preview` | in `pdfkit_redact_text`: a placeholder over the wider alphabet (printable ASCII, the Latin-1 Supplement and Latin Extended-A, as UTF-8); a match's `style` (`text` or `box`) and a box's `colour`; in the answer, each match's `style`, each occurrence's `boxes` and the answer's `warnings` (`box_not_drawn`). No meaning changes: a match without `style` draws its placeholder as before |
+| 4 | `0.4.0-preview` | `damaged_pages` (§4.4.1) at the end of `pdfkit_inspect`, `pdfkit_text`, `pdfkit_find`, `pdfkit_check` and the write report, `not_searched` in `pdfkit_check`, the write report's entries with `source_page`, `text_redaction` and `copied_as_is`; `pdfkit_inspect` reads every page's content to name them, so its `warnings` hold the warnings of every page. No meaning changes |
 - A caller checks `pdfkit_abi_version() >= N` for the version whose symbols it
   binds, and reads `pdfkit_version`'s `catalogue` to learn which functions this
   build implements.

@@ -64,9 +64,43 @@ class Parser {
   [[nodiscard]] std::optional<std::pair<Object::Reference, std::size_t>> read_header(
       std::size_t offset) const;
 
+  // One recovery of parse_value: what kind it is, so a reader decides what it
+  // costs without reading the message, and the message a repair report uses.
+  struct Recovery {
+    enum class Kind : std::uint8_t {
+      // A token read leniently (a doubled sign, a lone '#', a string ended by
+      // the data's end or a stray byte).
+      lenient_token,
+      // A keyword where a value belongs, read as null.
+      keyword_value,
+      // "n g R" where references are off: the keyword R after two integers
+      // in an array, or a dictionary key position holding the generation or
+      // the R of a reference, which a content stream may write and which
+      // drops no operator.
+      reference,
+      // A container past max_depth, read empty.
+      nesting,
+      // An array or dictionary left open where the data or the object ends.
+      open_container,
+      // A dictionary key that is not a name, skipped.
+      key_not_name,
+      // A dictionary key followed by no value.
+      key_without_value,
+      // A stray delimiter skipped or read as null.
+      stray_delimiter,
+      // The data ends where a value was expected.
+      end_of_data,
+    };
+    Kind kind = Kind::lenient_token;
+    std::string message;
+  };
+
   // Parses one direct object starting with first, the token the lexer just
   // read. With references off ("n g R" is not looked for) this is the operand
-  // syntax of a content stream. A recovery appends to repairs.
+  // syntax of a content stream. A recovery appends to recoveries.
+  [[nodiscard]] static Object parse_value(Lexer& lexer, const Lexer::Token& first, bool references,
+                                          std::vector<Recovery>& recoveries, int depth = 0);
+  // The same, each recovery appended to repairs as its message.
   [[nodiscard]] static Object parse_value(Lexer& lexer, const Lexer::Token& first, bool references,
                                           std::vector<std::string>& repairs, int depth = 0);
 

@@ -11,6 +11,8 @@
 //   - the image treatments per image identity (section 14), added by
 //     pdfkit_redact_images;
 //   - the metadata field values (section 10), added by pdfkit_set_metadata.
+// It reaches the scan of the document's damaged pages, which the write
+// report names.
 
 #ifndef PDFKIT_REDACT_EDIT_PLAN_HPP
 #define PDFKIT_REDACT_EDIT_PLAN_HPP
@@ -18,9 +20,11 @@
 #include "redact/image_treatment_plan.hpp"
 #include "redact/text_plan.hpp"
 #include "syntax/document.hpp"
+#include "text/damage_scan.hpp"
 #include "writer/metadata_writer.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -29,10 +33,21 @@ namespace pdfkit::redact {
 
 class EditPlan {
  public:
-  // document must outlive the plan.
-  explicit EditPlan(syntax::Document& document) : document_(&document) {}
+  // document must outlive the plan; so must damage, the scan of the
+  // document's damaged pages its handle keeps, when given (the plan keeps a
+  // scan of its own otherwise).
+  explicit EditPlan(syntax::Document& document, text::DamageScan* damage = nullptr)
+      : document_(&document), damage_(damage) {}
 
   [[nodiscard]] syntax::Document& document() noexcept { return *document_; }
+  // The scan of the document's pages that could not be read in full.
+  [[nodiscard]] text::DamageScan& damage() {
+    if (damage_ == nullptr) {
+      own_damage_ = std::make_unique<text::DamageScan>(*document_);
+      damage_ = own_damage_.get();
+    }
+    return *damage_;
+  }
 
   // Records the pages to keep, in this order. Throws platform::Error
   // (invalid_argument) for an empty list, a page named twice or a page out of
@@ -75,6 +90,8 @@ class EditPlan {
 
  private:
   syntax::Document* document_;
+  text::DamageScan* damage_;
+  std::unique_ptr<text::DamageScan> own_damage_;
   std::optional<std::vector<std::uint32_t>> pages_;
   TextPlan text_;
   ImageTreatmentPlan images_;

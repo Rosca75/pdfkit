@@ -4,8 +4,8 @@
 // Tests of syntax::ContentLexer: operators and operands with byte ranges over
 // hand-written streams, a /Contents array joined with an operator split
 // across two pieces and mapped back, inline images with "EI" inside the data
-// with and without a computable length, an ASCII-filtered inline image, and
-// the operator limit.
+// with and without a computable length, an ASCII-filtered inline image, the
+// operator limit, and which recoveries are losses that can take text.
 
 #include "syntax/content_lexer.hpp"
 
@@ -17,8 +17,10 @@
 
 #include <doctest.h>
 
+#include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -179,3 +181,65 @@ TEST_CASE("the operator table") {
 }
 
 }  // namespace
+
+TEST_CASE("only a recovery that can lose text is a loss") {
+  // Each case: the content, then the class of its first loss, empty for none.
+  const std::vector<std::pair<std::string, std::string>> cases{
+      {"BT (a) Tj ET 1 2 3", ""},
+      {"BT ) >> ] } (a) Tj ET", ""},
+      {"BT --1 Tc (a) Tj ET", ""},
+      {"BX 1 zork EX (a) Tj", ""},
+      {"BX BX zork EX zork EX", ""},
+      {"1 2 BI /W 1 /H 1 /CS /G /BPC 8 ID \x01 EI", ""},
+      {"(a) Tj 1 zork", ""},
+      {"BX EX zork", ""},
+      {"/OC 5 0 R BDC (a) Tj EMC", ""},
+      {"[5 0 R] TJ", ""},
+      {"<< /OC 5 0 R /MCID 2 >> BDC", ""},
+      {"BI /W 1 /H 1 /CS /G /BPC 8 /X 7 0 R ID \x01 EI", ""},
+      {"(a) Tj (b) zork", "unknown_operator"},
+      {"BX EX /N zork", "unknown_operator"},
+      {"/N 5 R", "unknown_operator"},
+      {"5 0 R", ""},
+      {"(a) 5 0 R Tj", "unknown_operator"},
+      {"/X 5 0 R Do", "unknown_operator"},
+      {"/X 5 0 R", "unknown_operator"},
+      {"/OC 5 0 R DP", ""},
+      {"[(a) R] TJ", "unlexable_content"},
+      {"[(a) Tj (b)] TJ", "unlexable_content"},
+      {"<< 1 /A 2 >> BDC", "unlexable_content"},
+      {"(a) Tj (b Tj", "unlexable_content"},
+      {"(a) Tj <6263", "unlexable_content"},
+      {"BI /W 1 /H 1 ID \x01\x02\x03", "inline_image"},
+      {"BI /W 1 2 /H 1 /CS /G /BPC 8 ID \x01 EI", "inline_image"},
+      {"BI /W 1 /H 1 /CS /G /BPC 8", "inline_image"}};
+  for (const auto& [content, damage] : cases) {
+    CAPTURE(content);
+    const std::vector<std::vector<std::byte>> pieces{bytes_of(content)};
+    const Limits limits;
+    ContentLexer lexer(pieces, limits, "page 1");
+    while (lexer.next()) {
+    }
+    if (damage.empty()) {
+      CHECK(lexer.losses().empty());
+    } else {
+      REQUIRE_FALSE(lexer.losses().empty());
+      CHECK(lexer.losses().front().damage == damage);
+      CHECK_FALSE(lexer.losses().front().fault.empty());
+    }
+  }
+}
+
+TEST_CASE("a loss names where it starts and the bytes it took") {
+  const std::vector<std::vector<std::byte>> pieces{bytes_of("(a) Tj"),
+                                                   bytes_of("1 (x) zork\n(b) Tj")};
+  const Limits limits;
+  ContentLexer lexer(pieces, limits, "page 1");
+  while (lexer.next()) {
+  }
+  REQUIRE(lexer.losses().size() == 1);
+  const ContentLexer::Loss& loss = lexer.losses().front();
+  CHECK(lexer.locate(loss.start).piece == 1);
+  CHECK(loss.bytes == std::size_t{10});
+  CHECK(loss.count == 1U);
+}

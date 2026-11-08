@@ -10,9 +10,9 @@
 // (DCTDecode, CCITTFaxDecode, JBIG2Decode, JPXDecode) or unknown filter and
 // hands back the bytes so far with the filters left, because the images layer
 // decodes those and the writer copies them untouched. A filter that meets a
-// fault yields what it decoded before it and marks the result damaged, as
-// every viewer reads such a stream. Every byte produced is charged to the
-// document's budget.
+// fault yields what it decoded before it and marks the result damaged with
+// the fault's damage class, as every viewer reads such a stream. Every byte
+// produced is charged to the document's budget.
 
 #ifndef PDFKIT_SYNTAX_FILTERS_HPP
 #define PDFKIT_SYNTAX_FILTERS_HPP
@@ -22,6 +22,7 @@
 #include "syntax/object.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +41,19 @@ class Filters {
     // A filter stopped at a fault; bytes holds what decoded before it.
     bool damaged = false;
     std::string fault;
+    // The fault's damage class (docs/DESIGN.md section 3.1): flate_checksum,
+    // flate_corrupt, flate_truncated, flate_dictionary, lzw, ascii_hex,
+    // ascii85, run_length or predictor; empty when nothing is damaged.
+    std::string damage;
+    // The bytes of the faulting filter's input it did not read, when the
+    // filter knows where it stopped.
+    std::optional<std::size_t> unread;
+    // The stream's data is an external file (/F), which is never read, so
+    // bytes is empty.
+    bool external = false;
+    // The stream's data is encrypted under a crypt filter whose key the
+    // security handler does not hold, so bytes is empty.
+    bool locked = false;
   };
 
   // Applies the chain filter (a name, an array of names or null) with its

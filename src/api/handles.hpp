@@ -16,6 +16,7 @@
 #include "images/image_listing.hpp"
 #include "redact/edit_plan.hpp"
 #include "syntax/document.hpp"
+#include "text/damage_scan.hpp"
 
 #include <memory>
 #include <string_view>
@@ -28,6 +29,9 @@ struct pdfkit_document {
   // The document's image draws grouped by identity, read page by page by the
   // image calls and kept with the decodability of each image.
   std::unique_ptr<pdfkit::images::ImageListing> listing;
+  // The pages that could not be read in full, read once per page by the
+  // first call that asks and kept, so every later call answers the same.
+  std::unique_ptr<pdfkit::text::DamageScan> damage;
 };
 
 struct pdfkit_edit {
